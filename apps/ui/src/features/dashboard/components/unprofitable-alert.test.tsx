@@ -17,7 +17,6 @@ import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { revenueBasisNote } from "@/lib/supplied-revenue";
-import { REVENUE_BASIS_VALUES } from "@/lib/vocabulary";
 
 import { MOCK_UNPROFITABLE } from "../api/mock-data";
 import { dashboardApi } from "../api/provider";
@@ -36,7 +35,11 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 });
 
 describe("UnprofitableAlert", () => {
-  it.each(REVENUE_BASIS_VALUES)("states the %s basis its answer names", async (basis) => {
+  // The contract publishes `recognised` alone on this answer (the owner's
+  // review of #621): every margin places supplied revenue under the one
+  // basis, so that is the value the answer can name and the note states.
+  it("states the basis its answer names", async () => {
+    const basis = "recognised";
     vi.spyOn(dashboardApi, "getUnprofitable").mockResolvedValueOnce({
       ...MOCK_UNPROFITABLE,
       basis,

@@ -95,7 +95,10 @@ current horizon and its posting is neither `unresolved` nor `unknown`; protected
 by the query — the `usage/0041` delete trigger is the backstop beneath, never the filter — so an old
 unresolved record never starves younger ones. Bounded (`PRUNE_BATCH_SIZE` per atomic batch,
 `PRUNE_RUN_CAP` per run) and observable: one structured line per run, a zero run included, with what
-was released, deleted and skipped and the oldest eligible record left behind. The economic posting is
+was released, deleted and skipped and the oldest eligible record left behind. That line is
+`measurement_prune.completed` only for a run that finished; a run that did not writes
+`measurement_prune.failed`, counting only the batches that committed, and raises its error on — the
+next run starts from the failed batch, which released and deleted nothing. The economic posting is
 never touched.
 _Avoid_: resolving anything on the way past — retention cleanup and economic resolution stay separate
 (amendment B).

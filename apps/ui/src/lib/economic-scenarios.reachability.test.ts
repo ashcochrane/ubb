@@ -58,6 +58,18 @@ import {
   type PricingStatus,
 } from "./vocabulary";
 
+/** The values the committed contract publishes for one schema's field. */
+function publishedEnum(schema: string, field: string): string[] {
+  const [document] = Object.values(
+    import.meta.glob("/src/api/schema.json", { eager: true, import: "default" }),
+  );
+  const values = ["components", "schemas", schema, "properties", field, "enum"].reduce<unknown>(
+    (node, key) => (typeof node === "object" && node !== null ? Reflect.get(node, key) : undefined),
+    document,
+  );
+  return Array.isArray(values) ? values.map(String) : [];
+}
+
 const SOURCES = import.meta.glob("/src/**/*.{ts,tsx}", {
   query: "?raw",
   import: "default",
@@ -260,20 +272,24 @@ describe("the scenario module is wired to something that renders", () => {
 
   // Every MEASURE state (#510; slice 7 §19), on the price statuses' terms: the
   // map is hand-written because nothing mechanical leads from a value to its
-  // composer, and the loop is the generated list, so the sixth state a
-  // registry edit adds fails here until something composes it and something
-  // that renders consumes it.
-  it("reaches a composer for every measure state the registry declares", () => {
+  // composer. The loop is what the CONTRACT publishes on a measure — the
+  // registry's states less the one it withholds (`not_applicable`, which
+  // nothing writes; the owner's review of #621) — so the sixth state a
+  // registry edit adds, or a withheld one a writer un-withholds, fails here
+  // until something composes it and something that renders consumes it.
+  it("reaches a composer for every measure state the contract publishes", () => {
     const byStatus: Partial<Record<MeasureStatus, string>> = {
       known: "knownMeasures",
       incomplete: "incompleteMeasures",
       unavailable_at_requested_grain: "revenueUnavailableAtThisGrain",
       unavailable_outside_retention_horizon: "measuresOutsideRetentionHorizon",
-      not_applicable: "measureNotApplicable",
     };
+    const published = publishedEnum("EconomicMeasureOut", "status");
+    expect(published.length, "the contract publishes no measure state").toBeGreaterThan(0);
 
-    for (const status of MEASURE_STATUS_VALUES) {
-      const composer = byStatus[status];
+    for (const status of published) {
+      expect(MEASURE_STATUS_VALUES).toContain(status);
+      const composer = byStatus[status as MeasureStatus];
       expect(composer, `no scenario composes \`${status}\``).toBeDefined();
       if (composer === undefined) continue;
       expect(COMPOSERS).toContain(composer);

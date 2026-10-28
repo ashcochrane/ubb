@@ -358,11 +358,12 @@ describe("UsageTab", () => {
 });
 
 // ⚠ #548: THE ROLLUP STATES THE BASIS ITS OWN RESPONSE NAMES. The server always
-// places supplied revenue here under `recognised`, which is what the mock
-// answers — so the answer is re-stated under each value, and a rollup that
-// wrote `recognised` itself (the tempting constant) fails the other case.
+// places supplied revenue here under `recognised`, and since the owner's
+// review of #621 the contract publishes that value alone on this answer, so
+// it is the one the answer can name and the note states.
 describe("BusinessRollup", () => {
-  it.each(REVENUE_BASIS_VALUES)("states the %s basis its answer names", async (basis) => {
+  it("states the basis its answer names", async () => {
+    const basis = "recognised";
     vi.spyOn(customersApi, "getBusinessMargin").mockResolvedValueOnce({
       ...MOCK_BUSINESS_MARGIN,
       basis,

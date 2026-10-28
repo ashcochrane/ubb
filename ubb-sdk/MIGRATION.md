@@ -1222,6 +1222,25 @@ token's customer is the only scope, and a business reads its own usage without
 its seats'. It is reachable through the generated core
 (`api_v1_me_endpoints_get_my_economics`), like the other widget routes.
 
+### An enum names only the values its field can return
+
+A generated enum now lists what its field can actually come back as, and
+nothing it never can (the owner's review of #621):
+
+- `BusinessMarginOutBasis` and `UnprofitableOutBasis` have `RECOGNISED`
+  only — every margin places supplied revenue under the recognised basis;
+- `EconomicMeasureOutStatus` loses `NOT_APPLICABLE`, which no answer ever
+  carried: the query refuses a measure that does not apply before it builds
+  a row;
+- the end customer's `MeEconomicsOutBasis` is `RECORDED` only,
+  `MeCustomerRevenueOutStatus` is `KNOWN`, `INCOMPLETE` or
+  `UNAVAILABLE_OUTSIDE_RETENTION_HORIZON`, and `MeRecordedEventsOutStatus`
+  is `KNOWN` or `UNAVAILABLE_OUTSIDE_RETENTION_HORIZON`.
+
+No response changes. **Code that names a member that is gone stops
+importing** — a branch for a value the field could never return — so delete
+the branch.
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

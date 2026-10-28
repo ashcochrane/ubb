@@ -3988,8 +3988,8 @@ ECONOMIC_BUCKET_MEANING = (
 ECONOMIC_AMOUNT_MEANING = (
     "The figure of a money measure, in micros; null on the count measure, "
     "which is not money. Where it is null on a money measure, no figure can "
-    "be stated: under 'unavailable_outside_retention_horizon', under "
-    "'not_applicable', on a margin under 'unavailable_at_requested_grain', and "
+    "be stated: under 'unavailable_outside_retention_horizon', on a margin "
+    "under 'unavailable_at_requested_grain', and "
     "under 'incomplete' where no piece of the row's revenue resolved — on the "
     "revenue and on the margin over it. An amount under 'incomplete' is the "
     "sum of what resolved, never the whole: what it leaves out may move it "
@@ -4057,10 +4057,10 @@ class EconomicMeasureOut(Schema):
       says the day this measure's series can start. The two unavailable states
       are separate because their remedies are: ask a coarser question, against
       that data is gone.
-    * `not_applicable` — the measure does not apply. This surface refuses such a
-      combination against `/metering/analytics/grouping-options` before building
-      a row, so an answer from THIS query never carries it; the value is the
-      concept's and a later surface may.
+
+    A measure that does not apply is never answered: this surface refuses the
+    combination against `/metering/analytics/grouping-options` before building
+    a row, so `status` is one of these four (the owner's review of #621).
 
     ⚠ **NO STATE IS EVER A STAND-IN FOR A FIGURE.** A zero here is a measured
     zero, and where UBB has no figure at all the field is null.

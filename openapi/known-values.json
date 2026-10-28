@@ -500,8 +500,7 @@
         "known",
         "incomplete",
         "unavailable_at_requested_grain",
-        "unavailable_outside_retention_horizon",
-        "not_applicable"
+        "unavailable_outside_retention_horizon"
       ]
     },
     "measurement_key": {

@@ -303,6 +303,10 @@ class AMarginThatLeftForeignRevenueOutConcludesNothingTest(_ForeignCurrencyCase)
         return OutboxEvent.objects.filter(
             event_type=CustomerUnprofitable.EVENT_TYPE, tenant_id=self.tenant.id)
 
+    def _unprofitable(self):
+        """The route a tenant reads the verdict through."""
+        return self._get(f"/api/v1/margin/unprofitable?period_start={OPENS}")
+
     def test_known_cost_negative_margin_and_euro_revenue_raise_no_alarm(self):
         _mirrored(self.customer, "sub_eur", "eur", EUROS)
 
@@ -312,8 +316,7 @@ class AMarginThatLeftForeignRevenueOutConcludesNothingTest(_ForeignCurrencyCase)
         self.assertEqual(econ.foreign_currency_subscription_count, 1)
         self.assertFalse(econ.is_unprofitable)
         self.assertFalse(self._alarms().exists())
-        self.assertEqual(
-            self._get(f"/api/v1/margin/unprofitable?period_start={OPENS}")["customers"], [])
+        self.assertEqual(self._unprofitable()["customers"], [])
 
     def test_the_same_customer_with_nothing_left_out_is_flagged(self):
         """THE CONTROL: the fixture is unprofitable, so the alarm fires when
@@ -322,6 +325,31 @@ class AMarginThatLeftForeignRevenueOutConcludesNothingTest(_ForeignCurrencyCase)
 
         self.assertTrue(econ.is_unprofitable)
         self.assertEqual(self._alarms().count(), 1)
+        # And the route lists them — so an empty list elsewhere in this class
+        # is the quarantine speaking, not a route that lists nobody. The row
+        # states that nothing was left out, under the basis the list names.
+        body = self._unprofitable()
+        (row,) = body["customers"]
+        self.assertEqual((row["external_id"], row[COUNT], body["basis"]),
+                         (self.customer.external_id, 0, "recognised"))
+
+    def test_a_flag_raised_before_euro_revenue_arrived_is_withdrawn(self):
+        """The owner's review of #621, point 3: the case the first test cannot
+        reach. A customer the evaluator ALREADY named unprofitable, before a
+        euro subscription was mirrored: re-evaluated, the scope holds revenue
+        UBB cannot count, so the flag is withdrawn rather than left standing
+        as a verdict over it — no second alarm, and the route lists nobody.
+        (The alarm already sent stays a fact about what was known then.)"""
+        self.assertTrue(self._evaluated().is_unprofitable)
+        self.assertEqual(len(self._unprofitable()["customers"]), 1)
+
+        _mirrored(self.customer, "sub_eur", "eur", EUROS)
+        econ = self._evaluated()
+
+        self.assertEqual(econ.foreign_currency_subscription_count, 1)
+        self.assertFalse(econ.is_unprofitable)
+        self.assertEqual(self._alarms().count(), 1)
+        self.assertEqual(self._unprofitable()["customers"], [])
 
 
 class TheMarginReadsCountWhatTheyLeftOutTest(_ForeignCurrencyCase):

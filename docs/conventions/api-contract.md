@@ -250,13 +250,15 @@ is a red test until its meaning is chosen. Pinned by
 
 ## Vocabulary: the values a field may carry (#208)
 
-Two vendor extensions are part of the published dialect. Both are
-**generator-owned** — never hand-written into a schema.
+Three vendor extensions are part of the published dialect. None is ever
+hand-written into a schema: the first two are the export's, and the third is
+written only by `core/field_values.py`, from the registry's constants.
 
 | Extension | On | Means |
 |---|---|---|
 | `x-ubb-concept` | any string-shaped schema node | the UBB concept this field carries, named in `domain-vocabulary/` |
 | `x-ubb-known-values` | an **open** concept's node | the values UBB recognises today. Documentation, never a constraint |
+| `x-ubb-field-values` | a **closed** concept's node that returns only part of it | the values THIS field can return; the export writes them as its `enum`, in the registry's order (R10-W5) |
 
 A field declares its concept and **nothing else** — the values arrive at export
 time from `openapi/known-values.json`:
@@ -310,6 +312,27 @@ union node is an honest home for it.
 value set the registry owns, and for an open concept it is the silent closure
 G4 exists to refuse. The gate accounts for every `enum` in the committed
 document by JSON pointer, so a new one has to come past a reviewer.
+
+**A field that can return only part of its closed concept says so with
+`a_field_of`** (`core/field_values.py`; ADR-0025 §6, the owner's review of
+#621). A public `enum` describes what its field can actually return, so the
+business rollup's `basis` advertises `recognised` alone, and an end
+customer's revenue status never advertises the grain it cannot meet:
+
+```python
+MarginRevenueBasis = a_field_of("revenue_basis", MARGIN_REVENUE_BASIS)
+```
+
+This is the one vocabulary field typed as a `Literal`, and it is not a second
+copy of the set: its values are the registry's generated constants, held by
+reference; the rendered schema drops the `Literal`'s own `enum` and keeps the
+concept marker beside `x-ubb-field-values`; and the export refuses a value the
+concept does not occur with, a list that is the whole set, and an open
+concept, before it writes the `enum` from the registry. The `Literal` is what
+makes the response refuse a value the field cannot return. A value NO field
+can return is not narrowed field by field — the registry withholds it
+(`withheld_values`, with its reachability proof beside it), as
+`measure_status.not_applicable` is.
 
 **The one `Literal` a body takes is a union's discriminator** (ADR-0021 §1).
 A request body that can carry more than one kind of thing is a union told

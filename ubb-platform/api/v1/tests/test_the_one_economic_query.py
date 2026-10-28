@@ -53,7 +53,8 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED, MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_KNOWN, MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
     MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
-    MEASURE_STATUS_VALUES, PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN,
+    MEASURE_STATUS_NOT_APPLICABLE, MEASURE_STATUS_VALUES,
+    MEASURE_STATUS_WITHHELD_VALUES, PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN,
     RECOGNITION_METHOD_ON_RECEIPT, RECOGNITION_METHOD_STRAIGHT_LINE,
     REVENUE_BASIS_RECOGNISED, REVENUE_BASIS_RECORDED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
@@ -1350,15 +1351,21 @@ class TestTheTwoHorizonsOnTheWire:
             assert entry["amount_micros"] is None
             assert entry["count"] is None
 
-    def test_the_state_is_published_as_one_of_the_registry_s_five(self):
+    def test_the_state_is_published_as_the_four_the_query_reaches(self):
         """The contract half of the same payment: the field carries the concept
-        and the document enumerates the whole set, rather than a bare string
-        with a hand-written sentence standing in for it."""
+        rather than a bare string with a hand-written sentence standing in for
+        it, and the document enumerates what the query can reach — the
+        registry's five less the one it withholds, because nothing writes it
+        (the owner's review of #621). The committed document's enum is pinned
+        by `tests/contracts/test_openapi_known_values.py::FIELD_ENUMS`."""
+        from apps.metering.queries import MEASURE_STATES_WORST_LAST
+
         marker = MeasureStatus.__metadata__[0].json_schema_extra
         assert marker == {"x-ubb-concept": "measure_status"}
-        assert MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON in (
-            MEASURE_STATUS_VALUES)
         assert len(MEASURE_STATUS_VALUES) == 5
+        assert MEASURE_STATUS_WITHHELD_VALUES == {MEASURE_STATUS_NOT_APPLICABLE}
+        assert set(MEASURE_STATES_WORST_LAST) == (
+            MEASURE_STATUS_VALUES - MEASURE_STATUS_WITHHELD_VALUES)
 
     def test_the_bound_is_stated_beside_the_horizon_and_is_not_raised(self):
         """AC 6: *six years available* and *at most 366 days per request* are

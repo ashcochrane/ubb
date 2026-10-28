@@ -7,13 +7,14 @@ from api.v1.pagination import Paginated, empty_page, page
 from api.v1.topups import start_top_up
 from apps.platform.audit.marker import records_audit
 from api.v1.schemas import (
-    GrantKind, MeasureStatus, RevenueBasis, WalletTransactionType,
-    whole_minor_units)
+    GrantKind, WalletTransactionType, whole_minor_units)
+from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
 from core.auth import ProductAccess
 from core.currency_policy import (
     ECONOMIC_CURRENCY,
     FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY,
 )
+from core.field_values import a_field_of
 from core.report_windows import (
     END_DATE_DESCRIPTION, START_DATE_DESCRIPTION, resolve_report_window,
     states_its_report_window)
@@ -26,6 +27,9 @@ from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE,
     ANALYTICS_MEASURE_RECORDED_EVENTS,
     AUDIT_ACTION_TOP_UP_REQUESTED,
+    MEASURE_STATUS_INCOMPLETE,
+    MEASURE_STATUS_KNOWN,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
 )
 
 me_router = Router(auth=WidgetJWTAuth())
@@ -367,6 +371,21 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
 # neither is any other customer's.
 
 
+#: WHAT EACH FIELD OF THIS ANSWER CAN RETURN, and nothing more (the owner's
+#: review of #621). The question asked here is always ungrouped and
+#: unbucketed, so it never meets the grain a revenue figure cannot be placed
+#: at, and a count is never partly known; the revenue is always stated on
+#: the default basis. Each field keeps its concept's marker and names its
+#: values with the registry's constants; the export writes the `enum`.
+MeRevenueStatus = a_field_of(
+    "measure_status", MEASURE_STATUS_KNOWN, MEASURE_STATUS_INCOMPLETE,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
+MeCountStatus = a_field_of(
+    "measure_status", MEASURE_STATUS_KNOWN,
+    MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON)
+MeRevenueBasis = a_field_of("revenue_basis", DEFAULT_REVENUE_BASIS)
+
+
 class MeCustomerRevenueOut(Schema):
     """What your usage in the window earned, under the basis the answer names.
 
@@ -380,18 +399,23 @@ class MeCustomerRevenueOut(Schema):
     amount_micros: Optional[int] = Field(description=(
         "The revenue in micros of the answer's currency, or null where no "
         "figure can be stated — never a zero standing in."))
-    status: MeasureStatus
+    status: MeRevenueStatus
     available_from: Optional[str] = Field(description=(
         "The first day this figure can be stated from, non-null exactly where "
         "`status` is `unavailable_outside_retention_horizon`."))
 
 
 class MeRecordedEventsOut(Schema):
-    """How many metered usage events you recorded in the window."""
+    """How many metered usage events you recorded in the window.
+
+    `status` is `known`, or `unavailable_outside_retention_horizon` where the
+    window reaches back past what UBB still holds (`available_from` says
+    from when it can start) — `count` is then null, never a zero.
+    """
     count: Optional[int] = Field(description=(
         "How many metered usage events the window holds, or null where no "
         "figure can be stated — never a zero standing in."))
-    status: MeasureStatus
+    status: MeCountStatus
     available_from: Optional[str] = Field(description=(
         "The first day this count can be stated from, non-null exactly where "
         "`status` is `unavailable_outside_retention_horizon`."))
@@ -405,7 +429,7 @@ class MeEconomicsOut(Schema):
     period_start: str = Field(description=START_DATE_DESCRIPTION)
     period_end: str = Field(description=END_DATE_DESCRIPTION)
     #: Which view the revenue is stated under, as the answer applied it.
-    basis: RevenueBasis
+    basis: MeRevenueBasis
     #: The currency every amount here is stated in.
     currency: str
     customer_revenue: MeCustomerRevenueOut
@@ -450,7 +474,6 @@ def get_my_economics(
     _check_metering_product(request)
     from api.v1.economic_question import ask_the_economic_query
     from apps.metering.queries import EconomicFilters
-    from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
 
     window = resolve_report_window(start_date, end_date)
     answer, foreign = ask_the_economic_query(

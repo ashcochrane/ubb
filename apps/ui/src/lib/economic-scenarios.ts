@@ -101,7 +101,6 @@ import {
   type CeilingStatus,
   type CostingStatus,
   type MeasurementsStatus,
-  type MeasureStatus,
   type NotApplicableReason,
   type PricingMode,
   type PricingReceiptSubjectType,
@@ -741,10 +740,16 @@ export function incompletePriceTotal(
  * import of it, because this module's scenarios are vocabulary-typed and never
  * reach for the API layer — a fixture that assigns one into a response is what
  * checks the two agree.
+ *
+ * ⚠ ITS STATE IS ONE OF THE QUERY'S FOUR, NOT ONE OF THE REGISTRY'S FIVE. The
+ * registry withholds `not_applicable` — nothing writes it: the query refuses a
+ * measure that does not apply before it builds a row — so the contract never
+ * publishes it (the owner's review of #621), and a scenario composes only what
+ * a response can carry.
  */
 export interface EconomicMeasureScenario {
   readonly measure: AnalyticsMeasure;
-  readonly status: MeasureStatus;
+  readonly status: ReachedMeasureStatus;
   readonly amount_micros?: number | null;
   /** Present on every measure: the count measure's figure, null on a money
    * one — required and nullable on the contract since the owner's review of
@@ -762,11 +767,14 @@ export interface MeasureTerms {
   readonly events: number;
 }
 
+/** A state the query can write: the four of its order of precedence. */
+type ReachedMeasureStatus = (typeof MEASURE_STATES_WORST_LAST)[number];
+
 /** The query's order of precedence, as `@/lib/economic-query` holds it once. */
-const WORST_LAST: readonly MeasureStatus[] = MEASURE_STATES_WORST_LAST;
+const WORST_LAST: readonly ReachedMeasureStatus[] = MEASURE_STATES_WORST_LAST;
 
 /** The cost side's state: incomplete wherever it left an event out. */
-function costStatusOf(cost: CostTotalScenario): MeasureStatus {
+function costStatusOf(cost: CostTotalScenario): ReachedMeasureStatus {
   return cost.unresolved_event_count > 0 ? "incomplete" : "known";
 }
 
@@ -778,7 +786,10 @@ function costStatusOf(cost: CostTotalScenario): MeasureStatus {
  * free to state `known` beside an uncosted event — the dishonest rendering
  * #473 owns the cause of, and this module makes unwritable.
  */
-function marginStatusOf(costStatus: MeasureStatus, revenueStatus: MeasureStatus): MeasureStatus {
+function marginStatusOf(
+  costStatus: ReachedMeasureStatus,
+  revenueStatus: ReachedMeasureStatus,
+): ReachedMeasureStatus {
   return (
     WORST_LAST[
       Math.max(WORST_LAST.indexOf(costStatus), WORST_LAST.indexOf(revenueStatus))
@@ -789,7 +800,7 @@ function marginStatusOf(costStatus: MeasureStatus, revenueStatus: MeasureStatus)
 /** The four measures, from terms whose two sides state what they are worth. */
 function measuresFrom(
   terms: MeasureTerms,
-  revenueStatus: MeasureStatus,
+  revenueStatus: ReachedMeasureStatus,
 ): EconomicMeasureScenario[] {
   const costStatus = costStatusOf(terms.cost);
   const marginStatus = marginStatusOf(costStatus, revenueStatus);
@@ -1067,24 +1078,12 @@ export function measuresOutsideRetentionHorizon(
   }));
 }
 
-/**
- * One measure that does not apply here.
- *
- * ⚠ **THE ONE QUERY NEVER SENDS THIS** — it refuses a combination a measure
- * cannot answer against the discovery contract before building a row
- * (`queries.py`, the precedence guard's own comment) — but the value is the
- * concept's, a later surface may, and #155 §9.2 owes it a fixture and a
- * rendering assertion regardless: it must never render as known, and never as
- * within anything. So it is composed alone, with no figure, and a consumer
- * places it where the surface under test would meet it.
- */
-export function measureNotApplicable(
-  measure: AnalyticsMeasure,
-): EconomicMeasureScenario {
-  return measure === "recorded_events"
-    ? { measure, status: "not_applicable", count: null }
-    : { measure, status: "not_applicable", amount_micros: null, count: null };
-}
+// A MEASURE THAT DOES NOT APPLY HAS NO SCENARIO, AND THAT IS THE RULING: the
+// one query refuses it before building a row, so the registry withholds
+// `not_applicable` and the contract publishes it nowhere (the owner's review
+// of #621, on #620's reachability rule). No surface can carry it, so no
+// fixture or rendering assertion of it is owed; a surface that comes to state
+// one un-withholds the value, and composes it here, in the same commit.
 
 // ---------------------------------------------------------------------------
 // The Customer Spend Pool's status pair — where one customer's known period

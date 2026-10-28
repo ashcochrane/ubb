@@ -62,6 +62,7 @@ from tools.known_values import (
     CONTRACT,
     ENUM,
     EXTENSIONS,
+    FIELD_VALUES_KEY,
     KNOWN_VALUES,
     KNOWN_VALUES_KEY,
     MARKER,
@@ -435,9 +436,17 @@ def test_g4_no_open_concept_is_a_closed_enum_in_the_contract(spec, registry,
                 f"{pointer}: {name!r} is closed, so its values are the schema's "
                 f"`enum` and not documentation beside it")
             # What can OCCUR: the declared set less what the registry
-            # withholds (R10-W4, `withheld_values`; §0.4 C).
-            assert node.get("enum") == \
-                list(registry.concepts[name].occurring_values), pointer
+            # withholds (R10-W4, `withheld_values`; §0.4 C) — and on a
+            # field that names its own values (R10-W5, the owner's review
+            # of #621), the part of that set the field can return, in the
+            # registry's order. Never the whole set, never more.
+            occurring = list(registry.concepts[name].occurring_values)
+            named = node.get(FIELD_VALUES_KEY)
+            if named is not None:
+                assert set(named) < set(occurring), (pointer, named)
+            assert node.get("enum") == [
+                value for value in occurring
+                if named is None or value in named], pointer
 
 
 def test_g4_every_enum_in_the_contract_is_accounted_for(spec, decisions):
@@ -2494,6 +2503,105 @@ def test_stripping_undoes_applying_and_touches_nothing_else():
 
     hand_written = _document({"type": "string", "enum": ["a", "b"]})
     assert strip_known_values(hand_written) == hand_written
+
+
+# A FIELD THAT RETURNS ONLY PART OF ITS CONCEPT (R10-W5, the owner's review of
+# #621). The registry owns the tokens and the field owns where it sits among
+# them: `x-ubb-field-values` beside the marker, written by
+# `core/field_values.py` from the registry's constants.
+
+def _three():
+    return {"synthetic_concept": _decision(
+        representation=ENUM, values=("alpha", "beta", "gamma"))}
+
+
+def test_a_field_that_names_its_values_publishes_that_part_in_registry_order():
+    node = _applied(
+        _document(_string_property("synthetic_concept",
+                                   **{FIELD_VALUES_KEY: ["gamma", "alpha"]})),
+        _three())
+
+    assert node["enum"] == ["alpha", "gamma"]
+    assert node[MARKER] == "synthetic_concept", "the concept was lost"
+    assert node[FIELD_VALUES_KEY] == ["gamma", "alpha"]
+
+
+def test_stripping_keeps_a_fields_own_values_so_applying_again_agrees():
+    original = _document(_string_property(
+        "synthetic_concept", **{FIELD_VALUES_KEY: ["beta"]}))
+    applied = apply_known_values(original, _three())
+
+    assert applied != original
+    assert strip_known_values(applied) == original
+    assert apply_known_values(strip_known_values(applied), _three()) == applied
+
+
+@pytest.mark.parametrize("named, decisions, code", [
+    ([], _three(), codes.MALFORMED_FIELD_VALUES),
+    ("alpha", _three(), codes.MALFORMED_FIELD_VALUES),
+    (["alpha", "alpha"], _three(), codes.MALFORMED_FIELD_VALUES),
+    ([1], _three(), codes.MALFORMED_FIELD_VALUES),
+    (["alpha"], {"synthetic_concept": _decision(
+        representation=KNOWN_VALUES, kind="open")},
+     codes.FIELD_VALUES_ON_AN_OPEN_CONCEPT),
+    # A token the registry never declared, or one it withholds — either way
+    # not among the values the concept occurs with, which is all a
+    # decision carries.
+    (["alpha", "delta"], _three(), codes.FIELD_VALUE_NOT_OCCURRING),
+    (["gamma", "beta", "alpha"], _three(),
+     codes.FIELD_VALUES_ARE_THE_WHOLE_SET),
+], ids=["empty", "not-a-list", "repeated", "not-strings", "open",
+        "not-occurring", "whole-set"])
+def test_a_fields_own_values_are_refused_unless_they_narrow_the_set(
+        named, decisions, code):
+    refusal = _refusal(_document(_string_property(
+        "synthetic_concept", **{FIELD_VALUES_KEY: named})), decisions)
+
+    assert refusal.code == code
+
+
+#: WHAT EACH FIELD THAT RETURNS LESS THAN ITS CONCEPT PUBLISHES, read off the
+#: committed contract (the owner's review of #621, point 1: pin the OpenAPI
+#: output, not only what a response happens to serialise). The first five
+#: name their own values; the last is narrowed by the registry, which
+#: withholds `not_applicable` from every field because nothing writes it.
+FIELD_ENUMS = {
+    ("BusinessMarginOut", "basis"): ["recognised"],
+    ("UnprofitableOut", "basis"): ["recognised"],
+    ("MeEconomicsOut", "basis"): ["recorded"],
+    ("MeCustomerRevenueOut", "status"): [
+        "known", "incomplete", "unavailable_outside_retention_horizon"],
+    ("MeRecordedEventsOut", "status"): [
+        "known", "unavailable_outside_retention_horizon"],
+    ("EconomicMeasureOut", "status"): [
+        "known", "incomplete", "unavailable_at_requested_grain",
+        "unavailable_outside_retention_horizon"],
+}
+
+#: The fields above that say so themselves.
+NAMES_ITS_OWN_VALUES = set(FIELD_ENUMS) - {("EconomicMeasureOut", "status")}
+
+
+def test_each_narrowed_field_publishes_exactly_what_it_can_return(spec):
+    schemas = spec["components"]["schemas"]
+    for (schema, field), values in FIELD_ENUMS.items():
+        node = schemas[schema]["properties"][field]
+        assert node["enum"] == values, (schema, field)
+        assert node[MARKER] == ("revenue_basis" if field == "basis"
+                                else "measure_status"), (schema, field)
+        assert schemas[schema]["required"].count(field) == 1
+
+
+def test_only_these_fields_name_their_own_values(spec):
+    """Both directions: a new narrowing is a deliberate line above."""
+    found = set()
+    for pointer, node in marked_nodes(spec):
+        if FIELD_VALUES_KEY in node:
+            parts = pointer.split("/")
+            assert parts[1:3] == ["components", "schemas"], pointer
+            found.add((parts[3], parts[5]))
+
+    assert found == NAMES_ITS_OWN_VALUES
 
 
 def test_negative_control_an_unserved_concept_is_refused_not_advertised():

@@ -12,7 +12,6 @@ import {
   incompleteMeasures,
   incompleteTotal,
   knownMeasures,
-  measureNotApplicable,
   measuresOutsideRetentionHorizon,
   measuresWithNoRevenueResolved,
   revenueSuppliedOverUnpricedUsage,
@@ -227,13 +226,6 @@ describe("unavailable at the requested grain — the state, with the coarser fig
     );
     expect(container.textContent).toBe("Unavailable at this grain");
     expect(container.textContent).not.toMatch(/0(\.0)?%/);
-  });
-});
-
-describe("not applicable — never known, never within anything", () => {
-  it("draws the state and no figure", () => {
-    const node = drawn([measureNotApplicable("gross_margin")], GROSS_MARGIN);
-    expect(node.textContent).toBe("Not applicable");
   });
 });
 

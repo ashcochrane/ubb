@@ -251,6 +251,10 @@ class TheBusinessRollupStatesItsBasisTest(TestCase):
             "BusinessMarginOut"]
         assert "basis" in schema["required"]
         assert schema["properties"]["basis"]["x-ubb-concept"] == "revenue_basis"
+        # The one value this answer can return, and so the only one it
+        # advertises (the owner's review of #621).
+        assert schema["properties"]["basis"]["x-ubb-field-values"] == [
+            REVENUE_BASIS_RECOGNISED]
 
 
 class TheUnprofitableListStatesItsBasisTest(TestCase):
@@ -273,3 +277,6 @@ class TheUnprofitableListStatesItsBasisTest(TestCase):
         schema = api.get_openapi_schema()["components"]["schemas"][
             "UnprofitableOut"]
         assert "basis" in schema["required"]
+        assert schema["properties"]["basis"]["x-ubb-concept"] == "revenue_basis"
+        assert schema["properties"]["basis"]["x-ubb-field-values"] == [
+            REVENUE_BASIS_RECOGNISED]

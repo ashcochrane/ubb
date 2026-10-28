@@ -44,6 +44,15 @@ zero-work runs included — carrying what was released and deleted, what was
 skipped and the backlog (see `PruneResult`). A backlog the run cap leaves is
 caught up on the following days, and the log says how old its oldest row is.
 
+⚠⚠ **A RUN THAT FAILED IS NEVER REPORTED AS COMPLETED** (the owner's review of
+#621). The line is `measurement_prune.completed` only for a run that finished,
+and `measurement_prune.failed`, at error, for one that did not — whatever
+stopped it. A failed line counts only the batches that COMMITTED before the
+failure: a batch is one unit, so the one that failed released and deleted
+nothing, and the next run starts from it as from any other row. Its
+`skipped` and backlog are null, the error that stopped it is named, and the
+error itself is raised on unchanged.
+
 **Retention cleanup and economic resolution stay separate** (amendment B). The
 prune never resolves a cost or a price and never invents a release for a row
 that is unresolved; it leaves such a row for as long as it stays unresolved.
@@ -74,8 +83,13 @@ PRUNE_BATCH_SIZE = 1_000
 #: run's log carries the oldest eligible row it left behind.
 PRUNE_RUN_CAP = 100_000
 
-#: The one structured log line every run writes.
-PRUNE_LOG_EVENT = "measurement_prune.completed"
+#: The one structured log line a run that FINISHED writes, at info.
+PRUNE_COMPLETED_EVENT = "measurement_prune.completed"
+
+#: The one structured log line a run that DID NOT finish writes, at error —
+#: never the completed line with a failure field beside it, which a reader
+#: filtering on the event name would count as a run that worked.
+PRUNE_FAILED_EVENT = "measurement_prune.failed"
 
 
 class PruneResult(NamedTuple):
@@ -100,9 +114,10 @@ class PruneResult(NamedTuple):
     the run. None when the run caught up.
 
     ⚠ **A FAILED RUN COUNTS NOTHING MORE** (``skipped`` and the backlog are
-    None): its line states what it released and deleted before the failure and
-    which error stopped it, and asks the database nothing else — a connection a
-    failure left unusable must not swallow the error or the line.
+    None): its line — `measurement_prune.failed` — states what the batches
+    that committed before the failure released and deleted, and which error
+    stopped it, and asks the database nothing else: a connection a failure
+    left unusable must not swallow the error or the line.
     """
     horizon: date
     released: int
@@ -166,15 +181,18 @@ def prune_measurements(*, today=None, batch_size=PRUNE_BATCH_SIZE,
 
     Idempotent: a second run on the same day finds nothing left to release and
     deletes nothing. Writes one structured log line whatever happens — a run
-    that does nothing says so, and a run that fails says how far it got before
-    the failure is raised.
+    that does nothing says so (`measurement_prune.completed`), and a run that
+    fails says how far its committed batches got (`measurement_prune.failed`)
+    before the failure is raised.
     """
     today = today or timezone.now().date()
     horizon = retention_horizons(today).measurement
     cutoff = utc_day_start(horizon)
+    bounds = {"batch_size": batch_size, "run_cap": run_cap}
+    # Counted only once a batch's unit has committed, so a failure in the
+    # next one leaves exactly the committed work here.
     released = deleted = 0
     last = None
-    failed = None
     capped = False
     try:
         while deleted < run_cap:
@@ -189,14 +207,19 @@ def prune_measurements(*, today=None, batch_size=PRUNE_BATCH_SIZE,
             last = batch[-1]
         else:
             capped = True
-    except Exception as error:
-        failed = type(error).__name__
+    except BaseException as error:
+        # Any stop — a database error, a worker's time limit, an interrupt —
+        # is a failure, and is never logged as a completed run.
+        failure = PruneResult(
+            horizon=horizon, released=released, deleted=deleted, skipped=None,
+            capped=False, oldest_remaining_eligible=None,
+            failed=type(error).__name__)
+        logger.error(PRUNE_FAILED_EVENT,
+                     extra={"data": {**failure.as_data(), **bounds}})
         raise
-    finally:
-        result = _the_result(horizon, cutoff, released, deleted, last,
-                             capped, failed)
-        logger.info(PRUNE_LOG_EVENT, extra={"data": {
-            **result.as_data(), "batch_size": batch_size, "run_cap": run_cap}})
+    result = _the_result(horizon, cutoff, released, deleted, last, capped)
+    logger.info(PRUNE_COMPLETED_EVENT,
+                extra={"data": {**result.as_data(), **bounds}})
     return result
 
 
@@ -226,11 +249,8 @@ def _passed_over(cutoff, through=None):
     return rows
 
 
-def _the_result(horizon, cutoff, released, deleted, last, capped, failed):
-    if failed:
-        return PruneResult(horizon=horizon, released=released, deleted=deleted,
-                           skipped=None, capped=capped,
-                           oldest_remaining_eligible=None, failed=failed)
+def _the_result(horizon, cutoff, released, deleted, last, capped):
+    """A finished run's result: what it did, what it skipped, its backlog."""
     oldest = None
     if capped:
         # The run stopped short of the backlog: it inspected the rows up to
@@ -242,4 +262,4 @@ def _the_result(horizon, cutoff, released, deleted, last, capped, failed):
         passed_over = _passed_over(cutoff)
     return PruneResult(horizon=horizon, released=released, deleted=deleted,
                        skipped=passed_over.count(), capped=capped,
-                       oldest_remaining_eligible=oldest, failed=failed)
+                       oldest_remaining_eligible=oldest)

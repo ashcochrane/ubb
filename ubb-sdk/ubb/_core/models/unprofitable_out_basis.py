@@ -2,7 +2,6 @@ from enum import Enum
 
 class UnprofitableOutBasis(str, Enum):
     RECOGNISED = "recognised"
-    RECORDED = "recorded"
 
     def __str__(self) -> str:
         return str(self.value)

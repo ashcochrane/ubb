@@ -1941,11 +1941,15 @@ MEASURE_STATES_WORST_LAST = (MEASURE_STATUS_KNOWN, MEASURE_STATUS_INCOMPLETE,
 #: the four above are computed, the fifth is declared unreachable here, and a
 #: SIXTH arriving in the registry fails rather than becoming a state the answer
 #: silently never carries. That is what makes this module the authority on the
-#: concept rather than a consumer of some of it, and it is the condition the
-#: contract's `enum` needs: a closed set is published whole or not at all
-#: (publishing three values now and a fourth later is the break a generated
-#: client's exhaustive switch cannot survive), so what the document needs is a
-#: backend that knows the whole set, not one that can reach every member of it.
+#: concept rather than a consumer of some of it.
+#:
+#: ⚠ AND SINCE THE OWNER'S REVIEW OF #621 THE CONTRACT ADVERTISES ONLY WHAT IS
+#: REACHED. A public `enum` describes what its field can actually return, so
+#: the registry WITHHOLDS the fifth (`withheld_values`, the #620 reachability
+#: rule, with this paragraph as its proof) and no field publishes it; a field
+#: that reaches fewer than these four names its own (`core/field_values.py`,
+#: the end customer's `/me/economics`). A surface that comes to state a
+#: measure which does not apply un-withholds the value in the same commit.
 #:
 #: The `assert` below is the idiom this module already uses twice, and it fails
 #: at import on every ordinary run — but it is stripped under `python -O`, so

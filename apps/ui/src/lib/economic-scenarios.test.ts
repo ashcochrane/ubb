@@ -17,7 +17,6 @@ import {
   knownCost,
   knownMeasures,
   knownPrice,
-  measureNotApplicable,
   measurementsNotApplicable,
   measuresFor,
   measuresOutsideRetentionHorizon,
@@ -863,15 +862,6 @@ describe("measure-state scenarios (#510)", () => {
     expect(unpriced["supplier_cogs"]).toMatchObject({ status: "known" });
     expect(unpriced["customer_revenue"]).toMatchObject({ status: "incomplete", unpriced_event_count: 2 });
     expect(unpriced["gross_margin"]).toMatchObject({ status: "incomplete" });
-  });
-
-  it("composes a measure that does not apply with no figure at all", () => {
-    expect(measureNotApplicable("gross_margin")).toEqual({
-      measure: "gross_margin",
-      status: "not_applicable",
-      amount_micros: null,
-      count: null,
-    });
   });
 });
 

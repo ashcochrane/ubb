@@ -838,6 +838,17 @@ measure_status:
     - unavailable_at_requested_grain
     - unavailable_outside_retention_horizon
     - not_applicable
+  # WITHHELD (the owner's review of #621, the reachability rule of #620): a
+  # legitimate state with NO production writer today. The one economic query
+  # (`apps/metering/queries.py`) is the only producer of a measure's state, and
+  # it refuses a combination a measure cannot answer against the discovery
+  # contract before it builds a row, so no answer ever carries a measure that
+  # does not apply — its precedence guard names this value only to say so.
+  # Every surface that states a measure's state reads that query. A surface
+  # that can state a measure which does not apply is what un-withholds it, in
+  # the same commit.
+  withheld_values:
+    - not_applicable
   label_key_prefix: measure_status
   consumers:
     - surface: backend

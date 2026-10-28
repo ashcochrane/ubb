@@ -46,6 +46,10 @@ class MeEconomicsOut:
             period_end (str): The last calendar date (UTC) in the window, inclusive.
             period_start (str): The first calendar date (UTC) in the window, inclusive.
             recorded_events (MeRecordedEventsOut): How many metered usage events you recorded in the window.
+
+                `status` is `known`, or `unavailable_outside_retention_horizon` where the
+                window reaches back past what UBB still holds (`available_from` says
+                from when it can start) — `count` is then null, never a zero.
      """
 
     basis: MeEconomicsOutBasis

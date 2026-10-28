@@ -16,7 +16,10 @@ This module holds what the rulings require of that job:
   its backlog;
 - release and delete are one atomic unit: a batch whose delete fails leaves no
   record marked released;
-- every run, a zero run included, writes one structured log line;
+- every run, a zero run included, writes one structured log line — and a run
+  that failed writes `measurement_prune.failed`, never the completed line,
+  counting only the batches that committed, and the next run finishes the
+  rest without releasing or deleting anything twice;
 - the daily schedule runs it.
 
 Every case states the clock it reads: the horizon comes from the setting it
@@ -29,7 +32,7 @@ from django.conf import settings
 from django.db import (
     DatabaseError, IntegrityError, connection, migrations, transaction)
 from django.db.migrations.loader import MigrationLoader
-from django.db.models import Q
+from django.db.models import Q, QuerySet
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
@@ -361,15 +364,92 @@ class ReleaseAndDeleteAreOneUnitTest(TransactionTestCase):
 
 
 @override_settings(**HORIZON)
+class AFailedRunIsNeverReportedAsCompletedTest(TransactionTestCase):
+    """The owner's review of #621, point 2, in one run and its rerun.
+
+    The first batch commits; the second fails AFTER its release was written;
+    the run is logged as failed — never as completed — with only the first
+    batch's work counted, and the error raised on. The rerun then finishes
+    the remaining rows: every row released once and deleted once.
+
+    ⚠ A `TransactionTestCase`, in autocommit, for the reason
+    `ReleaseAndDeleteAreOneUnitTest` gives: what the first run committed is
+    what the second run reads.
+    """
+
+    def test_the_first_batch_commits_the_second_fails_and_the_rerun_finishes(self):
+        rows = [_measured(f"m{n}", days_old=DAYS + 50 - n) for n in range(3)]
+        real_delete = QuerySet.delete
+        deletes = []
+
+        def the_second_batch_fails_after_its_release(queryset):
+            deletes.append(queryset)
+            if len(deletes) == 2:
+                raise DatabaseError("the second batch failed")
+            return real_delete(queryset)
+
+        with self.assertLogs(pruning.logger, level="INFO") as logs, \
+                mock.patch.object(
+                    QuerySet, "delete", autospec=True,
+                    side_effect=the_second_batch_fails_after_its_release):
+            with self.assertRaisesMessage(DatabaseError,
+                                          "the second batch failed"):
+                _prune(batch_size=1)
+
+        # Logged as a failure, once, and never as a completed run.
+        (line,) = logs.records
+        self.assertEqual((line.getMessage(), line.levelname),
+                         (pruning.PRUNE_FAILED_EVENT, "ERROR"))
+        # Only the committed first batch is counted.
+        self.assertEqual(
+            {key: line.data[key] for key in (
+                "released", "deleted", "skipped",
+                "oldest_remaining_eligible", "failed")},
+            {"released": 1, "deleted": 1, "skipped": None,
+             "oldest_remaining_eligible": None, "failed": "DatabaseError"})
+        # The first batch went; the failed one left no release behind.
+        self.assertEqual(
+            set(PostingMeasurement.objects.values_list("pk", "prunable_at")),
+            {(rows[1].pk, None), (rows[2].pk, None)})
+
+        with self.assertLogs(pruning.logger, level="INFO") as logs:
+            rerun = _prune(batch_size=1)
+
+        (line,) = logs.records
+        self.assertEqual((line.getMessage(), line.levelname),
+                         (pruning.PRUNE_COMPLETED_EVENT, "INFO"))
+        # The rest, each released once and deleted once: one plus two is
+        # the three there were.
+        self.assertEqual((rerun.released, rerun.deleted, rerun.skipped),
+                         (2, 2, 0))
+        self.assertFalse(PostingMeasurement.objects.exists())
+
+
+@override_settings(**HORIZON)
 class EveryRunWritesOneStructuredLineTest(TestCase):
 
     def _logged(self, **kwargs):
-        with mock.patch.object(pruning.logger, "info") as info:
+        with mock.patch.object(pruning.logger, "info") as info, \
+                mock.patch.object(pruning.logger, "error") as error:
             result = _prune(**kwargs)
         self.assertEqual(info.call_count, 1, info.call_args_list)
+        self.assertFalse(error.called, error.call_args_list)
         (event,), extra = info.call_args
-        self.assertEqual(event, pruning.PRUNE_LOG_EVENT)
+        self.assertEqual(event, pruning.PRUNE_COMPLETED_EVENT)
         return result, extra["extra"]["data"]
+
+    def _failed(self, raised, **kwargs):
+        """The one line a failed run writes: `failed`, at error, and no
+        completed line beside it."""
+        with mock.patch.object(pruning.logger, "info") as info, \
+                mock.patch.object(pruning.logger, "error") as error:
+            with self.assertRaises(raised):
+                _prune(**kwargs)
+        self.assertFalse(info.called, info.call_args_list)
+        self.assertEqual(error.call_count, 1)
+        (event,), extra = error.call_args
+        self.assertEqual(event, pruning.PRUNE_FAILED_EVENT)
+        return extra["extra"]["data"]
 
     def test_a_run_with_nothing_to_do_still_says_so(self):
         result, data = self._logged()
@@ -395,13 +475,23 @@ class EveryRunWritesOneStructuredLineTest(TestCase):
     def test_a_failed_run_still_writes_its_one_line(self):
         _unresolved_cost("protected", days_old=DAYS + 200)
         with mock.patch.object(pruning, "_protected", lambda: Q(pk__in=[])):
-            with mock.patch.object(pruning.logger, "info") as info:
-                with self.assertRaises(IntegrityError):
-                    _prune()
-        self.assertEqual(info.call_count, 1)
-        data = info.call_args.kwargs["extra"]["data"]
+            data = self._failed(IntegrityError)
         self.assertEqual((data["failed"], data["skipped"]),
                          ("IntegrityError", None))
+
+    def test_a_run_stopped_by_anything_is_failed_never_completed(self):
+        """Not only a database error: a worker's time limit or an interrupt
+        stops a run too, and the line still says it failed."""
+        _measured("m", days_old=DAYS + 50)
+
+        class Stopped(BaseException):
+            pass
+
+        with mock.patch.object(pruning, "_release_and_delete",
+                               side_effect=Stopped):
+            data = self._failed(Stopped)
+        self.assertEqual((data["released"], data["deleted"], data["failed"]),
+                         (0, 0, "Stopped"))
 
     def test_a_run_failing_after_a_batch_states_what_it_did_and_asks_nothing(self):
         """A failure in a LATER batch: the line still comes, with the batch
@@ -420,13 +510,9 @@ class EveryRunWritesOneStructuredLineTest(TestCase):
 
         with mock.patch.object(pruning, "_release_and_delete", second_fails), \
                 mock.patch.object(pruning, "_passed_over",
-                                  side_effect=AssertionError("asked")), \
-                mock.patch.object(pruning.logger, "info") as info:
-            with self.assertRaises(DatabaseError):
-                _prune(batch_size=1)
+                                  side_effect=AssertionError("asked")):
+            data = self._failed(DatabaseError, batch_size=1)
 
-        self.assertEqual(info.call_count, 1)
-        data = info.call_args.kwargs["extra"]["data"]
         self.assertEqual((data["released"], data["deleted"], data["failed"],
                           data["skipped"]), (1, 1, "DatabaseError", None))
 

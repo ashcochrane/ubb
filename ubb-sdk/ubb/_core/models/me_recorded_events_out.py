@@ -24,6 +24,10 @@ T = TypeVar("T", bound="MeRecordedEventsOut")
 class MeRecordedEventsOut:
     """ How many metered usage events you recorded in the window.
 
+    `status` is `known`, or `unavailable_outside_retention_horizon` where the
+    window reaches back past what UBB still holds (`available_from` says
+    from when it can start) — `count` is then null, never a zero.
+
         Attributes:
             available_from (None | str): The first day this count can be stated from, non-null exactly where `status` is
                 `unavailable_outside_retention_horizon`.
