@@ -1094,10 +1094,12 @@ class WhichClockGovernsARowTest(TestCase):
         The money is not lost — it answers on any window inside the horizon,
         which the response states.
 
-        Reachable only because nothing prunes yet: a supplied revenue record is
-        itself on the six-year clock, so once the promise is real the other
-        product returns no rows for such a window at all. Which is exactly why
-        this has to be decided now rather than discovered later.
+        Reachable only while something older than six years is still held: a
+        supplied revenue record is itself on the six-year clock, and nothing
+        prunes the economic records (the daily prune since W5 removes
+        measurement detail only), so the other product returns no rows for such
+        a window once the promise is real. Which is exactly why this has to be
+        decided rather than discovered later.
         """
         contributed = [{"window_start": date(2015, 1, 1),
                         "window_end": date(2015, 6, 1),

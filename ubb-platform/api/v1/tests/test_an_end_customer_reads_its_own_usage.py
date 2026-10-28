@@ -23,9 +23,11 @@ from unittest import mock
 from django.test import Client, TestCase
 
 from api.v1.api import api
+from api.v1.tests._helpers import a_tenant
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from core.currency_policy import ECONOMIC_CURRENCY
 from core.report_windows import report_window_description
 from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_RECORDED_EVENTS,
@@ -53,7 +55,7 @@ class _WidgetCase(TestCase):
         clock = mock.patch("django.utils.timezone.now", return_value=NOW)
         clock.start()
         self.addCleanup(clock.stop)
-        self.tenant = Tenant.objects.create(name="T", products=["metering"])
+        self.tenant, _ = a_tenant()
         self.alice = Customer.objects.create(tenant=self.tenant,
                                              external_id="alice")
         self.bob = Customer.objects.create(tenant=self.tenant,
@@ -185,9 +187,9 @@ class OnlyTheTwoSafeMeasuresAreShownTest(_WidgetCase):
     def test_a_field_added_to_the_tenant_answer_never_reaches_the_widget(self):
         """Defence in depth (ruling 17): the tenant answer growing a field — at
         the top, or on a measure — leaves this one exactly as it was."""
-        from api.v1 import metering_endpoints
+        from api.v1 import economic_question
 
-        real = metering_endpoints.ask_the_economic_query
+        real = economic_question.ask_the_economic_query
         before = self._read(self.alice)
 
         def grown(*args, **kwargs):
@@ -197,7 +199,7 @@ class OnlyTheTwoSafeMeasuresAreShownTest(_WidgetCase):
                 entry["supplier_cost_micros"] = 999
             return answer, foreign
 
-        with mock.patch.object(metering_endpoints, "ask_the_economic_query",
+        with mock.patch.object(economic_question, "ask_the_economic_query",
                                grown):
             after = self._read(self.alice)
 
@@ -212,7 +214,7 @@ class RevenueKeepsItsTruthTest(_WidgetCase):
         body = self._read(self.alice)
 
         self.assertEqual(body["basis"], REVENUE_BASIS_RECORDED)
-        self.assertEqual(body["currency"], self.tenant.default_currency)
+        self.assertEqual(body["currency"], ECONOMIC_CURRENCY)
         self.assertEqual(body[ANALYTICS_MEASURE_CUSTOMER_REVENUE]["status"],
                          MEASURE_STATUS_KNOWN)
 

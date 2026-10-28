@@ -133,14 +133,19 @@ def sync_detailed(
     (ISO datetimes; naive = UTC) to the instant each episode opened, and
     `control_family` to one family — a family this workspace lacks answers
     no rows, never an error. Expiries and admission control appear in
-    neither report. A window left open covers the 366 days ending now; the
-    response echoes the window applied.
+    neither report. `since`/`until` are a half-open window of INSTANTS:
+    `since` inclusive, `until` exclusive — not the calendar-date reports'
+    inclusive end date. A window left open covers the 366 days ending now, a
+    lone `until` the 366 days before it, and a stated window may span at
+    most 366 days; the response echoes the window applied.
 
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
         control_family (ApiV1SpendControlEndpointsStopsAndBreachesControlFamilyType0 | None |
             Unset):
 
@@ -191,14 +196,19 @@ def sync(
     (ISO datetimes; naive = UTC) to the instant each episode opened, and
     `control_family` to one family — a family this workspace lacks answers
     no rows, never an error. Expiries and admission control appear in
-    neither report. A window left open covers the 366 days ending now; the
-    response echoes the window applied.
+    neither report. `since`/`until` are a half-open window of INSTANTS:
+    `since` inclusive, `until` exclusive — not the calendar-date reports'
+    inclusive end date. A window left open covers the 366 days ending now, a
+    lone `until` the 366 days before it, and a stated window may span at
+    most 366 days; the response echoes the window applied.
 
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
         control_family (ApiV1SpendControlEndpointsStopsAndBreachesControlFamilyType0 | None |
             Unset):
 
@@ -244,14 +254,19 @@ async def asyncio_detailed(
     (ISO datetimes; naive = UTC) to the instant each episode opened, and
     `control_family` to one family — a family this workspace lacks answers
     no rows, never an error. Expiries and admission control appear in
-    neither report. A window left open covers the 366 days ending now; the
-    response echoes the window applied.
+    neither report. `since`/`until` are a half-open window of INSTANTS:
+    `since` inclusive, `until` exclusive — not the calendar-date reports'
+    inclusive end date. A window left open covers the 366 days ending now, a
+    lone `until` the 366 days before it, and a stated window may span at
+    most 366 days; the response echoes the window applied.
 
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
         control_family (ApiV1SpendControlEndpointsStopsAndBreachesControlFamilyType0 | None |
             Unset):
 
@@ -302,14 +317,19 @@ async def asyncio(
     (ISO datetimes; naive = UTC) to the instant each episode opened, and
     `control_family` to one family — a family this workspace lacks answers
     no rows, never an error. Expiries and admission control appear in
-    neither report. A window left open covers the 366 days ending now; the
-    response echoes the window applied.
+    neither report. `since`/`until` are a half-open window of INSTANTS:
+    `since` inclusive, `until` exclusive — not the calendar-date reports'
+    inclusive end date. A window left open covers the 366 days ending now, a
+    lone `until` the 366 days before it, and a stated window may span at
+    most 366 days; the response echoes the window applied.
 
     Args:
         customer_id (None | str | Unset):
         task_type (None | str | Unset):
-        since (datetime.datetime | None | Unset):
-        until (datetime.datetime | None | Unset):
+        since (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), inclusive. Defaults to 366 days before `until`.
+        until (datetime.datetime | None | Unset): An instant (ISO 8601 datetime; a naive one is
+            read as UTC), exclusive. Defaults to now.
         control_family (ApiV1SpendControlEndpointsStopsAndBreachesControlFamilyType0 | None |
             Unset):
 

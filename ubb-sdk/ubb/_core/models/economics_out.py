@@ -45,7 +45,13 @@ class EconomicsOut:
                 is non-zero the true revenue, and so the margin, is higher by an amount UBB cannot state in dollars. Exact,
                 scoped like the figures it qualifies, and 0 where nothing was left out.
             group_by (list[str]):
-            measurement_data_available_from (str):
+            measurement_data_available_from (str): The earliest day from which UBB guarantees fine measurement detail — raw
+                measurement records, quantities, component drill-down and the measurement-concept rollup — as of today. It is a
+                shorter platform clock than the economic one: 400 days by default, about thirteen months, and a configuration
+                rather than a contract. Detail on or after this day is held. Detail before it is released by a daily prune and
+                is never promised, even where some of it is still present while the prune catches up. It is not a promise that a
+                detailed year-over-year comparison is possible: comparing a trailing year with the one before it needs about two
+                years of detail.
             period_end (str):
             period_start (str):
             rows (list[EconomicRowOut]):

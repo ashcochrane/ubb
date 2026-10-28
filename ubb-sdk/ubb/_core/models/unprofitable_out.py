@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.unprofitable_out_basis import UnprofitableOutBasis
 from typing import cast
 
 if TYPE_CHECKING:
@@ -25,10 +26,12 @@ T = TypeVar("T", bound="UnprofitableOut")
 class UnprofitableOut:
     """ 
         Attributes:
+            basis (UnprofitableOutBasis):
             customers (list[UnprofitableCustomerRow]):
             period_start (str):
      """
 
+    basis: UnprofitableOutBasis
     customers: list[UnprofitableCustomerRow]
     period_start: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -39,6 +42,8 @@ class UnprofitableOut:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.unprofitable_customer_row import UnprofitableCustomerRow
+        basis = self.basis.value
+
         customers = []
         for customers_item_data in self.customers:
             customers_item = customers_item_data.to_dict()
@@ -52,6 +57,7 @@ class UnprofitableOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "basis": basis,
             "customers": customers,
             "period_start": period_start,
         })
@@ -64,6 +70,11 @@ class UnprofitableOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.unprofitable_customer_row import UnprofitableCustomerRow
         d = dict(src_dict)
+        basis = UnprofitableOutBasis(d.pop("basis"))
+
+
+
+
         customers = []
         _customers = d.pop("customers")
         for customers_item_data in (_customers):
@@ -77,6 +88,7 @@ class UnprofitableOut:
         period_start = d.pop("period_start")
 
         unprofitable_out = cls(
+            basis=basis,
             customers=customers,
             period_start=period_start,
         )

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetPricingMockState } from "../api/mock";
 import { pricingApi } from "../api/provider";
+import { publishedProperties } from "../lib/published-contract";
 import { MOCK_COST_BOOKS, MOCK_GROUPING_FIELDS, MOCK_PRICING_BOOKS } from "../api/mock-data";
 import type { AnyBook } from "../api/types";
 import { BookChangesPanel } from "./book-changes-panel";
@@ -378,6 +379,22 @@ describe("what a rule may select on", () => {
         grouping_fields: { model: "gpt-4o" },
       },
     ]);
+    // And held to the CONTRACT, not to the list above: the identity half of a
+    // rate change is every property the body publishes except the terms a
+    // retire states none of, so a selector the server gains fails here until
+    // the form sends it (W5 ruling 16).
+    const terms = [
+      "pricing_method",
+      "rate_structure",
+      "rate_per_unit_micros",
+      "unit_quantity",
+      "fixed_micros",
+    ];
+    const identity = publishedProperties("BookRateChangeIn").filter(
+      (property) => !terms.includes(property),
+    );
+    expect(identity.length).toBeGreaterThan(terms.length);
+    expect(Object.keys(body.changes[0]!).sort()).toEqual(identity.sort());
     declare.mockRestore();
   });
 });

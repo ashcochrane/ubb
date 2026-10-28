@@ -81,10 +81,12 @@ module went red.
 reads the parent posting's costing and pricing statuses, the second of which
 landed in slice 4 — and it is enforced since #354 by a ``BEFORE DELETE`` trigger
 in ``…/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py``. But
-every column of that record declares ``RECORD_RULE``, which the constant below
+that rule is the record's, declared ``RECORD_RULE``, which the constant below
 puts *outside* ``DATABASE_DEFENDED`` — so it is not a field transition class, it
 is not in G19's statement, and slice 4 added it as an extension of the installed
-gate rather than by re-owning its row.
+gate rather than by re-owning its row. (Since W5 one column of the record,
+``prunable_at``, IS declared ``SET_ONCE`` — the release fact the daily prune
+writes — and the walk below reaches that declaration, not the delete rule.)
 
 ⚠ **Which means the walk below does not reach it, and nothing else does
 either.** That rule has no ledger entry and no gate manifest row; the only thing
@@ -128,7 +130,9 @@ DATABASE_DEFENDED = frozenset({FROZEN, RESOLVE_ONCE, SET_ONCE, PRUNABLE})
 #:
 #: A record whose *whole lifecycle* is a single rule — inserted once, never
 #: updated, deleted only under a stated condition — has no per-column
-#: transitions to declare, because no column of it ever changes. The posting /
+#: transitions to declare, because those columns never change. (The measurement
+#: child's one exception since W5 is its release, ``prunable_at``, declared
+#: ``SET_ONCE`` rather than here — ADR-0025.) The posting /
 #: measurement split decision (§4) rules exactly this for the measurement child:
 #: *"the child needs no transition classes, because it has no lifecycle"*, and
 #: *"``UPDATE`` being categorically prohibited is a simpler rule to enforce and

@@ -738,10 +738,11 @@ class PostingMeasurement(BaseModel):
     here defaults a child into being, and no code path creates one except the
     metered recording path.
 
-    **The transition classes below are declared, not enforced.** ADR-0007 §2
-    requires every column to state what is allowed to happen to it; what this
-    record states is that *no column of it states anything on its own*, because
-    it has no per-column lifecycle to describe. The record's rule is::
+    **The transition classes below are the record rule, plus one column's
+    class.** ADR-0007 §2 requires every column to state what is allowed to
+    happen to it; what this record states is that *no column of it states
+    anything on its own* — except `prunable_at`, the release fact, which is
+    SET_ONCE since W5 and held by the database. The record's rule is::
 
         INSERT   once, in the same transaction as its posting
         UPDATE   never — no column of a measurement record is ever rewritten,
@@ -749,12 +750,11 @@ class PostingMeasurement(BaseModel):
         DELETE   permitted only at or after prunable_at, and only while the
                  parent posting is not unresolved
 
-    Enforcing that at the database is **not** gate G19, which slice 3 installed.
-    G19's statement covers *field* transition classes, and **no column here is
-    declared into a class the database defends**
-    (``core.transitions.DATABASE_DEFENDED``) — the protected columns slice 3
-    ships are the parent's, declared and defended in #318, and the rule above is
-    not one of them. A model-level ``save()`` or ``delete()`` guard is
+    Enforcing the record rule at the database is **not** gate G19, which slice 3
+    installed. G19's statement covers *field* transition classes, and the only
+    column here declared into a class the database defends
+    (``core.transitions.DATABASE_DEFENDED``) is ``prunable_at`` (W5) — the
+    record rule itself is not a field class. A model-level ``save()`` or ``delete()`` guard is
     deliberately *not* shipped in its place either: ADR-0007 §2 is explicit that
     such a guard is not enforcement, and this repository has already shipped one
     that a production writer bypassed by design.
@@ -785,11 +785,11 @@ class PostingMeasurement(BaseModel):
     database does. The other columns are ``RECORD_RULE``: nothing rewrites them
     and nothing at the database stops a writer that tried.
 
-    ⚠ **Nothing counts any of this.** The rule has no migration-ledger entry and
+    ⚠ **Nothing counts the record rule.** It has no migration-ledger entry and
     no gate-manifest row, so no board goes red if it disappears. G19's ``notes``
     record it as an extension rather than as an enforcement node, because it is
     not one — its statement is about field transition classes and this is not a
-    field.
+    field. (G19's walk does reach ``prunable_at``'s SET_ONCE declaration.)
 
     ``updated_at`` is inherited from ``BaseModel`` and, under the record rule
     above, never moves after insert.

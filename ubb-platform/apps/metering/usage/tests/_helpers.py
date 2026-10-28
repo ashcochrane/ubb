@@ -18,12 +18,12 @@ something a reader of each module has to agree to.
 **It also carries the one way a test may now remove a measurement record**
 (#354). That is a rule of the CHILD table rather than of this one, and its doors
 are `delete()`, `QuerySet.delete()` and raw SQL rather than the three below —
-its own module owns those. What is here is `release_the_horizon`, which is the
-**only** write of `prunable_at` after insert anywhere in the tree, and
+its own module owns those. What is here is `release_the_horizon` — the one TEST
+writer of `prunable_at`; the other writer is the daily prune itself
+(`usage/pruning.py`, W5), and the column is SET_ONCE since `usage/0052` — and
 `release_and_prune` over it. Three modules prune and a fourth releases without
 pruning; each one inventing that for itself is four chances to invent a
-different prune, and one of them would have been a second writer of a column
-this record's declared rule says is never rewritten.
+different prune.
 
 **The two catalogue queries take a table** for the same reason: the child's rule
 has to ask the same questions of `ubb_posting_measurement` that the three trios

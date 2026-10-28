@@ -11,8 +11,8 @@ from api.v1.schemas import (
     whole_minor_units)
 from core.auth import ProductAccess
 from core.currency_policy import (
+    ECONOMIC_CURRENCY,
     FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY,
-    FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING,
 )
 from core.report_windows import (
     END_DATE_DESCRIPTION, START_DATE_DESCRIPTION, resolve_report_window,
@@ -410,8 +410,15 @@ class MeEconomicsOut(Schema):
     currency: str
     customer_revenue: MeCustomerRevenueOut
     recorded_events: MeRecordedEventsOut
-    foreign_currency_subscription_count: int = Field(
-        description=FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_MEANING)
+    #: The one fact the tenant answer's count states that is about THIS
+    #: customer's own money (#564's rule: every revenue read the exclusion can
+    #: change says so), worded for the end customer — this answer states no
+    #: margin, so the tenant wording about one would be a claim it never makes.
+    foreign_currency_subscription_count: int = Field(description=(
+        "How many of your subscriptions the revenue above leaves out because "
+        "they are billed in a currency UBB does not admit. Where it is not 0, "
+        "your revenue is higher by an amount UBB cannot state; 0 where nothing "
+        "was left out."))
 
 
 #: The two measures this mount publishes (ruling 17) — fixed, never a caller's
@@ -420,8 +427,10 @@ WIDGET_MEASURES = (ANALYTICS_MEASURE_CUSTOMER_REVENUE,
                    ANALYTICS_MEASURE_RECORDED_EVENTS)
 
 
-def _projected(entry, figure):
-    return {figure: entry[figure], "status": entry["status"],
+def _projected(entry, figure_key):
+    """One measure of the tenant answer, cut down to the widget's shape: its
+    figure under ``figure_key``, its state and where its series can start."""
+    return {figure_key: entry[figure_key], "status": entry["status"],
             "available_from": entry.get("available_from")}
 
 
@@ -429,8 +438,8 @@ def _projected(entry, figure):
 @states_its_report_window()
 def get_my_economics(
         request,
-        start_date: date = Query(None, description=START_DATE_DESCRIPTION),
-        end_date: date = Query(None, description=END_DATE_DESCRIPTION)):
+        start_date: Optional[date] = Query(None, description=START_DATE_DESCRIPTION),
+        end_date: Optional[date] = Query(None, description=END_DATE_DESCRIPTION)):
     """What your own usage earned and how many events it recorded.
 
     Scoped to the customer the widget token names, and to nothing else: there
@@ -439,7 +448,7 @@ def get_my_economics(
     names, and where UBB cannot state a figure the amount is null, never zero.
     """
     _check_metering_product(request)
-    from api.v1.metering_endpoints import ask_the_economic_query
+    from api.v1.economic_question import ask_the_economic_query
     from apps.metering.queries import EconomicFilters
     from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
 
@@ -455,7 +464,10 @@ def get_my_economics(
         "period_start": window.start_date.isoformat(),
         "period_end": window.end_date.isoformat(),
         "basis": answer["basis"],
-        "currency": request.widget_tenant.default_currency,
+        # The currency every economic amount UBB states is held in — the one
+        # its economic columns are checked to (ADR-0023) — named explicitly
+        # even though v1 admits only one.
+        "currency": ECONOMIC_CURRENCY,
         "customer_revenue": _projected(
             by_measure[ANALYTICS_MEASURE_CUSTOMER_REVENUE], "amount_micros"),
         "recorded_events": _projected(

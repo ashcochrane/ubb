@@ -144,10 +144,20 @@ def sync_detailed(
     is readable from the answer rather than asserted by a status that cannot
     know it.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
         customer_id (UUID):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         basis (AppsSubscriptionsApiMarginEndpointsGetSuppliedRevenueBasisType0 | None | Unset):
 
     Raises:
@@ -206,10 +216,20 @@ def sync(
     is readable from the answer rather than asserted by a status that cannot
     know it.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
         customer_id (UUID):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         basis (AppsSubscriptionsApiMarginEndpointsGetSuppliedRevenueBasisType0 | None | Unset):
 
     Raises:
@@ -263,10 +283,20 @@ async def asyncio_detailed(
     is readable from the answer rather than asserted by a status that cannot
     know it.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
         customer_id (UUID):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         basis (AppsSubscriptionsApiMarginEndpointsGetSuppliedRevenueBasisType0 | None | Unset):
 
     Raises:
@@ -325,10 +355,20 @@ async def asyncio(
     is readable from the answer rather than asserted by a status that cannot
     know it.
 
+    **The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the
+    window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the
+    window runs to today; send `end_date` alone and it starts on the first day of that date's month;
+    send neither and it is the current UTC month to date. A supplied date is never ignored. One request
+    spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused
+    with `validation_error`. Longer retained history is read through consecutive, non-overlapping
+    windows: the next window starts on the calendar day after the previous window's `end_date`.
+
     Args:
         customer_id (UUID):
-        start_date (datetime.date | None | Unset):
-        end_date (datetime.date | None | Unset):
+        start_date (datetime.date | None | Unset): The first calendar date (UTC) in the window,
+            inclusive.
+        end_date (datetime.date | None | Unset): The last calendar date (UTC) in the window,
+            inclusive.
         basis (AppsSubscriptionsApiMarginEndpointsGetSuppliedRevenueBasisType0 | None | Unset):
 
     Raises:

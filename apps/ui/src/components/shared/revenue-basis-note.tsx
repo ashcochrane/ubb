@@ -22,13 +22,14 @@
 
 import { revenueBasisNote } from "@/lib/supplied-revenue";
 import { cn } from "@/lib/utils";
+import type { RevenueBasis } from "@/lib/vocabulary";
 
 export function RevenueBasisNote({
   basis,
   className,
 }: {
   /** The basis the response states — never a value the console chose. */
-  basis: string;
+  basis: RevenueBasis;
   className?: string;
 }) {
   return (

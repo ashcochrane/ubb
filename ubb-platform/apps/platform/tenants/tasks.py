@@ -119,8 +119,8 @@ CONFIG_MODEL_LABELS = frozenset({
     # declared by the tenant on exactly the reading the catalogue above is —
     # and a kept Event Type whose kind of work was wiped refuses every start
     # naming that kind, while a kept rule pinned on a kind or a field slot pins
-    # something nothing declares. What traffic produced under them (the units
-    # of work, the grouping values) is still wiped.
+    # something nothing declares. What traffic produced under them (the work
+    # it ran, the grouping values) is still wiped.
     "work.TaskType",
     "grouping_fields.GroupingField",
     "plans.Plan",
@@ -262,7 +262,8 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
     #    was refused for every Event Type naming a supplier and left the
     #    sandbox inactive. So the Event Type goes after everything pointing at
     #    it (the held names and the rules above), taking its quantities with it,
-    #    and then the three it held. Not insurance:
+    #    and then the supplier and the category it held and the concept its
+    #    quantities held. Not insurance:
     #    `test_a_reset_keeps_what_it_promises.py` is red without it.
     if not keep_config:
         for label in ("event_types.QuarantinedKey", "pricing.TaskPrice",

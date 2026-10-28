@@ -1,5 +1,6 @@
 import logging
 from datetime import date, timedelta
+from typing import Optional
 
 from django.db import transaction
 from django.db.models import Sum, Count, Q
@@ -666,8 +667,8 @@ def _parse_earnings_window(period_start, period_end):
 @states_its_report_window("period_start", "period_end")
 @role_floor(READ)
 def analytics_earnings(request,
-                       period_start: str = Query(None, description=START_DATE_DESCRIPTION),
-                       period_end: str = Query(None, description=END_DATE_DESCRIPTION)):
+                       period_start: Optional[str] = Query(None, description=START_DATE_DESCRIPTION),
+                       period_end: Optional[str] = Query(None, description=END_DATE_DESCRIPTION)):
     """What each referrer earned in the window, from the reconciliation ledger:
     a ledger period counts where it overlaps the window."""
     _product_check(request)

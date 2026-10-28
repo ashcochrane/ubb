@@ -23,8 +23,11 @@ sub-clients own what a generator can't express (#61): retry policy
 (`webhooks.py`), stop-verdict-on-a-200 semantics, pagination, and the
 problem+json → exception mapping (`_http.py`). Every response is parsed through
 a **generated model** (`_models.from_wire`), so return types are never
-hand-typed. `from_wire` normalizes the generator's `UNSET` sentinel to `None` so
-absent optionals read as `None` — consumer call-sites keep their exact shape.
+hand-typed. `from_wire` normalizes an omitted field by its DECLARED type, at every
+depth (#596): where the type admits null it reads `None`, and where it does not it
+stays the generator's `UNSET` (`ubb.UNSET`, `ubb.is_unset`) — so `to_dict()` works
+on every model it returns. A stated value, falsy or not, is never touched; never
+test for absence with `not x`.
 
 ## Errors: catch a family or one exact code
 

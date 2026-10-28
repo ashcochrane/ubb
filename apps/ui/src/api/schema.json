@@ -1217,6 +1217,15 @@
       },
       "BusinessMarginOut": {
         "properties": {
+          "basis": {
+            "enum": [
+              "recorded",
+              "recognised"
+            ],
+            "title": "Basis",
+            "type": "string",
+            "x-ubb-concept": "revenue_basis"
+          },
           "business_id": {
             "title": "Business Id",
             "type": "string"
@@ -1239,6 +1248,7 @@
         "required": [
           "business_id",
           "external_id",
+          "basis",
           "totals",
           "seats"
         ],
@@ -2954,6 +2964,7 @@
             "type": "array"
           },
           "measurement_data_available_from": {
+            "description": "The earliest day from which UBB guarantees fine measurement detail \u2014 raw measurement records, quantities, component drill-down and the measurement-concept rollup \u2014 as of today. It is a shorter platform clock than the economic one: 400 days by default, about thirteen months, and a configuration rather than a contract. Detail on or after this day is held. Detail before it is released by a daily prune and is never promised, even where some of it is still present while the prune catches up. It is not a promise that a detailed year-over-year comparison is possible: comparing a trailing year with the one before it needs about two years of detail.",
             "title": "Measurement Data Available From",
             "type": "string"
           },
@@ -4939,6 +4950,152 @@
         "title": "MeBalanceResponse",
         "type": "object"
       },
+      "MeCustomerRevenueOut": {
+        "description": "What your usage in the window earned, under the basis the answer names.\n\n`amount_micros` is null wherever no figure can be stated \u2014 no revenue is\never shown as zero because it is unknown or unavailable \u2014 and `status` says\nwhich: `known` (every input resolved), `incomplete` (the sum of what\nresolved; some is still being priced), or\n`unavailable_outside_retention_horizon` (the window reaches back past what\nUBB still holds; `available_from` says from when it can start).",
+        "properties": {
+          "amount_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The revenue in micros of the answer's currency, or null where no figure can be stated \u2014 never a zero standing in.",
+            "title": "Amount Micros"
+          },
+          "available_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first day this figure can be stated from, non-null exactly where `status` is `unavailable_outside_retention_horizon`.",
+            "title": "Available From"
+          },
+          "status": {
+            "enum": [
+              "known",
+              "incomplete",
+              "unavailable_at_requested_grain",
+              "unavailable_outside_retention_horizon",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string",
+            "x-ubb-concept": "measure_status"
+          }
+        },
+        "required": [
+          "amount_micros",
+          "status",
+          "available_from"
+        ],
+        "title": "MeCustomerRevenueOut",
+        "type": "object"
+      },
+      "MeEconomicsOut": {
+        "description": "Your own usage over a window: what it earned, and how many events.\n\nThe window is echoed so a caller who left it to the default can see it.",
+        "properties": {
+          "basis": {
+            "enum": [
+              "recorded",
+              "recognised"
+            ],
+            "title": "Basis",
+            "type": "string",
+            "x-ubb-concept": "revenue_basis"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "customer_revenue": {
+            "$ref": "#/components/schemas/MeCustomerRevenueOut"
+          },
+          "foreign_currency_subscription_count": {
+            "description": "How many of your subscriptions the revenue above leaves out because they are billed in a currency UBB does not admit. Where it is not 0, your revenue is higher by an amount UBB cannot state; 0 where nothing was left out.",
+            "title": "Foreign Currency Subscription Count",
+            "type": "integer"
+          },
+          "period_end": {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "recorded_events": {
+            "$ref": "#/components/schemas/MeRecordedEventsOut"
+          }
+        },
+        "required": [
+          "period_start",
+          "period_end",
+          "basis",
+          "currency",
+          "customer_revenue",
+          "recorded_events",
+          "foreign_currency_subscription_count"
+        ],
+        "title": "MeEconomicsOut",
+        "type": "object"
+      },
+      "MeRecordedEventsOut": {
+        "description": "How many metered usage events you recorded in the window.",
+        "properties": {
+          "available_from": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first day this count can be stated from, non-null exactly where `status` is `unavailable_outside_retention_horizon`.",
+            "title": "Available From"
+          },
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many metered usage events the window holds, or null where no figure can be stated \u2014 never a zero standing in.",
+            "title": "Count"
+          },
+          "status": {
+            "enum": [
+              "known",
+              "incomplete",
+              "unavailable_at_requested_grain",
+              "unavailable_outside_retention_horizon",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string",
+            "x-ubb-concept": "measure_status"
+          }
+        },
+        "required": [
+          "count",
+          "status",
+          "available_from"
+        ],
+        "title": "MeRecordedEventsOut",
+        "type": "object"
+      },
       "MeSubscriptionInvoiceOut": {
         "properties": {
           "amount_paid_micros": {
@@ -6171,10 +6328,12 @@
       "PeriodWindow": {
         "properties": {
           "end": {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
             "title": "End",
             "type": "string"
           },
           "start": {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
             "title": "Start",
             "type": "string"
           }
@@ -11280,6 +11439,15 @@
       },
       "UnprofitableOut": {
         "properties": {
+          "basis": {
+            "enum": [
+              "recorded",
+              "recognised"
+            ],
+            "title": "Basis",
+            "type": "string",
+            "x-ubb-concept": "revenue_basis"
+          },
           "customers": {
             "items": {
               "$ref": "#/components/schemas/UnprofitableCustomerRow"
@@ -11294,6 +11462,7 @@
         },
         "required": [
           "period_start",
+          "basis",
           "customers"
         ],
         "title": "UnprofitableOut",
@@ -15648,6 +15817,7 @@
     },
     "/api/v1/margin/business/{external_id}": {
       "get": {
+        "description": "A business customer's margin over the window: each seat's own, and the\ntotal with the business's own revenue on top of its seats'.\n\n**The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the window runs to today; send `end_date` alone and it starts on the first day of that date's month; send neither and it is the current UTC month to date. A supplied date is never ignored. One request spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused with `validation_error`. Longer retained history is read through consecutive, non-overlapping windows: the next window starts on the calendar day after the previous window's `end_date`.",
         "operationId": "apps_subscriptions_api_margin_endpoints_business_margin",
         "parameters": [
           {
@@ -15660,6 +15830,7 @@
             }
           },
           {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "start_date",
             "required": false,
@@ -15673,10 +15844,12 @@
                   "type": "null"
                 }
               ],
+              "description": "The first calendar date (UTC) in the window, inclusive.",
               "title": "Start Date"
             }
           },
           {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "end_date",
             "required": false,
@@ -15690,6 +15863,7 @@
                   "type": "null"
                 }
               ],
+              "description": "The last calendar date (UTC) in the window, inclusive.",
               "title": "End Date"
             }
           }
@@ -15704,6 +15878,26 @@
               }
             },
             "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
           }
         },
         "security": [
@@ -15716,7 +15910,7 @@
     },
     "/api/v1/margin/customers/{customer_id}/supplied-revenue": {
       "get": {
-        "description": "The window's supplied revenue, under a basis the response names.\n\n\u26a0 **THE BASIS PARAMETER CARRIES ITS CONCEPT'S MARKER, which is the\nOPPOSITE of the ruling on the unit-of-work listing's `status` filter**\n(`tests/contracts/test_openapi_known_values.py`), and the difference is\nworth stating because the two look alike. There the marker was declined\nbecause it would have NARROWED what a caller may send \u2014 turning a mistyped\nfilter into a 422 where it was an empty page. Here the route already\nrefuses a basis the registry does not declare, below, and would have to:\nthere is no honest answer to \"state this figure on a basis I have\ninvented\". So the marker documents a refusal the server already makes\nrather than introducing one, which is exactly when ADR-0007 \u00a73 wants it.\n\n**`known` MEANS A SUPPLIED FIGURE IS ATTRIBUTABLE TO THIS WINDOW, NOT THAT\nTHE WINDOW IS FULLY COVERED.** That is a real limit and it is stated rather\nthan papered over: UBB cannot tell a month the tenant has not got round to\nsupplying from a month in which the customer generated nothing, so \"fully\ncovered\" is not a fact available to it. What the caller gets instead is the\ncontributing records themselves, each with its own period \u2014 so the coverage\nis readable from the answer rather than asserted by a status that cannot\nknow it.",
+        "description": "The window's supplied revenue, under a basis the response names.\n\n\u26a0 **THE BASIS PARAMETER CARRIES ITS CONCEPT'S MARKER, which is the\nOPPOSITE of the ruling on the unit-of-work listing's `status` filter**\n(`tests/contracts/test_openapi_known_values.py`), and the difference is\nworth stating because the two look alike. There the marker was declined\nbecause it would have NARROWED what a caller may send \u2014 turning a mistyped\nfilter into a 422 where it was an empty page. Here the route already\nrefuses a basis the registry does not declare, below, and would have to:\nthere is no honest answer to \"state this figure on a basis I have\ninvented\". So the marker documents a refusal the server already makes\nrather than introducing one, which is exactly when ADR-0007 \u00a73 wants it.\n\n**`known` MEANS A SUPPLIED FIGURE IS ATTRIBUTABLE TO THIS WINDOW, NOT THAT\nTHE WINDOW IS FULLY COVERED.** That is a real limit and it is stated rather\nthan papered over: UBB cannot tell a month the tenant has not got round to\nsupplying from a month in which the customer generated nothing, so \"fully\ncovered\" is not a fact available to it. What the caller gets instead is the\ncontributing records themselves, each with its own period \u2014 so the coverage\nis readable from the answer rather than asserted by a status that cannot\nknow it.\n\n**The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the window runs to today; send `end_date` alone and it starts on the first day of that date's month; send neither and it is the current UTC month to date. A supplied date is never ignored. One request spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused with `validation_error`. Longer retained history is read through consecutive, non-overlapping windows: the next window starts on the calendar day after the previous window's `end_date`.",
         "operationId": "apps_subscriptions_api_margin_endpoints_get_supplied_revenue",
         "parameters": [
           {
@@ -15730,6 +15924,7 @@
             }
           },
           {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "start_date",
             "required": false,
@@ -15743,10 +15938,12 @@
                   "type": "null"
                 }
               ],
+              "description": "The first calendar date (UTC) in the window, inclusive.",
               "title": "Start Date"
             }
           },
           {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "end_date",
             "required": false,
@@ -15760,6 +15957,7 @@
                   "type": "null"
                 }
               ],
+              "description": "The last calendar date (UTC) in the window, inclusive.",
               "title": "End Date"
             }
           },
@@ -16010,6 +16208,80 @@
           }
         ],
         "summary": "Get Balance"
+      }
+    },
+    "/api/v1/me/economics": {
+      "get": {
+        "description": "What your own usage earned and how many events it recorded.\n\nScoped to the customer the widget token names, and to nothing else: there\nis no customer parameter, and a business's answer is the business's own\nusage, without its seats'. Revenue is stated under the basis the answer\nnames, and where UBB cannot state a figure the amount is null, never zero.\n\n**The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the window runs to today; send `end_date` alone and it starts on the first day of that date's month; send neither and it is the current UTC month to date. A supplied date is never ignored. One request spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused with `validation_error`. Longer retained history is read through consecutive, non-overlapping windows: the next window starts on the calendar day after the previous window's `end_date`.",
+        "operationId": "api_v1_me_endpoints_get_my_economics",
+        "parameters": [
+          {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
+            "in": "query",
+            "name": "start_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The first calendar date (UTC) in the window, inclusive.",
+              "title": "Start Date"
+            }
+          },
+          {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
+            "in": "query",
+            "name": "end_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The last calendar date (UTC) in the window, inclusive.",
+              "title": "End Date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeEconomicsOut"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemOut"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        },
+        "security": [
+          {
+            "WidgetJWTAuth": []
+          }
+        ],
+        "summary": "Get My Economics"
       }
     },
     "/api/v1/me/grants": {
@@ -16316,10 +16588,11 @@
     },
     "/api/v1/metering/analytics/economics": {
       "get": {
-        "description": "What your AI work cost, what it earned, and the difference \u2014 one answer\nfrom one definition.\n\nAsk for one or more `measures`, group by zero or more axes from\n`/metering/analytics/grouping-options`, and bucket by `hour`, `day` or\n`month`. Every filter composes with every grouping.\n\n**Requesting no measure is refused rather than defaulted**: a default\nmeasure set is how a caller ends up aggregating three different things to\ndraw one line.\n\n**A row's grouped values are positional**, in the order the axes were sent,\nand the response echoes `group_by` so the alignment is readable from the\nanswer alone. Where a row has no value on an axis, the entry beside it says\nwhether the value was never recorded or whether the question does not apply\nto that kind of row.\n\n**Each measure carries its own state and the state is part of the answer.**\nA margin UBB cannot attribute at the grain you asked for is absent rather\nthan small, and the revenue that could not be placed is listed under\n`context` with the axes at which asking again would produce one.\n\n**A revenue figure you supplied is the whole revenue for the customer and\nperiod it covers.** Revenue UBB derived from priced usage inside that period\nis not added to it, and usage nobody priced there does not make it\nincomplete \u2014 the count of that usage is still published. Everywhere else a\nrevenue is derived from priced usage: where some usage is unpriced the\nfigure is the sum of what was priced and reads `incomplete`, and where no\npiece of a row's revenue resolved at all, the revenue and the margin read\n`incomplete` with no amount. A deliberate zero price is resolved.\n\n`basis` picks how revenue a tenant supplied is spread over the span it\ndeclares: `recorded` places each amount whole on the day its record opens\nand is the default, `recognised` spreads it by the record's own method. It\nmoves where a supplied amount lands and never which usage the record\ncovers. So because `recorded` attributes the whole supplied figure to the\nday its period opens, windows elsewhere in its covered period may contain\nknown zero recorded revenue \u2014 and a known negative margin over the usage in\nthem. Use `recognised` when analysing revenue attributable across the\ncovered period. The answer always states which it served.\n\n**How far back you may ask, and how much of it per request \u2014 the two\nnumbers, together, because they do not compose on their own.** UBB keeps the\neconomics for six years and detailed measurement on a shorter platform\nclock, and this answer publishes both start dates in\n`economic_data_available_from` and `measurement_data_available_from` \u2014\nalways, whether or not anything was truncated. One request, meanwhile, may\nspan 366 days, or 92 for an hourly question, because that ceiling is about\nhow many buckets one answer may carry. So six years of history is reachable\nin successive windows, not in one call, and the response states each\nnumber rather than leaving you to discover the second by being refused.\n\nA measure whose stretch reaches back past the horizon governing it reads\n`unavailable_outside_retention_horizon` and carries `available_from`: never\na zero, and never a partial total presented as a total. Only a question\ngrouped by the measurement-concept rollup is governed by the shorter clock;\nevery money measure is on the six-year one however you filter it. The\nresponse echoes the period it applied, so a caller who left the window to\nthe default can see what it was.\n\nCodes: `validation_error` for a request that will not parse or a window past\nthe bound; `unanswerable_combination` for a well-formed question this\nsurface declines to answer subtly wrongly, whose message says what to ask\ninstead.",
+        "description": "What your AI work cost, what it earned, and the difference \u2014 one answer\nfrom one definition.\n\nAsk for one or more `measures`, group by zero or more axes from\n`/metering/analytics/grouping-options`, and bucket by `hour`, `day` or\n`month`. Every filter composes with every grouping.\n\n**Requesting no measure is refused rather than defaulted**: a default\nmeasure set is how a caller ends up aggregating three different things to\ndraw one line.\n\n**A row's grouped values are positional**, in the order the axes were sent,\nand the response echoes `group_by` so the alignment is readable from the\nanswer alone. Where a row has no value on an axis, the entry beside it says\nwhether the value was never recorded or whether the question does not apply\nto that kind of row.\n\n**Each measure carries its own state and the state is part of the answer.**\nA margin UBB cannot attribute at the grain you asked for is absent rather\nthan small, and the revenue that could not be placed is listed under\n`context` with the axes at which asking again would produce one.\n\n**A revenue figure you supplied is the whole revenue for the customer and\nperiod it covers.** Revenue UBB derived from priced usage inside that period\nis not added to it, and usage nobody priced there does not make it\nincomplete \u2014 the count of that usage is still published. Everywhere else a\nrevenue is derived from priced usage: where some usage is unpriced the\nfigure is the sum of what was priced and reads `incomplete`, and where no\npiece of a row's revenue resolved at all, the revenue and the margin read\n`incomplete` with no amount. A deliberate zero price is resolved.\n\n`basis` picks how revenue a tenant supplied is spread over the span it\ndeclares: `recorded` places each amount whole on the day its record opens\nand is the default, `recognised` spreads it by the record's own method. It\nmoves where a supplied amount lands and never which usage the record\ncovers. So because `recorded` attributes the whole supplied figure to the\nday its period opens, windows elsewhere in its covered period may contain\nknown zero recorded revenue \u2014 and a known negative margin over the usage in\nthem. Use `recognised` when analysing revenue attributable across the\ncovered period. The answer always states which it served.\n\n**How far back you may ask, and how much of it per request \u2014 the two\nnumbers, together, because they do not compose on their own.** UBB keeps the\neconomics for six years and detailed measurement on a shorter platform\nclock, and this answer publishes both start dates in\n`economic_data_available_from` and `measurement_data_available_from` \u2014\nalways, whether or not anything was truncated. One request, meanwhile, spans\nat most 366 calendar dates, or 92 for an hourly question, because that\nceiling is about how many buckets one answer may carry. So six years of\nhistory is read as consecutive windows (below), not in one call, and the\nresponse states each number rather than leaving you to discover the second\nby being refused.\n\nA measure whose stretch reaches back past the horizon governing it reads\n`unavailable_outside_retention_horizon` and carries `available_from`: never\na zero, and never a partial total presented as a total. Only a question\ngrouped by the measurement-concept rollup is governed by the shorter clock;\nevery money measure is on the six-year one however you filter it. The\nresponse echoes the period it applied, so a caller who left the window to\nthe default can see what it was.\n\nCodes: `validation_error` for a request that will not parse or a window past\nthe bound; `unanswerable_combination` for a well-formed question this\nsurface declines to answer subtly wrongly, whose message says what to ask\ninstead.\n\n**The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the window runs to today; send `end_date` alone and it starts on the first day of that date's month; send neither and it is the current UTC month to date. A supplied date is never ignored. One request spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused with `validation_error`. Longer retained history is read through consecutive, non-overlapping windows: the next window starts on the calendar day after the previous window's `end_date`.",
         "operationId": "api_v1_metering_endpoints_query_economics",
         "parameters": [
           {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "start_date",
             "required": false,
@@ -16333,10 +16606,12 @@
                   "type": "null"
                 }
               ],
+              "description": "The first calendar date (UTC) in the window, inclusive.",
               "title": "Start Date"
             }
           },
           {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "end_date",
             "required": false,
@@ -16350,6 +16625,7 @@
                   "type": "null"
                 }
               ],
+              "description": "The last calendar date (UTC) in the window, inclusive.",
               "title": "End Date"
             }
           },
@@ -16601,7 +16877,7 @@
     },
     "/api/v1/metering/analytics/tasks": {
       "get": {
-        "description": "Cost per KIND of work: run count, mean and p95.\n\nA p95 approaching the kind's ceiling is the signal that the ceiling is\nabout to start biting real customers; how much work reached it is\n`GET /spend-controls/utilisation-and-headroom`'s figure.",
+        "description": "Cost per KIND of work: run count, mean and p95, over the work created in\nthe window.\n\nA p95 approaching the kind's ceiling is the signal that the ceiling is\nabout to start biting real customers; how much work reached it is\n`GET /spend-controls/utilisation-and-headroom`'s figure.\n\n**The window.** `start_date` and `end_date` are calendar dates in UTC, and both are inclusive: the window runs from the start of `start_date` to the end of `end_date`. Send `start_date` alone and the window runs to today; send `end_date` alone and it starts on the first day of that date's month; send neither and it is the current UTC month to date. A supplied date is never ignored. One request spans at most 366 calendar dates, and `start_date` may not fall after `end_date`; either is refused with `validation_error`. Longer retained history is read through consecutive, non-overlapping windows: the next window starts on the calendar day after the previous window's `end_date`.",
         "operationId": "api_v1_metering_endpoints_task_analytics",
         "parameters": [
           {
@@ -16615,6 +16891,7 @@
             }
           },
           {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "start_date",
             "required": false,
@@ -16628,10 +16905,12 @@
                   "type": "null"
                 }
               ],
+              "description": "The first calendar date (UTC) in the window, inclusive.",
               "title": "Start Date"
             }
           },
           {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "end_date",
             "required": false,
@@ -16645,6 +16924,7 @@
                   "type": "null"
                 }
               ],
+              "description": "The last calendar date (UTC) in the window, inclusive.",
               "title": "End Date"
             }
           }
@@ -19269,9 +19549,11 @@
     },
     "/api/v1/referrals/analytics/earnings": {
       "get": {
+        "description": "What each referrer earned in the window, from the reconciliation ledger:\na ledger period counts where it overlaps the window.\n\n**The window.** `period_start` and `period_end` are calendar dates in UTC, and both are inclusive: the window runs from the start of `period_start` to the end of `period_end`. Send `period_start` alone and the window runs to today; send `period_end` alone and it starts on the first day of that date's month; send neither and it is the current UTC month to date. A supplied date is never ignored. One request spans at most 366 calendar dates, and `period_start` may not fall after `period_end`; either is refused with `validation_error`. Longer retained history is read through consecutive, non-overlapping windows: the next window starts on the calendar day after the previous window's `period_end`.",
         "operationId": "apps_referrals_api_endpoints_analytics_earnings",
         "parameters": [
           {
+            "description": "The first calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "period_start",
             "required": false,
@@ -19284,10 +19566,12 @@
                   "type": "null"
                 }
               ],
+              "description": "The first calendar date (UTC) in the window, inclusive.",
               "title": "Period Start"
             }
           },
           {
+            "description": "The last calendar date (UTC) in the window, inclusive.",
             "in": "query",
             "name": "period_end",
             "required": false,
@@ -19300,6 +19584,7 @@
                   "type": "null"
                 }
               ],
+              "description": "The last calendar date (UTC) in the window, inclusive.",
               "title": "Period End"
             }
           }
@@ -19901,7 +20186,7 @@
     },
     "/api/v1/spend-controls/stops-and-breaches": {
       "get": {
-        "description": "What was spent past a stop, and why: every spend control that fired\nand had an enforcement consequence, in the window, as typed rows \u2014 a\nCeiling row per unit stopped on its own ceiling, a Customer spend pool\nrow per pool episode (explained by the Charge that crossed it), a Wallet\npolicy row per floor episode (a soft-floor row is a marker with no\nevents). Tenant-wide; `customer_id` narrows to one customer's work and\nits billing owner's customer-wide episodes, `task_type` to one kind of\nwork (customer-wide episodes have no kind and drop out), `since`/`until`\n(ISO datetimes; naive = UTC) to the instant each episode opened, and\n`control_family` to one family \u2014 a family this workspace lacks answers\nno rows, never an error. Expiries and admission control appear in\nneither report. A window left open covers the 366 days ending now; the\nresponse echoes the window applied.",
+        "description": "What was spent past a stop, and why: every spend control that fired\nand had an enforcement consequence, in the window, as typed rows \u2014 a\nCeiling row per unit stopped on its own ceiling, a Customer spend pool\nrow per pool episode (explained by the Charge that crossed it), a Wallet\npolicy row per floor episode (a soft-floor row is a marker with no\nevents). Tenant-wide; `customer_id` narrows to one customer's work and\nits billing owner's customer-wide episodes, `task_type` to one kind of\nwork (customer-wide episodes have no kind and drop out), `since`/`until`\n(ISO datetimes; naive = UTC) to the instant each episode opened, and\n`control_family` to one family \u2014 a family this workspace lacks answers\nno rows, never an error. Expiries and admission control appear in\nneither report. `since`/`until` are a half-open window of INSTANTS:\n`since` inclusive, `until` exclusive \u2014 not the calendar-date reports'\ninclusive end date. A window left open covers the 366 days ending now, a\nlone `until` the 366 days before it, and a stated window may span at\nmost 366 days; the response echoes the window applied.",
         "operationId": "api_v1_spend_control_endpoints_stops_and_breaches",
         "parameters": [
           {
@@ -19937,6 +20222,7 @@
             }
           },
           {
+            "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), inclusive. Defaults to 366 days before `until`.",
             "in": "query",
             "name": "since",
             "required": false,
@@ -19950,10 +20236,12 @@
                   "type": "null"
                 }
               ],
+              "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), inclusive. Defaults to 366 days before `until`.",
               "title": "Since"
             }
           },
           {
+            "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), exclusive. Defaults to now.",
             "in": "query",
             "name": "until",
             "required": false,
@@ -19967,6 +20255,7 @@
                   "type": "null"
                 }
               ],
+              "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), exclusive. Defaults to now.",
               "title": "Until"
             }
           },
@@ -20052,6 +20341,7 @@
             }
           },
           {
+            "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), inclusive. Defaults to 366 days before `until`.",
             "in": "query",
             "name": "since",
             "required": false,
@@ -20065,10 +20355,12 @@
                   "type": "null"
                 }
               ],
+              "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), inclusive. Defaults to 366 days before `until`.",
               "title": "Since"
             }
           },
           {
+            "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), exclusive. Defaults to now.",
             "in": "query",
             "name": "until",
             "required": false,
@@ -20082,6 +20374,7 @@
                   "type": "null"
                 }
               ],
+              "description": "An instant (ISO 8601 datetime; a naive one is read as UTC), exclusive. Defaults to now.",
               "title": "Until"
             }
           }

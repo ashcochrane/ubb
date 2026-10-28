@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resetPricingMockState } from "../api/mock";
 import { pricingApi } from "../api/provider";
+import { publishedQueryParameters } from "../lib/published-contract";
 import { MOCK_GROUPING_FIELDS, MOCK_OVERRIDE_CUSTOMER_ID } from "../api/mock-data";
 import { CustomerPricingTab } from "./customer-pricing-tab";
 
@@ -247,6 +248,17 @@ describe("what a customer's rule may select on", () => {
       grouping_fields: { model: "gpt-4o" },
       as_of: new Date("2026-03-01T09:30").toISOString(),
     });
+    // And held to the CONTRACT, not to the list above: every query parameter
+    // the route publishes is asked — the tenant's fields as its repeated
+    // `grouping_field` — so a parameter the route gains fails here until the
+    // form asks it (W5 ruling 16).
+    const published = publishedQueryParameters("/inherited-rule");
+    expect(published.length).toBeGreaterThan(0);
+    expect(
+      Object.keys(params)
+        .map((key) => (key === "grouping_fields" ? "grouping_field" : key))
+        .sort(),
+    ).toEqual([...published].sort());
     ask.mockRestore();
   });
 

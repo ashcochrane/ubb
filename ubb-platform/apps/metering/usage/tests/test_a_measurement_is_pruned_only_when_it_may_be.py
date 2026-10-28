@@ -1,4 +1,4 @@
-﻿"""A measurement record may only be pruned when both its conditions hold (#354).
+"""A measurement record may only be pruned when both its conditions hold (#354).
 
 The posting / measurement split (2026-08-03) gave the child record a
 **whole-record rule** rather than per-column transition classes, because it has

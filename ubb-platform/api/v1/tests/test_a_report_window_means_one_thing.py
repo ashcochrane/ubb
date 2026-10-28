@@ -1,7 +1,7 @@
 """Every calendar-date report route reads its window one way (#542, #543,
 #514; W5 rulings 1–6).
 
-Five routes take a pair of calendar dates. Before W5 they disagreed: two read
+Six routes take a pair of calendar dates. Before W5 five of them disagreed: two read
 `end_date` as exclusive, two dropped a lone date or bounded only a supplied
 pair, and one answered all of history when no date was sent. Each now resolves
 its window through `core/report_windows.py`, and this module asks every one of
@@ -40,9 +40,11 @@ from apps.referrals.rewards.models import ReferralRewardLedger
 from apps.subscriptions.economics.models import TenantSuppliedRevenue
 from core.report_windows import (
     END_DATE_DESCRIPTION, START_DATE_DESCRIPTION, report_window_description)
+from core.widget_auth import create_widget_token
 from core.vocabulary import (
-    ANALYTICS_MEASURE_SUPPLIER_COGS, COSTING_STATUS_KNOWN,
-    PRICING_STATUS_KNOWN, RECOGNITION_METHOD_ON_RECEIPT)
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_SUPPLIER_COGS,
+    COSTING_STATUS_KNOWN,
+    PRICING_STATUS_KNOWN, RECOGNITION_METHOD_ON_RECEIPT, TASK_STATUS_COMPLETED)
 
 UTC = dt_timezone.utc
 #: The frozen clock: the 18th of March, mid-afternoon UTC. Today is the 18th.
@@ -124,7 +126,7 @@ class TaskAnalytics(_Probe):
         unit = Task.objects.create(
             tenant=self.case.tenant, customer=self.case.customer,
             balance_snapshot_micros=0, task_type="report_window",
-            status="completed", total_provider_cost_micros=BIT[label],
+            status=TASK_STATUS_COMPLETED, total_provider_cost_micros=BIT[label],
             recorded_events=1)
         Task.objects.filter(id=unit.id).update(created_at=instant)
 
@@ -198,8 +200,38 @@ class ReferralEarnings(_Probe):
         return body["period_start"], body["period_end"]
 
 
+class WidgetUsage(_Probe):
+    """The end customer's own usage summary (#561), asked with a widget token
+    for a customer of its own, so its revenue decodes the facts it seeded."""
+
+    path = "/api/v1/me/economics"
+
+    def ask(self, **params):
+        query = {name: value.isoformat() for name, value in params.items()}
+        token = create_widget_token(self.case.tenant.widget_secret,
+                                    str(self.case.widget_customer.id),
+                                    str(self.case.tenant.id))
+        return Client().get(self.path, query,
+                            HTTP_AUTHORIZATION=f"Bearer {token}")
+
+    def seed(self, label, instant):
+        Posting.objects.create(
+            tenant=self.case.tenant, customer=self.case.widget_customer,
+            idempotency_key=f"widget-{label}", effective_at=instant,
+            provider="openai", event_type="chat.completion",
+            provider_cost_micros=0, costing_status=COSTING_STATUS_KNOWN,
+            billed_cost_micros=BIT[label], pricing_status=PRICING_STATUS_KNOWN)
+
+    def counted(self, body):
+        return _decoded(body[ANALYTICS_MEASURE_CUSTOMER_REVENUE]["amount_micros"]
+                        or 0)
+
+    def echoed(self, body):
+        return body["period_start"], body["period_end"]
+
+
 PROBES = (EconomicQuery, TaskAnalytics, SuppliedRevenue, BusinessRollup,
-          ReferralEarnings)
+          ReferralEarnings, WidgetUsage)
 
 
 class EveryReportRouteReadsItsWindowOneWayTest(TestCase):
@@ -217,6 +249,8 @@ class EveryReportRouteReadsItsWindowOneWayTest(TestCase):
         self.seat = Customer.objects.create(
             tenant=self.tenant, external_id="seat", account_type="seat",
             parent=self.business)
+        self.widget_customer = Customer.objects.create(tenant=self.tenant,
+                                                       external_id="widget")
         ReferralProgram.objects.create(tenant=self.tenant,
                                        reward_type="revenue_share",
                                        reward_value=0.10)
@@ -357,6 +391,7 @@ class EveryReportRoutePublishesTheOneWindowDescriptionTest(TestCase):
             ("start_date", "end_date"),
         "/margin/business/{external_id}": ("start_date", "end_date"),
         "/referrals/analytics/earnings": ("period_start", "period_end"),
+        "/me/economics": ("start_date", "end_date"),
     }
 
     def test_each_route_states_the_window(self):

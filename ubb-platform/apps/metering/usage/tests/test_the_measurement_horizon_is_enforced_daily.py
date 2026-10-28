@@ -26,7 +26,8 @@ from datetime import timedelta
 from unittest import mock
 
 from django.conf import settings
-from django.db import IntegrityError, connection, migrations, transaction
+from django.db import (
+    DatabaseError, IntegrityError, connection, migrations, transaction)
 from django.db.migrations.loader import MigrationLoader
 from django.db.models import Q
 from django.test import TestCase, TransactionTestCase, override_settings
@@ -398,8 +399,36 @@ class EveryRunWritesOneStructuredLineTest(TestCase):
                 with self.assertRaises(IntegrityError):
                     _prune()
         self.assertEqual(info.call_count, 1)
-        self.assertEqual(info.call_args.kwargs["extra"]["data"]["failed"],
-                         "IntegrityError")
+        data = info.call_args.kwargs["extra"]["data"]
+        self.assertEqual((data["failed"], data["skipped"]),
+                         ("IntegrityError", None))
+
+    def test_a_run_failing_after_a_batch_states_what_it_did_and_asks_nothing(self):
+        """A failure in a LATER batch: the line still comes, with the batch
+        that went, and the result asks the database nothing more — a connection
+        the failure broke must not swallow the error or the line."""
+        for n in range(2):
+            _measured(f"m{n}", days_old=DAYS + 50 - n)
+        real = pruning._release_and_delete
+        calls = []
+
+        def second_fails(ids):
+            calls.append(ids)
+            if len(calls) == 2:
+                raise DatabaseError("the connection went")
+            return real(ids)
+
+        with mock.patch.object(pruning, "_release_and_delete", second_fails), \
+                mock.patch.object(pruning, "_passed_over",
+                                  side_effect=AssertionError("asked")), \
+                mock.patch.object(pruning.logger, "info") as info:
+            with self.assertRaises(DatabaseError):
+                _prune(batch_size=1)
+
+        self.assertEqual(info.call_count, 1)
+        data = info.call_args.kwargs["extra"]["data"]
+        self.assertEqual((data["released"], data["deleted"], data["failed"],
+                          data["skipped"]), (1, 1, "DatabaseError", None))
 
 
 class TheJobRunsEveryDayTest(TestCase):

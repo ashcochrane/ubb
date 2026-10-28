@@ -68,6 +68,38 @@ highest-volume table. **Absence is expressed by absence** — where a posting is
 there is no record here, not an empty one. (`apps/metering/usage/models.py:PostingMeasurement`)
 _Avoid_: defaulting a child into being so that every posting can have one.
 
+**Measurement horizon**:
+How far back fine measurement detail is guaranteed — `UBB_MEASUREMENT_RETENTION_DAYS`, **400 days by
+default** (#190 comment `5785029955`; W5 ruling 7), about thirteen months, overridable by the
+environment and a configuration rather than a contract. Published on every economic answer as
+`measurement_data_available_from`: the guaranteed CURRENT edge of fine detail, never the literal
+oldest row (a run-capped prune may still be catching up), and never a claim that detailed
+year-over-year comparison is supported. The economic horizon beside it is six years and is not a
+setting. (`core/retention.py`)
+_Avoid_: reading an absent setting as "keep everything" — since W5 it is a misconfiguration and is
+refused, never silently six years.
+
+**Release** (`prunable_at`):
+When a measurement record was let go — the moment the daily prune released it, written once, from
+NULL, with the transaction's own clock, in the same transaction that deletes the record (W5 ruling 8).
+**A fact, not a deadline**: recording leaves it NULL, and the horizon a record is judged against is
+the one configured at the time of the prune, so shortening the clock moves which records go next
+rather than rewriting a date stamped on each. SET_ONCE and never a future instant, held by a trigger
+through every door (`usage/0052`). (`apps/metering/usage/models.py:PostingMeasurement.prunable_at`)
+_Avoid_: stamping a retention deadline at recording.
+
+**Measurement prune**:
+The daily job that enforces the measurement horizon (`apps/metering/usage/pruning.py`, beat entry
+`prune-measurement-detail`). A record goes when both its event and its recording are older than the
+current horizon and its posting is neither `unresolved` nor `unknown`; protected records are filtered
+by the query — the `usage/0041` delete trigger is the backstop beneath, never the filter — so an old
+unresolved record never starves younger ones. Bounded (`PRUNE_BATCH_SIZE` per atomic batch,
+`PRUNE_RUN_CAP` per run) and observable: one structured line per run, a zero run included, with what
+was released, deleted and skipped and the oldest eligible record left behind. The economic posting is
+never touched.
+_Avoid_: resolving anything on the way past — retention cleanup and economic resolution stay separate
+(amendment B).
+
 **Measurements status**:
 Whether a posting's measurements are `available`, `pruned`, or `not_applicable` — **derived on read,
 never stored**. It exists because a pruned posting otherwise reads exactly like one that never had
@@ -693,6 +725,19 @@ _Avoid_: reading the two surviving published spellings as a second concept — `
 per-customer event list's own contract), and `usage_event_id` on the unresolved-queue rows is a
 published row key, not an internal name.
 _Avoid_: importing metering models from another product; go through `queries.py`.
+
+**Calendar-date report window**:
+The window every report taking a pair of calendar dates reads (#542, #543, #514; W5 rulings 1–6) — the
+one economic query, the task analytics, the two margin report routes, the referral earnings, and the
+end customer's own usage summary. Both dates are **inclusive**, in UTC; a lone start runs to today,
+a lone end starts on the first of its own month, none is the current UTC month to date; one request
+spans at most 366 calendar dates (92 for an hourly economic question) and may not run backwards.
+**The inclusive dates are converted ONCE** — `ReportWindow.between` — to the half-open UTC interval
+`[start 00:00, (end + 1 day) 00:00)` every query reads; no query adds its own day. Longer history is
+read as consecutive, non-overlapping windows, the next starting the day after the previous end date.
+(`core/report_windows.py`)
+_Avoid_: reading the spend-control `since`/`until` or the pricing filters' `selected_*` as one of
+these — they are half-open windows of INSTANTS, out of this rule's scope and said so on their routes.
 
 **Customer liability**:
 Whether a posting is something a customer OWES for — the question that decides whether it becomes an

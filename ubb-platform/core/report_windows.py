@@ -1,9 +1,10 @@
 """THE CALENDAR-DATE REPORT WINDOW — one meaning for every report route that
 takes a pair of dates (#542, #543, #514; W5 rulings 1–6).
 
-Five report routes take a calendar-date window: the one economic query, the
-task analytics, the two margin report routes and the referral earnings. Before
-this module they disagreed three ways — about what `end_date` means (inclusive
+Six report routes take a calendar-date window: the one economic query, the
+task analytics, the two margin report routes, the referral earnings and the end
+customer's own usage summary (`/me/economics`, W5). Before this module the
+first five disagreed three ways — about what `end_date` means (inclusive
 on two, exclusive on two), about a lone date (honoured, silently dropped, or an
 unbounded read) and about the default (month to date, or all of history). Each
 one now resolves its window here and nowhere else.
@@ -23,7 +24,8 @@ one now resolves its window here and nowhere else.
 ⚠⚠ **THE INCLUSIVE DATES ARE CONVERTED ONCE, HERE, TO ONE HALF-OPEN UTC
 INTERVAL, AND NOTHING DOWNSTREAM DOES ITS OWN `+1 DAY`** (amendment A).
 `ReportWindow.between` is the only place the day after the end date is
-computed: `[start_date 00:00 UTC, (end_date + 1 day) 00:00 UTC)`. A query reads
+computed (through `core.time_windows.utc_next_day_start`):
+`[start_date 00:00 UTC, (end_date + 1 day) 00:00 UTC)`. A query reads
 `opens_at`/`closes_at` (or the same interval as two dates, `opens`/`closes`),
 which is how the four readings this replaced stop being four.
 
@@ -46,7 +48,8 @@ from django.utils import timezone
 
 from core.problems import Problem
 from core.time_windows import (
-    HOURLY_REPORT_WINDOW_MAX_DAYS, REPORT_WINDOW_MAX_DAYS, utc_day_start)
+    HOURLY_REPORT_WINDOW_MAX_DAYS, REPORT_WINDOW_MAX_DAYS, utc_day_start,
+    utc_next_day_start)
 
 
 class ReportWindow(NamedTuple):
@@ -75,7 +78,7 @@ class ReportWindow(NamedTuple):
         """
         return cls(start_date=start_date, end_date=end_date,
                    opens_at=utc_day_start(start_date),
-                   closes_at=utc_day_start(end_date + timedelta(days=1)),
+                   closes_at=utc_next_day_start(end_date),
                    today=today if today is not None else _utc_today())
 
     @property

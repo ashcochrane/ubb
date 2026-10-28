@@ -93,16 +93,21 @@ class PruneResult(NamedTuple):
     whole backlog. They stayed because their posting is still unresolved or
     unknown, or because the event they measure is inside the horizon. It is
     counted off the walk's own index range and never joins the posting, so the
-    metric cannot make the job read more than the prune does (`_passed_over`).
+    count cannot make the job read more than the prune does (`_passed_over`).
 
     ``oldest_remaining_eligible`` is the backlog: the recording instant of the
     oldest row that could have gone and did not, because the run cap stopped
     the run. None when the run caught up.
+
+    ⚠ **A FAILED RUN COUNTS NOTHING MORE** (``skipped`` and the backlog are
+    None): its line states what it released and deleted before the failure and
+    which error stopped it, and asks the database nothing else — a connection a
+    failure left unusable must not swallow the error or the line.
     """
     horizon: date
     released: int
     deleted: int
-    skipped: int
+    skipped: Optional[int]
     capped: bool
     oldest_remaining_eligible: Optional[datetime]
     failed: Optional[str] = None
@@ -208,7 +213,7 @@ def _passed_over(cutoff, through=None):
 
     ⚠ **COUNTED OFF THE INDEX ALONE, WITH NO JOIN TO THE POSTING** (ruling 9).
     Asking the posting WHY each one stayed would let the planner scan the
-    six-year economic table for a prettier metric; the range count reads only
+    six-year economic table for a prettier number; the range count reads only
     the records the walk itself read.
     """
     from apps.metering.usage.models import PostingMeasurement
@@ -222,16 +227,17 @@ def _passed_over(cutoff, through=None):
 
 
 def _the_result(horizon, cutoff, released, deleted, last, capped, failed):
+    if failed:
+        return PruneResult(horizon=horizon, released=released, deleted=deleted,
+                           skipped=None, capped=capped,
+                           oldest_remaining_eligible=None, failed=failed)
     oldest = None
-    if capped or failed:
+    if capped:
         # The run stopped short of the backlog: it inspected the rows up to
         # the last one it deleted, and the oldest eligible row left is the
         # backlog the next run starts from.
-        passed_over = (_passed_over(cutoff, last) if last is not None
-                       else _older_than(cutoff).none())
-        if not failed:
-            oldest = _eligible(cutoff).values_list(
-                "recorded_at", flat=True).first()
+        passed_over = _passed_over(cutoff, last)
+        oldest = _eligible(cutoff).values_list("recorded_at", flat=True).first()
     else:
         passed_over = _passed_over(cutoff)
     return PruneResult(horizon=horizon, released=released, deleted=deleted,

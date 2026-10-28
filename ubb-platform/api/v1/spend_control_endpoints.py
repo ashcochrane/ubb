@@ -417,8 +417,8 @@ def build_utilisation_and_headroom(tenant, *, since, until, customer=None,
 @role_floor(READ)
 def stops_and_breaches(request, customer_id: UUIDIdentifier = None,
                        task_type: str = None,
-                       since: datetime = Query(None, description=SINCE_DESCRIPTION),
-                       until: datetime = Query(None, description=UNTIL_DESCRIPTION),
+                       since: Optional[datetime] = Query(None, description=SINCE_DESCRIPTION),
+                       until: Optional[datetime] = Query(None, description=UNTIL_DESCRIPTION),
                        control_family: Optional[ControlFamily] = None):
     """What was spent past a stop, and why: every spend control that fired
     and had an enforcement consequence, in the window, as typed rows — a
@@ -448,8 +448,8 @@ def stops_and_breaches(request, customer_id: UUIDIdentifier = None,
 @role_floor(READ)
 def utilisation_and_headroom(request, customer_id: UUIDIdentifier = None,
                              task_type: str = None,
-                             since: datetime = Query(None, description=SINCE_DESCRIPTION),
-                             until: datetime = Query(None, description=UNTIL_DESCRIPTION)):
+                             since: Optional[datetime] = Query(None, description=SINCE_DESCRIPTION),
+                             until: Optional[datetime] = Query(None, description=UNTIL_DESCRIPTION)):
     """How much of each ceiling was used, and how often it could not be
     evaluated: one row per unit of work that completed in the window (at
     either altitude) with its ceiling status, utilisation and headroom as

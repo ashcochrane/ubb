@@ -87,9 +87,21 @@ def sync_detailed(
 ) -> Response[AnalyticsEarningsOut]:
     """ Analytics Earnings
 
+     What each referrer earned in the window, from the reconciliation ledger:
+    a ledger period counts where it overlaps the window.
+
+    **The window.** `period_start` and `period_end` are calendar dates in UTC, and both are inclusive:
+    the window runs from the start of `period_start` to the end of `period_end`. Send `period_start`
+    alone and the window runs to today; send `period_end` alone and it starts on the first day of that
+    date's month; send neither and it is the current UTC month to date. A supplied date is never
+    ignored. One request spans at most 366 calendar dates, and `period_start` may not fall after
+    `period_end`; either is refused with `validation_error`. Longer retained history is read through
+    consecutive, non-overlapping windows: the next window starts on the calendar day after the previous
+    window's `period_end`.
+
     Args:
-        period_start (None | str | Unset):
-        period_end (None | str | Unset):
+        period_start (None | str | Unset): The first calendar date (UTC) in the window, inclusive.
+        period_end (None | str | Unset): The last calendar date (UTC) in the window, inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -121,9 +133,21 @@ def sync(
 ) -> AnalyticsEarningsOut | None:
     """ Analytics Earnings
 
+     What each referrer earned in the window, from the reconciliation ledger:
+    a ledger period counts where it overlaps the window.
+
+    **The window.** `period_start` and `period_end` are calendar dates in UTC, and both are inclusive:
+    the window runs from the start of `period_start` to the end of `period_end`. Send `period_start`
+    alone and the window runs to today; send `period_end` alone and it starts on the first day of that
+    date's month; send neither and it is the current UTC month to date. A supplied date is never
+    ignored. One request spans at most 366 calendar dates, and `period_start` may not fall after
+    `period_end`; either is refused with `validation_error`. Longer retained history is read through
+    consecutive, non-overlapping windows: the next window starts on the calendar day after the previous
+    window's `period_end`.
+
     Args:
-        period_start (None | str | Unset):
-        period_end (None | str | Unset):
+        period_start (None | str | Unset): The first calendar date (UTC) in the window, inclusive.
+        period_end (None | str | Unset): The last calendar date (UTC) in the window, inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -150,9 +174,21 @@ async def asyncio_detailed(
 ) -> Response[AnalyticsEarningsOut]:
     """ Analytics Earnings
 
+     What each referrer earned in the window, from the reconciliation ledger:
+    a ledger period counts where it overlaps the window.
+
+    **The window.** `period_start` and `period_end` are calendar dates in UTC, and both are inclusive:
+    the window runs from the start of `period_start` to the end of `period_end`. Send `period_start`
+    alone and the window runs to today; send `period_end` alone and it starts on the first day of that
+    date's month; send neither and it is the current UTC month to date. A supplied date is never
+    ignored. One request spans at most 366 calendar dates, and `period_start` may not fall after
+    `period_end`; either is refused with `validation_error`. Longer retained history is read through
+    consecutive, non-overlapping windows: the next window starts on the calendar day after the previous
+    window's `period_end`.
+
     Args:
-        period_start (None | str | Unset):
-        period_end (None | str | Unset):
+        period_start (None | str | Unset): The first calendar date (UTC) in the window, inclusive.
+        period_end (None | str | Unset): The last calendar date (UTC) in the window, inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -184,9 +220,21 @@ async def asyncio(
 ) -> AnalyticsEarningsOut | None:
     """ Analytics Earnings
 
+     What each referrer earned in the window, from the reconciliation ledger:
+    a ledger period counts where it overlaps the window.
+
+    **The window.** `period_start` and `period_end` are calendar dates in UTC, and both are inclusive:
+    the window runs from the start of `period_start` to the end of `period_end`. Send `period_start`
+    alone and the window runs to today; send `period_end` alone and it starts on the first day of that
+    date's month; send neither and it is the current UTC month to date. A supplied date is never
+    ignored. One request spans at most 366 calendar dates, and `period_start` may not fall after
+    `period_end`; either is refused with `validation_error`. Longer retained history is read through
+    consecutive, non-overlapping windows: the next window starts on the calendar day after the previous
+    window's `period_end`.
+
     Args:
-        period_start (None | str | Unset):
-        period_end (None | str | Unset):
+        period_start (None | str | Unset): The first calendar date (UTC) in the window, inclusive.
+        period_end (None | str | Unset): The last calendar date (UTC) in the window, inclusive.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

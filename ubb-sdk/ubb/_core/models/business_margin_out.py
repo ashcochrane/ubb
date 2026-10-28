@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.business_margin_out_basis import BusinessMarginOutBasis
 from typing import cast
 
 if TYPE_CHECKING:
@@ -26,12 +27,14 @@ T = TypeVar("T", bound="BusinessMarginOut")
 class BusinessMarginOut:
     """ 
         Attributes:
+            basis (BusinessMarginOutBasis):
             business_id (str):
             external_id (str):
             seats (list[SeatMarginOut]):
             totals (BusinessMarginTotals):
      """
 
+    basis: BusinessMarginOutBasis
     business_id: str
     external_id: str
     seats: list[SeatMarginOut]
@@ -45,6 +48,8 @@ class BusinessMarginOut:
     def to_dict(self) -> dict[str, Any]:
         from ..models.business_margin_totals import BusinessMarginTotals
         from ..models.seat_margin_out import SeatMarginOut
+        basis = self.basis.value
+
         business_id = self.business_id
 
         external_id = self.external_id
@@ -62,6 +67,7 @@ class BusinessMarginOut:
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
+            "basis": basis,
             "business_id": business_id,
             "external_id": external_id,
             "seats": seats,
@@ -77,6 +83,11 @@ class BusinessMarginOut:
         from ..models.business_margin_totals import BusinessMarginTotals
         from ..models.seat_margin_out import SeatMarginOut
         d = dict(src_dict)
+        basis = BusinessMarginOutBasis(d.pop("basis"))
+
+
+
+
         business_id = d.pop("business_id")
 
         external_id = d.pop("external_id")
@@ -97,6 +108,7 @@ class BusinessMarginOut:
 
 
         business_margin_out = cls(
+            basis=basis,
             business_id=business_id,
             external_id=external_id,
             seats=seats,
