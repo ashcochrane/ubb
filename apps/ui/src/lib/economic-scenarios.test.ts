@@ -870,6 +870,7 @@ describe("measure-state scenarios (#510)", () => {
       measure: "gross_margin",
       status: "not_applicable",
       amount_micros: null,
+      count: null,
     });
   });
 });
@@ -887,12 +888,14 @@ describe("the two revenue states #537 made reachable", () => {
       measure: "customer_revenue",
       status: "incomplete",
       amount_micros: null,
+      count: null,
       unpriced_event_count: 1,
     });
     expect(row["gross_margin"]).toEqual({
       measure: "gross_margin",
       status: "incomplete",
       amount_micros: null,
+      count: null,
     });
   });
 

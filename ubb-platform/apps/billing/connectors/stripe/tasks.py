@@ -26,9 +26,9 @@ logger = logging.getLogger(__name__)
     retry_backoff=True,
     acks_late=True,
 )
-def charge_auto_topup_task(attempt_id):
+def charge_auto_top_up_task(attempt_id):
     """
-    Charge Stripe for an auto-topup attempt.
+    Charge Stripe for an auto top-up attempt.
 
     Dispatched via transaction.on_commit after usage recording.
     Idempotent: checks attempt status before and after charging.
@@ -49,7 +49,7 @@ def charge_auto_topup_task(attempt_id):
     from apps.billing.topups.services import AutoTopUpService
 
     # Task 8b (sweep): lock/read the PINNED billing owner, not attempt.customer_id.
-    # For every auto-topup attempt today `customer_id == billing_owner_id` by
+    # For every auto top-up attempt today `customer_id == billing_owner_id` by
     # construction (create_pending_attempt is only ever called from
     # handle_balance_low_stripe, which locks the owner id off the WalletBalanceLow
     # event) — so this was never reachable with a seat id. But every other
@@ -133,11 +133,11 @@ def charge_auto_topup_task(attempt_id):
 
 @shared_task(queue="ubb_billing")
 def reconcile_topups_with_stripe():
-    """Stripe-driven repair sweep: credit any succeeded auto-topup PaymentIntent that has no
+    """Stripe-driven repair sweep: credit any succeeded auto top-up PaymentIntent that has no
     local wallet credit. Lookback exceeds Stripe's 3-day webhook-retry horizon so it only
-    repairs genuinely-lost events. Idempotent via apply_topup_credit (auto_topup:{pi_id})."""
+    repairs genuinely-lost events. Idempotent via apply_topup_credit (auto_top_up:{pi_id})."""
     from apps.billing.topups.models import TopUpAttempt
-    from apps.billing.topups.services import AutoTopUpService
+    from apps.billing.topups.services import AutoTopUpService, auto_top_up_credit_key
     from apps.billing.wallets.models import WalletTransaction
     from apps.platform.tenants.models import Tenant
 
@@ -169,7 +169,8 @@ def reconcile_topups_with_stripe():
             attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
             if not attempt_id or getattr(pi, "status", "") != "succeeded":
                 continue
-            if WalletTransaction.objects.filter(idempotency_key=f"auto_topup:{pi.id}").exists():
+            if WalletTransaction.objects.filter(
+                    idempotency_key=auto_top_up_credit_key(pi.id)).exists():
                 continue
             try:
                 attempt = TopUpAttempt.objects.get(id=attempt_id)
@@ -184,11 +185,11 @@ def reconcile_topups_with_stripe():
                 continue
             if AutoTopUpService.apply_topup_credit(attempt, pi):
                 repaired += 1
-                logger.warning("Reconcile repaired uncredited auto-topup",
+                logger.warning("Reconcile repaired uncredited auto top-up",
                                extra={"data": {"attempt_id": str(attempt.id), "pi": pi.id}})
             time.sleep(0.1)
     if repaired:
-        logger.warning("Auto-topup reconcile repaired credits", extra={"data": {"repaired": repaired}})
+        logger.warning("Auto top-up reconcile repaired credits", extra={"data": {"repaired": repaired}})
 
     # Secondary: amount/refund audit of locally-succeeded attempts (drift detection).
     from apps.platform.queries import get_tenant_stripe_account

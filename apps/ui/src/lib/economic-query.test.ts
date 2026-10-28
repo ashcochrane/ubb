@@ -33,9 +33,9 @@ function figure(over: Partial<MeasureFigure>): MeasureFigure {
 
 describe("figureOn — one measure, with the state that says what it is worth", () => {
   const answered = row([
-    { measure: "supplier_cogs", amount_micros: 4_000_000, status: "incomplete", unresolved_event_count: 3 },
-    { measure: "customer_revenue", amount_micros: 9_000_000, status: "known", unpriced_event_count: 0 },
-    { measure: "gross_margin", amount_micros: 5_000_000, status: "incomplete" },
+    { measure: "supplier_cogs", amount_micros: 4_000_000, count: null, status: "incomplete", unresolved_event_count: 3 },
+    { measure: "customer_revenue", amount_micros: 9_000_000, count: null, status: "known", unpriced_event_count: 0 },
+    { measure: "gross_margin", amount_micros: 5_000_000, count: null, status: "incomplete" },
     { measure: "recorded_events", count: 42, status: "known" },
   ]);
 
@@ -63,6 +63,7 @@ describe("figureOn — one measure, with the state that says what it is worth", 
       {
         measure: "customer_revenue",
         amount_micros: null,
+        count: null,
         unpriced_event_count: null,
         status: "unavailable_outside_retention_horizon",
         available_from: "2020-09-18",

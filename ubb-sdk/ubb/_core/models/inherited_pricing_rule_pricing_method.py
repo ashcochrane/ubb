@@ -1,6 +1,6 @@
 from enum import Enum
 
-class InheritedPricingRulePricingMethodType0(str, Enum):
+class InheritedPricingRulePricingMethod(str, Enum):
     DIRECT_EVENT_PRICE = "direct_event_price"
     MARGIN_OVER_COST = "margin_over_cost"
 

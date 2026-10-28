@@ -383,7 +383,7 @@ class AClosedRailStartsNoNewMoneyTest(_TenantsTestCase):
             charge_saved_payment_method)
         attempt = TopUpAttempt.objects.create(
             customer=self.customer, billing_owner_id=self.customer.id,
-            amount_micros=20_000_000, trigger="auto_topup", status="pending")
+            amount_micros=20_000_000, trigger="auto_top_up", status="pending")
 
         with patch(self.STRIPE_CALL) as stripe_call:
             with self.assertRaisesRegex(PaymentRailClosed, "'live' environment"):

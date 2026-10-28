@@ -15,7 +15,7 @@ from datetime import date
 
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
-from django.test import Client, TestCase
+from django.test import Client, SimpleTestCase, TestCase
 
 from api.v1.tests._helpers import a_tenant
 from apps.billing.invoicing.models import CustomerUsageInvoice
@@ -153,3 +153,29 @@ class AProgrammesRewardTypeIsTheRegistrysTest(TestCase):
         moved = self._send("patch", {"reward_type": REWARD_TYPE_REVENUE_SHARE})
         self.assertEqual(moved.status_code, 200, moved.content)
         self.assertEqual(moved.json()["reward_type"], REWARD_TYPE_REVENUE_SHARE)
+
+
+class AWithheldStatusIsNotOfferedTest(SimpleTestCase):
+    """The owner's review of #620: a value the registry withholds — a
+    legitimate state no legal production transition creates today — is not
+    offered by its model either, so an ordinary writer validating through the
+    field cannot emit it. What each field offers is exactly what can occur."""
+
+    def test_each_status_offers_its_occurring_values_only(self):
+        from apps.billing.tenant_billing.models import TenantInvoice
+        from apps.referrals.models import ReferralProgram
+        from core.vocabulary import (
+            REFERRAL_PROGRAM_STATUS_VALUES,
+            REFERRAL_PROGRAM_STATUS_WITHHELD_VALUES,
+            TENANT_INVOICE_STATUS_VALUES, TENANT_INVOICE_STATUS_WITHHELD_VALUES)
+
+        for model, declared, withheld in (
+                (TenantInvoice, TENANT_INVOICE_STATUS_VALUES,
+                 TENANT_INVOICE_STATUS_WITHHELD_VALUES),
+                (ReferralProgram, REFERRAL_PROGRAM_STATUS_VALUES,
+                 REFERRAL_PROGRAM_STATUS_WITHHELD_VALUES)):
+            with self.subTest(model=model.__name__):
+                offered = {value for value, _ in
+                           model._meta.get_field("status").choices}
+                self.assertTrue(withheld)
+                self.assertEqual(offered, set(declared) - set(withheld))

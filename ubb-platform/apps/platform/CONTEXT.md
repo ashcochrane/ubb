@@ -1058,11 +1058,13 @@ is its one authority** (`domain-vocabulary/concepts/governance.yaml`, `audit_act
 `actions.py` derives the recordable set from the generated constants and every production writer
 names an action by reference. `record()` refuses an unregistered name, and a **withheld** one.
 (`apps/platform/audit/actions.py:AUDIT_ACTIONS`)
-**Withheld action**: a value the registry keeps declared while nothing may write it and the contract
-does not advertise it (`withheld_values`, ADR-0024 §2). Its one use is
-`system.preproduction_model_cutover`: no opening row is ever written (#190 `6354381879`), so
-`record()` refuses it by name and `AuditRecordOut.action` leaves it out, until W6 deletes the
-registration and the exclusion together.
+**Withheld value**: a legitimate value the registry keeps declared while no legal production
+transition creates it, so no writer emits it and the contract does not advertise it
+(`withheld_values`, ADR-0024 §2). It is never a compatibility alias and never a parking place for a
+planned value; the first writer un-withholds it in the same commit. Four today:
+`system.preproduction_model_cutover` (no opening row is ever written, #190 `6354381879`; `record()`
+refuses it by name, and W6 deletes the registration and the exclusion together), a platform-fee
+invoice's `void` and `uncollectible`, and a referral programme's `paused`.
 **⚠ Additive-only governs RENAMES, and deleting an action whose ACT has ceased to exist is not one.**
 Slice 4 removed seven names on that distinction, and it is worth stating because "additive-only"
 reads as forbidding it: a rename carries an act forward under a new spelling and breaks a reader

@@ -177,9 +177,9 @@ class BillingClient:
         })
         return from_wire(TopUpCheckoutResponse, r.json())
 
-    def configure_auto_topup(self, customer_id: str, is_enabled: bool,
-                             trigger_threshold_micros: int | None = None,
-                             top_up_amount_micros: int | None = None) -> dict:
+    def configure_auto_top_up(self, customer_id: str, is_enabled: bool,
+                              trigger_threshold_micros: int | None = None,
+                              top_up_amount_micros: int | None = None) -> dict:
         """Configure auto top-up via PUT /api/v1/billing/customers/{customer_id}/auto-top-up."""
         body: dict = {"is_enabled": is_enabled}
         if trigger_threshold_micros is not None:

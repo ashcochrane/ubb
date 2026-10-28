@@ -651,7 +651,7 @@ def credit_top_up(*, customer_id, tenant, amount_micros, idempotency_key,
                   source, source_reference, description, reference_id=""):
     """Credit a paid top-up: the TOP_UP ledger row and its PAID CreditGrant
     lot land in one savepoint, so the lot inherits exactly-once from the
-    caller's key (``auto_topup:{pi}`` / ``topup:{session}``) with zero changes
+    caller's key (``auto_top_up:{pi}`` / ``topup:{session}``) with zero changes
     to the convergent callers. Expiry comes from the owner's
     ``CustomerBillingProfile.topup_grant_expiry_days`` (NULL = never expires).
 

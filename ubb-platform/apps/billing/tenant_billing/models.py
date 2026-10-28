@@ -12,6 +12,7 @@ from core.vocabulary import (
     TENANT_INVOICE_STATUS_PAID,
     TENANT_INVOICE_STATUS_UNCOLLECTIBLE,
     TENANT_INVOICE_STATUS_VOID,
+    TENANT_INVOICE_STATUS_WITHHELD_VALUES,
 )
 
 
@@ -24,12 +25,19 @@ TENANT_BILLING_PERIOD_STATUS_CHOICES = [
     (BILLING_PERIOD_STATUS_INVOICED, "Invoiced"),
 ]
 
+# The states a platform-fee invoice can reach TODAY. `void` and `uncollectible`
+# are declared but WITHHELD (the owner's review of #620): no production
+# transition writes either (the registry entry records the proof), so neither
+# is offered here nor advertised on the contract. A writer that mirrors one
+# onto the tenant invoice un-withholds it in the same commit.
 TENANT_INVOICE_STATUS_CHOICES = [
-    (TENANT_INVOICE_STATUS_DRAFT, "Draft"),
-    (TENANT_INVOICE_STATUS_FINALIZED, "Finalized"),
-    (TENANT_INVOICE_STATUS_PAID, "Paid"),
-    (TENANT_INVOICE_STATUS_VOID, "Void"),
-    (TENANT_INVOICE_STATUS_UNCOLLECTIBLE, "Uncollectible"),
+    (value, label) for value, label in (
+        (TENANT_INVOICE_STATUS_DRAFT, "Draft"),
+        (TENANT_INVOICE_STATUS_FINALIZED, "Finalized"),
+        (TENANT_INVOICE_STATUS_PAID, "Paid"),
+        (TENANT_INVOICE_STATUS_VOID, "Void"),
+        (TENANT_INVOICE_STATUS_UNCOLLECTIBLE, "Uncollectible"),
+    ) if value not in TENANT_INVOICE_STATUS_WITHHELD_VALUES
 ]
 
 

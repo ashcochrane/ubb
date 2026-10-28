@@ -184,7 +184,7 @@ class UBBClientTest(unittest.TestCase):
     # --- configure_auto_top_up (delegates to billing) ---
 
     def test_configure_auto_top_up(self):
-        self.client.billing.configure_auto_topup = MagicMock(
+        self.client.billing.configure_auto_top_up = MagicMock(
             return_value={"status": "enabled"}
         )
         result = self.client.configure_auto_top_up(customer_id="c1", threshold=0,

@@ -95,6 +95,14 @@ grant_source:
     - auto_top_up
     - api
     - other
+  # The run-together spelling is retired everywhere living (the owner's review
+  # of #620): one concept, one spelling. No public input accepts a grant's
+  # source, `ck_credit_grant_source_known` refuses the old token at the table,
+  # and every writer of the same concept elsewhere — a top-up attempt's
+  # trigger, the SDK's method, the webhook field, the idempotency prefix, the
+  # handler — moved with it.
+  retired_aliases:
+    - auto_topup
   label_key_prefix: grant_source
   consumers:
     - surface: backend
@@ -163,6 +171,19 @@ tenant_invoice_status:
     - draft
     - finalized
     - paid
+    - void
+    - uncollectible
+  # WITHHELD (the owner's review of #620, the reachability rule): legitimate
+  # states of a platform-fee invoice, with NO legal production transition that
+  # creates either today. The only writers of the status are the platform-fee
+  # task (`tenant_billing/tasks.py`, which creates `finalized`) and the
+  # `invoice.paid` webhook (`paid`). Stripe's `invoice.voided` and
+  # `invoice.marked_uncollectible` reach `_reconcile_customer_invoice`, which
+  # returns for an event with no connected account — and a platform-fee invoice
+  # lives on UBB's own Stripe account, so it never carries one — and touches
+  # only usage and subscription invoices. A writer that mirrors either state
+  # onto the tenant invoice is what un-withholds it, in the same commit.
+  withheld_values:
     - void
     - uncollectible
   label_key_prefix: tenant_invoice_status

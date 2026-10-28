@@ -24,7 +24,7 @@ class TestPIWebhook:
         Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
                                         amount_micros=20_000_000,
-                                        trigger="auto_topup", status="pending")
+                                        trigger="auto_top_up", status="pending")
         return c, a
 
     def test_webhook_credits_once_idempotent(self):
@@ -36,12 +36,12 @@ class TestPIWebhook:
         assert a.status == "succeeded"
         assert Wallet.objects.get(customer=c).balance_micros == 20_000_000
         handle_payment_intent_succeeded(_event(pi))  # again — idempotent
-        assert WalletTransaction.objects.filter(idempotency_key="auto_topup:pi_1").count() == 1
+        assert WalletTransaction.objects.filter(idempotency_key="auto_top_up:pi_1").count() == 1
 
     def test_webhook_ignores_non_topup_pi(self):
         pi = MagicMock(id="pi_x", status="succeeded", metadata={})
         handle_payment_intent_succeeded(_event(pi))  # no metadata → no-op, no error
-        assert WalletTransaction.objects.filter(idempotency_key="auto_topup:pi_x").count() == 0
+        assert WalletTransaction.objects.filter(idempotency_key="auto_top_up:pi_x").count() == 0
 
 
 @pytest.mark.django_db
@@ -55,7 +55,7 @@ class TestPIWebhookCrossAccountGuard:
         Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
                                         amount_micros=20_000_000,
-                                        trigger="auto_topup", status="pending")
+                                        trigger="auto_top_up", status="pending")
         return t, c, a
 
     def test_succeeded_mismatched_account_is_skipped(self):

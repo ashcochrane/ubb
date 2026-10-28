@@ -39,7 +39,7 @@ class TestHandleWalletBalanceLowStripe:
         ))
 
         with patch(
-            "apps.billing.connectors.stripe.tasks.charge_auto_topup_task"
+            "apps.billing.connectors.stripe.tasks.charge_auto_top_up_task"
         ) as mock_task:
             mock_task.delay = MagicMock()
             handle_balance_low_stripe("evt_1", payload)
@@ -47,7 +47,7 @@ class TestHandleWalletBalanceLowStripe:
 
         attempt = TopUpAttempt.objects.first()
         assert attempt is not None
-        assert attempt.trigger == "auto_topup"
+        assert attempt.trigger == "auto_top_up"
         assert attempt.amount_micros == 20_000_000
 
     def test_skips_when_no_stripe_account(self):
@@ -69,7 +69,7 @@ class TestHandleWalletBalanceLowStripe:
         handle_balance_low_stripe("evt_1", payload)
         assert TopUpAttempt.objects.count() == 0
 
-    def test_skips_when_no_auto_topup_config(self):
+    def test_skips_when_no_auto_top_up_config(self):
         tenant = Tenant.objects.create(
             name="Test", products=["metering", "billing"],
             stripe_connected_account_id="acct_test123", charges_enabled=True,
@@ -113,7 +113,7 @@ class TestHandleWalletBalanceLowStripe:
         TopUpAttempt.objects.create(
             customer=customer,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
 

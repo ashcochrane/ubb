@@ -7,6 +7,11 @@ from django.utils import timezone
 from core.exceptions import NegativeKnownPriceRefused
 from apps.platform.events.schemas import UsageRecorded
 from apps.referrals.rewards.services import RewardService
+from core.vocabulary import (
+    REFERRAL_STATUS_ACTIVE,
+    REFERRAL_STATUS_EXPIRED,
+    REWARD_TYPE_FLAT_FEE,
+)
 
 logger = logging.getLogger("ubb.events")
 
@@ -46,19 +51,19 @@ def handle_usage_recorded_referrals(event_id, payload):
         referral = Referral.objects.select_related("reward_accumulator").get(
             tenant_id=tenant_id,
             referred_customer_id=customer_id,
-            status="active",
+            status=REFERRAL_STATUS_ACTIVE,
         )
     except Referral.DoesNotExist:
         return  # Customer was not referred
 
     # Check reward window
     if referral.reward_window_ends_at and timezone.now() > referral.reward_window_ends_at:
-        referral.status = "expired"
+        referral.status = REFERRAL_STATUS_EXPIRED
         referral.save(update_fields=["status", "updated_at"])
         return
 
     # Skip if flat fee already paid
-    if referral.snapshot_reward_type == "flat_fee" and referral.flat_fee_paid:
+    if referral.snapshot_reward_type == REWARD_TYPE_FLAT_FEE and referral.flat_fee_paid:
         return
 
     # Calculate reward. A NULL SUPPLIER COST IS PASSED THROUGH AS ONE (#328):
@@ -136,7 +141,7 @@ def handle_usage_recorded_referrals(event_id, payload):
                 )
 
     # Mark flat fee as paid
-    if referral.snapshot_reward_type == "flat_fee":
+    if referral.snapshot_reward_type == REWARD_TYPE_FLAT_FEE:
         referral.flat_fee_paid = True
         referral.save(update_fields=["flat_fee_paid", "updated_at"])
 

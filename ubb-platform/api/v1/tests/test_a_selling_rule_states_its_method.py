@@ -8,6 +8,7 @@ further than publishing what a null meant: the null that MEANT
 its method, a cost book's rate states none, and the database holds both halves.
 """
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from django.db import IntegrityError, connection, transaction
@@ -24,7 +25,10 @@ from apps.metering.pricing.tests._helpers import (
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from core.vocabulary import (
     COSTING_STATUS_KNOWN, PRICING_METHOD_DIRECT_EVENT_PRICE,
-    PRICING_METHOD_MARGIN_OVER_COST)
+    PRICING_METHOD_MARGIN_OVER_COST, PRICING_METHOD_VALUES)
+
+#: The committed contract a client generates from.
+SPEC = Path(__file__).resolve().parents[4] / "openapi" / "v1.json"
 
 QUANTITY = "input_tokens"
 ANOTHER_QUANTITY = "output_tokens"
@@ -131,6 +135,49 @@ class APublishStatesTheMethodTest(_APricingTenantTestCase):
                 self.assertEqual(refused.json()["code"], "validation_error")
                 self.assertIn("pricing_method", refused.json()["detail"])
         self.assertEqual(Rate.objects.filter(cost_book=book).count(), 1)
+
+    def test_a_diff_states_a_selling_rules_method_and_a_cost_rates_null(self):
+        """`RuleTermsOut` (the owner's review of #620): present on every diff
+        row, the method a Pricing Book rule will state, and null on a cost
+        book's rate — which derives no customer price — never omitted."""
+        anchor = rate_in_default_book(self.tenant, measurement_key=QUANTITY,
+                                      rate_per_unit_micros=1)
+        cost = cost_rate_in_default_book(self.tenant, measurement_key=QUANTITY,
+                                         rate_per_unit_micros=5)
+        for book, expected in ((the_book_holding(anchor),
+                                PRICING_METHOD_DIRECT_EVENT_PRICE),
+                               (the_book_holding(cost), None)):
+            with self.subTest(book=type(book).__name__):
+                declared = self._publish(book, {
+                    "line": "rate", "kind": "add",
+                    "measurement_key": ANOTHER_QUANTITY,
+                    "rate_per_unit_micros": 3})
+                self.assertEqual(declared.status_code, 200, declared.content)
+                (row,) = declared.json()["diff"]
+                self.assertIn("pricing_method", row["after"])
+                self.assertEqual(row["after"]["pricing_method"], expected)
+
+
+class TheContractStatesTheMethodWhereItAlwaysExistsTest(TestCase):
+    """The committed contract, read as a client generator reads it: required
+    and never null where every row is a selling rule, required and nullable
+    where a cost rate shares the row (the owner's review of #620)."""
+
+    def _property(self, schema, field):
+        spec = json.loads(SPEC.read_text(encoding="utf-8"))
+        node = spec["components"]["schemas"][schema]
+        return field in node.get("required", []), node["properties"][field]
+
+    def test_an_inherited_rule_always_states_one(self):
+        required, node = self._property("InheritedPricingRule", "pricing_method")
+        self.assertTrue(required)
+        self.assertNotIn("anyOf", node)
+        self.assertEqual(set(node["enum"]), set(PRICING_METHOD_VALUES))
+
+    def test_a_diff_row_states_one_or_says_null_never_omits(self):
+        required, node = self._property("RuleTermsOut", "pricing_method")
+        self.assertTrue(required)
+        self.assertIn({"type": "null"}, node["anyOf"])
 
 
 class TheTableHoldsTheRuleTest(TestCase):

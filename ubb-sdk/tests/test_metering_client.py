@@ -1009,9 +1009,12 @@ class TheOneEconomicQueryTest(unittest.TestCase):
             "grouping_field_value_status": [
                 vocabulary.GROUPING_FIELD_VALUE_STATUS_RECORDED],
             "measures": [
-                {"measure": "gross_margin", "amount_micros": None,
+                # `count` is present on every measure and null on a money
+                # one (required and nullable since the owner's review of #620).
+                {"measure": "gross_margin", "amount_micros": None, "count": None,
                  "status": vocabulary.MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN},
                 {"measure": "supplier_cogs", "amount_micros": 4_200_000,
+                 "count": None,
                  "status": vocabulary.MEASURE_STATUS_INCOMPLETE,
                  "unresolved_event_count": 3},
             ],
@@ -1042,7 +1045,7 @@ class TheOneEconomicQueryTest(unittest.TestCase):
             "bucket_start": None, "grouping_field_value": [],
             "grouping_field_value_status": [],
             "measures": [{"measure": "customer_revenue",
-                          "amount_micros": 9_000_000,
+                          "amount_micros": 9_000_000, "count": None,
                           "status": vocabulary.MEASURE_STATUS_KNOWN}],
         })
         found = measure_on(row, vocabulary.ANALYTICS_MEASURE_CUSTOMER_REVENUE)

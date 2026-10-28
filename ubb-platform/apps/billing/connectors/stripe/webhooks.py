@@ -442,7 +442,7 @@ def handle_charge_refunded(event):
 
 
 def handle_payment_intent_succeeded(event):
-    """Backstop: credit the wallet for a succeeded auto-topup PaymentIntent (idempotent)."""
+    """Backstop: credit the wallet for a succeeded auto top-up PaymentIntent (idempotent)."""
     pi = event.data.object
     attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
     if not attempt_id:
@@ -461,7 +461,7 @@ def handle_payment_intent_succeeded(event):
 
 
 def handle_payment_intent_payment_failed(event):
-    """Mark an auto-topup attempt failed when its PaymentIntent fails (idempotent)."""
+    """Mark an auto top-up attempt failed when its PaymentIntent fails (idempotent)."""
     pi = event.data.object
     attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
     if not attempt_id:

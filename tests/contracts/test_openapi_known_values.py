@@ -941,6 +941,10 @@ CONCEPTS_IN_THE_CONTRACT = {
     # inherits the acknowledgement's field and its marker.
     # +1 in #558 (R10-W4): the typed receipt's own subject.
     "pricing_receipt_subject_type": Published(4, ENUM),
+    # WHICH RUNG SUPPLIED A MARKUP (the owner's review of #620). One node: the
+    # typed receipt's markup provenance. A module constant until #558 typed the
+    # receipt; a one-value set is still a value set.
+    "markup_rung": Published(1, ENUM),
     # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR (#407) — two nodes,
     # the declaration going in and the declaration coming back, which is the
     # whole surface the concept has. It is on the DECLARATION and on nothing
@@ -1729,6 +1733,9 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
                                             "UsageBatchItemResponse",
                                             "UsageEventDetailOut",
                                             "PricingReceipt"})
+    # The receipt's markup provenance, and nowhere else: only a receipt
+    # records which rung supplied a percentage.
+    placed("markup_rung", {"PricingReceiptProvenanceMarkup"})
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.
     placed("tenant_product", {"TenantConfigIn", "TenantConfigOut"})
@@ -2186,6 +2193,9 @@ RECEIPT_CONCEPTS = {
     ("PricingReceiptPricingDetail", "pricing_status_reason"):
         "pricing_status_reason",
     ("PricingReceiptComponent", "rate_structure"): "rate_structure",
+    # The owner's review of #620: the twelfth, which #558 published untyped
+    # in name only — a closed value set on the provenance's markup.
+    ("PricingReceiptProvenanceMarkup", "rung"): "markup_rung",
 }
 
 #: The three responses that publish the record, and whether each may say null.

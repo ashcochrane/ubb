@@ -2966,15 +2966,15 @@ def _economic_row(key, group, *, measures, attributable,
                 AVAILABLE_FROM_FIELD: available_from.isoformat()}
         built = {
             ANALYTICS_MEASURE_SUPPLIER_COGS: {
-                "amount_micros": NO_FIGURE,
+                "amount_micros": NO_FIGURE, "count": NO_FIGURE,
                 UNRESOLVED_EVENT_COUNT_KEY: NO_FIGURE, **gone},
             ANALYTICS_MEASURE_CUSTOMER_REVENUE: {
-                "amount_micros": NO_FIGURE,
+                "amount_micros": NO_FIGURE, "count": NO_FIGURE,
                 UNPRICED_EVENT_COUNT_KEY: NO_FIGURE, **gone},
             ANALYTICS_MEASURE_RECORDED_EVENTS: {
                 "count": NO_FIGURE, **gone},
             ANALYTICS_MEASURE_GROSS_MARGIN: {
-                "amount_micros": NO_FIGURE, **gone},
+                "amount_micros": NO_FIGURE, "count": NO_FIGURE, **gone},
         }
     else:
         revenue = (group["posting_revenue_micros"]
@@ -2993,10 +2993,12 @@ def _economic_row(key, group, *, measures, attributable,
         built = {
             ANALYTICS_MEASURE_SUPPLIER_COGS: {
                 "amount_micros": group["provider_cost_micros"],
+                "count": NO_FIGURE,
                 "status": cost_state,
                 UNRESOLVED_EVENT_COUNT_KEY: group[UNRESOLVED_EVENT_COUNT_KEY]},
             ANALYTICS_MEASURE_CUSTOMER_REVENUE: {
                 "amount_micros": revenue,
+                "count": NO_FIGURE,
                 "status": revenue_state,
                 UNPRICED_EVENT_COUNT_KEY: group[UNPRICED_EVENT_COUNT_KEY]},
             ANALYTICS_MEASURE_RECORDED_EVENTS: {
@@ -3049,5 +3051,5 @@ def _margin(revenue, cost, *, revenue_state, cost_state) -> dict:
     state = max((revenue_state, cost_state),
                 key=MEASURE_STATES_WORST_LAST.index)
     if state in MEASURE_STATES_WITH_NO_FIGURE or revenue is NO_FIGURE:
-        return {"amount_micros": NO_FIGURE, "status": state}
-    return {"amount_micros": revenue - cost, "status": state}
+        return {"amount_micros": NO_FIGURE, "count": NO_FIGURE, "status": state}
+    return {"amount_micros": revenue - cost, "count": NO_FIGURE, "status": state}

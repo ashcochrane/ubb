@@ -1195,9 +1195,18 @@ class TheAnswerKeepsOneShapeWithOrWithoutAFigureTest(TestCase):
             filled = measure_of(known, measure)
             emptied = measure_of(gone, measure)
             assert set(emptied) == set(filled) | {"available_from"}, measure
-            for slot in set(filled) - {"measure", "status"}:
-                assert filled[slot] is not None, (measure, slot)
+            # A slot the measure FILLS is a figure in the answered row and null
+            # in the emptied one. A slot that does not apply to it — `count` on
+            # a money measure, present on every measure since the owner's
+            # review of #620 — is null in both, never a stand-in figure.
+            slots = set(filled) - {"measure", "status"}
+            fills = {slot for slot in slots if filled[slot] is not None}
+            assert fills, measure
+            for slot in slots:
                 assert emptied[slot] is None, (measure, slot)
+            assert "count" in filled, measure
+            assert ("count" in fills) == (measure == ANALYTICS_MEASURE_RECORDED_EVENTS), (
+                measure, fills)
 
 
 class TheStatesThisQueryReachesTest(TestCase):

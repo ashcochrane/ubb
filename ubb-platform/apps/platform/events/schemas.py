@@ -355,7 +355,7 @@ class UsageRecorded(EventSchema):
     pricing_status: PricingStatus = PRICING_STATUS_KNOWN
     event_type: str = ""
     provider: str = ""
-    auto_topup_attempt_id: str | None = None
+    auto_top_up_attempt_id: str | None = None
     # The clean cut (#37) renamed this field in place rather than minting a
     # new class: no consumer read the pre-rename name, and payload
     # construction filters unknown keys, so a legacy queued payload still
@@ -475,7 +475,11 @@ class TopUpRequested(EventSchema):
     tenant_id: str
     customer_id: str
     amount_micros: int
-    trigger: str  # "auto", "manual", "widget"
+    # A top-up attempt's trigger. Only the two caller-started routes write
+    # this event — "manual" (the tenant route) or "widget" (`api/v1/topups.py`).
+    # An automatic top-up ("auto_top_up") never does: the Stripe connector
+    # charges the saved payment method instead.
+    trigger: str
     success_url: str
     cancel_url: str
 

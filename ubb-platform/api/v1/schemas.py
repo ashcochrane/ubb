@@ -737,6 +737,7 @@ SkipReason = _concept("skip_reason")
 TenantInvoiceStatus = _concept("tenant_invoice_status")
 BillingPeriodStatus = _concept("billing_period_status")
 GroupingFieldValueStatus = _concept("grouping_field_value_status")
+MarkupRung = _concept("markup_rung")
 
 #: WHICH OF THE FOUR SPEND CONTROLS A STOP CAME FROM — the registry's closed
 #: `control_family`, spelled here again because a product may not import this
@@ -928,7 +929,7 @@ class PricingReceiptTotals(Schema):
 
 class PricingReceiptProvenanceMarkup(Schema):
     """The rung the margin came from and the record that declared it."""
-    rung: str
+    rung: MarkupRung
     record_id: str
 
 
@@ -3037,8 +3038,14 @@ class RuleTermsOut(Schema):
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
-    #: Null where the rule derives no price of its own — see `BookChangeIn`.
-    pricing_method: Optional[PricingMethod] = None
+    #: REQUIRED, and null exactly where the rule is a cost book's rate: a
+    #: selling rule always states its method (R10-W4 ruling 4,
+    #: `ck_rate_a_selling_rule_states_its_method`), and a cost book's diff
+    #: publishes through this same row with no selling method to state.
+    pricing_method: Optional[PricingMethod] = Field(description=(
+        "How the rule derives a customer price. Present on every row; null "
+        "exactly where the rule is a cost book's rate, which derives no "
+        "customer price. A Pricing Book rule always states one."))
     #: Never null: every rule has an arithmetic shape, and this row is a rule's
     #: terms rather than a statement of what a body said.
     rate_structure: RateStructure
@@ -3383,7 +3390,10 @@ class InheritedPricingRule(Schema):
     task_type: str
     subtask_type: str
     grouping_fields: dict[str, str] = {}
-    pricing_method: Optional[PricingMethod] = None
+    #: Never null: the rule a customer is priced from is a SELLING rule, and a
+    #: selling rule always states its method (R10-W4 ruling 4,
+    #: `ck_rate_a_selling_rule_states_its_method`), so the copy is exact.
+    pricing_method: PricingMethod
     #: Never null: this is a rule, and every rule has an arithmetic shape. It
     #: joins with #366 because the override body it seeds now states one, and a
     #: starting point missing a field the destination requires makes "copy
@@ -4054,10 +4064,15 @@ class EconomicMeasureOut(Schema):
     #: measure's own name says which of the two is filled — which is why this
     #: slot is plain `count` (R10-W4 ruling 1): `measure` beside it already
     #: says what is being counted.
-    count: Optional[int] = Field(None, description=(
+    #:
+    #: REQUIRED AND NULLABLE since the owner's review of #620: present on every
+    #: measure, so "the field is missing" and "a count does not apply" are
+    #: never the same reading. Null is never a stand-in for zero.
+    count: Optional[int] = Field(description=(
         "The count measure's figure: under `recorded_events`, how many metered "
-        "usage events this row covers, never a Task Charge. Null on the three "
-        "measures denominated in money, and wherever no figure can be stated."))
+        "usage events this row covers, never a Task Charge. Present on every "
+        "measure; null on the three measures denominated in money, and "
+        "wherever no figure can be stated — never a zero standing in."))
     status: MeasureStatus
     #: How many postings the supplier-cost total could not include. Present on
     #: the cost measure and on nothing else, because the two counts in this

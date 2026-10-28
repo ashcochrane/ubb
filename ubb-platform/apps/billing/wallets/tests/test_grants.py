@@ -267,14 +267,14 @@ class TestTopUpGrants:
         w = Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
                                         amount_micros=20_000_000,
-                                        trigger="auto_topup", status="pending")
+                                        trigger="auto_top_up", status="pending")
         pi = MagicMock(id="pi_g1", latest_charge=MagicMock(id="ch_g1"))
         assert AutoTopUpService.apply_topup_credit(a, pi) is True
         assert AutoTopUpService.apply_topup_credit(a, pi) is False
         w.refresh_from_db()
         assert w.balance_micros == 20_000_000
         assert WalletTransaction.objects.filter(
-            wallet=w, idempotency_key="auto_topup:pi_g1").count() == 1
+            wallet=w, idempotency_key="auto_top_up:pi_g1").count() == 1
         grants = CreditGrant.objects.filter(wallet=w)
         assert grants.count() == 1
         g = grants.get()
@@ -282,7 +282,7 @@ class TestTopUpGrants:
         assert g.source_reference == str(a.id)
         assert g.granted_micros == 20_000_000 and g.remaining_micros == 20_000_000
         assert g.expires_at is None  # no profile -> never expires
-        assert g.source_transaction.idempotency_key == "auto_topup:pi_g1"
+        assert g.source_transaction.idempotency_key == "auto_top_up:pi_g1"
         _assert_g1(w)
 
     def test_topup_grant_expiry_days_honored(self):
@@ -293,7 +293,7 @@ class TestTopUpGrants:
         CustomerBillingProfile.objects.create(customer=c, topup_grant_expiry_days=30)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
                                         amount_micros=5_000_000,
-                                        trigger="auto_topup", status="pending")
+                                        trigger="auto_top_up", status="pending")
         pi = MagicMock(id="pi_g2", latest_charge=MagicMock(id="ch_g2"))
         before = timezone.now()
         assert AutoTopUpService.apply_topup_credit(a, pi) is True

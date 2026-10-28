@@ -1240,6 +1240,27 @@ export const INVITATION_STATUS_LABEL_KEYS = {
 // generator lost.
 
 
+// --- markup_rung ------------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Which rung of the price ladder supplied a markup percentage, as a Pricing
+// Receipt's provenance names it: the tenant's own declared default markup, the
+// last rung, which prices what no rule in the books in play matched.
+//
+// Declared in concepts/economics.yaml.
+
+export const MARKUP_RUNG_VALUES = [
+  "tenant_default",
+] as const;
+
+export type MarkupRung = (typeof MARKUP_RUNG_VALUES)[number];
+
+export const MARKUP_RUNG_LABEL_KEYS = {
+  "tenant_default": "markup_rung.tenant_default",
+} as const satisfies Record<MarkupRung, string>;
+
+
 // --- measure_status ---------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.

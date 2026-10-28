@@ -36,6 +36,15 @@ referral_program_status:
     - active
     - paused
     - deactivated
+  # WITHHELD (the owner's review of #620, the reachability rule): a legitimate
+  # state of a programme — the backend already reads it as live beside
+  # `active` when refusing a second programme — with NO legal production
+  # transition that creates it today. Create takes the model's `active`, DELETE
+  # writes `deactivated`, reactivate writes `active`, and the update body has
+  # no status field at all. A pause route is what un-withholds it, in the same
+  # commit.
+  withheld_values:
+    - paused
   label_key_prefix: referral_program_status
   consumers:
     - surface: backend

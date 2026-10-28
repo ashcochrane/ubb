@@ -2,17 +2,29 @@ import logging
 
 from django.db import IntegrityError, transaction
 
-from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
+from apps.billing.topups.models import (
+    TRIGGER_AUTO_TOP_UP, AutoTopUpConfig, TopUpAttempt,
+)
 from core.vocabulary import GRANT_SOURCE_AUTO_TOP_UP
 
 logger = logging.getLogger(__name__)
+
+
+def auto_top_up_credit_key(payment_intent_id) -> str:
+    """The wallet idempotency key one succeeded automatic top-up credits under.
+
+    One derivation for the three paths that converge on it — the charge task,
+    the ``payment_intent.succeeded`` webhook (both via ``apply_topup_credit``)
+    and the Stripe reconcile's "already credited?" probe — so they can never
+    disagree about which key means "this PaymentIntent was credited"."""
+    return f"auto_top_up:{payment_intent_id}"
 
 
 class AutoTopUpService:
     @staticmethod
     def create_pending_attempt(customer, wallet):
         """
-        Check auto-topup eligibility and create a pending TopUpAttempt.
+        Check auto top-up eligibility and create a pending TopUpAttempt.
 
         MUST be called within @transaction.atomic with wallet already locked
         via lock_for_billing().
@@ -52,12 +64,12 @@ class AutoTopUpService:
                     # correct even if a future caller ever passed a seat.
                     billing_owner_id=customer.resolve_billing_owner().id,
                     amount_micros=config.top_up_amount_micros,
-                    trigger="auto_topup",
+                    trigger=TRIGGER_AUTO_TOP_UP,
                     status="pending",
                 )
             return attempt
         except IntegrityError:
-            # Another pending auto-topup already exists
+            # Another pending auto top-up already exists
             logger.info(
                 "Auto top-up skipped: pending attempt exists",
                 extra={"data": {"customer_id": str(customer.id)}},
@@ -66,9 +78,10 @@ class AutoTopUpService:
 
     @staticmethod
     def apply_topup_credit(attempt, payment_intent) -> bool:
-        """Idempotently credit the wallet for a succeeded auto-topup PaymentIntent.
+        """Idempotently credit the wallet for a succeeded auto top-up PaymentIntent.
         Convergent: called by the charge task, the payment_intent.succeeded webhook, and reconcile.
-        Exactly-once via WalletTransaction idempotency_key=auto_topup:{pi_id}. Returns True if it credited.
+        Exactly-once via WalletTransaction idempotency_key=auto_top_up:{pi_id}
+        (``auto_top_up_credit_key``). Returns True if it credited.
 
         #109 co-commit pattern: the outer atomic nests the wallet op, then
         locks + saves the TopUpAttempt keyed on ``outcome == "applied"`` — one
@@ -80,7 +93,7 @@ class AutoTopUpService:
         from apps.billing.wallets import operations as wallet_ops
 
         pi_id = payment_intent.id if hasattr(payment_intent, "id") else payment_intent["id"]
-        key = f"auto_topup:{pi_id}"
+        key = auto_top_up_credit_key(pi_id)
         lc = getattr(payment_intent, "latest_charge", None)
         charge_id = (lc.id if hasattr(lc, "id") else lc) if lc else None
         amount_micros = attempt.amount_micros

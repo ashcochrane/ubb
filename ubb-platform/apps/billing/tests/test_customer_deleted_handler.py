@@ -32,7 +32,7 @@ class TestHandleCustomerDeletedBilling:
         wallet.refresh_from_db()
         assert wallet.is_deleted is True
 
-    def test_soft_deletes_auto_topup_config(self):
+    def test_soft_deletes_auto_top_up_config(self):
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         AutoTopUpConfig.objects.create(
@@ -60,7 +60,7 @@ class TestHandleCustomerDeletedBilling:
             customer_id=customer.id,
         )))
 
-    def test_handles_no_auto_topup_config(self):
+    def test_handles_no_auto_top_up_config(self):
         """No error if AutoTopUpConfig doesn't exist."""
         tenant = self._make_tenant()
         customer = Customer.objects.create(tenant=tenant, external_id="c1")

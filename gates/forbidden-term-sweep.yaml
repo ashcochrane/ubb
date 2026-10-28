@@ -474,7 +474,11 @@ exclusions:
     # lowercased (`wallets/0014`), a usage invoice's skip reason stored as the
     # registry's or null (`invoicing/0011`), and a selling rule's method
     # stated on every row (`pricing/0034`).
-    files: 303
+    # 303 → 306 in the owner's review of #620: a top-up attempt's automatic
+    # trigger takes the canonical spelling (`topups/0006`, which must spell
+    # the run-together form it moves away from), and two statuses stop
+    # offering a withheld value (`tenant_billing/0016`, `referrals/0009`).
+    files: 306
     paths:
       - ubb-platform/apps/billing/gating/migrations/**
       - ubb-platform/apps/billing/invoicing/migrations/**

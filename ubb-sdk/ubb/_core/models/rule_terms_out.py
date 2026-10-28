@@ -10,7 +10,6 @@ from ..types import UNSET, Unset
 
 from ..models.rule_terms_out_pricing_method_type_0 import RuleTermsOutPricingMethodType0
 from ..models.rule_terms_out_rate_structure import RuleTermsOutRateStructure
-from ..types import UNSET, Unset
 from typing import cast
 
 
@@ -34,17 +33,19 @@ class RuleTermsOut:
 
         Attributes:
             fixed_micros (int):
+            pricing_method (None | RuleTermsOutPricingMethodType0): How the rule derives a customer price. Present on every
+                row; null exactly where the rule is a cost book's rate, which derives no customer price. A Pricing Book rule
+                always states one.
             rate_per_unit_micros (int):
             rate_structure (RuleTermsOutRateStructure):
             unit_quantity (int):
-            pricing_method (None | RuleTermsOutPricingMethodType0 | Unset):
      """
 
     fixed_micros: int
+    pricing_method: None | RuleTermsOutPricingMethodType0
     rate_per_unit_micros: int
     rate_structure: RuleTermsOutRateStructure
     unit_quantity: int
-    pricing_method: None | RuleTermsOutPricingMethodType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -54,31 +55,28 @@ class RuleTermsOut:
     def to_dict(self) -> dict[str, Any]:
         fixed_micros = self.fixed_micros
 
+        pricing_method: None | str
+        if isinstance(self.pricing_method, RuleTermsOutPricingMethodType0):
+            pricing_method = self.pricing_method.value
+        else:
+            pricing_method = self.pricing_method
+
         rate_per_unit_micros = self.rate_per_unit_micros
 
         rate_structure = self.rate_structure.value
 
         unit_quantity = self.unit_quantity
 
-        pricing_method: None | str | Unset
-        if isinstance(self.pricing_method, Unset):
-            pricing_method = UNSET
-        elif isinstance(self.pricing_method, RuleTermsOutPricingMethodType0):
-            pricing_method = self.pricing_method.value
-        else:
-            pricing_method = self.pricing_method
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({
             "fixed_micros": fixed_micros,
+            "pricing_method": pricing_method,
             "rate_per_unit_micros": rate_per_unit_micros,
             "rate_structure": rate_structure,
             "unit_quantity": unit_quantity,
         })
-        if pricing_method is not UNSET:
-            field_dict["pricing_method"] = pricing_method
 
         return field_dict
 
@@ -89,19 +87,8 @@ class RuleTermsOut:
         d = dict(src_dict)
         fixed_micros = d.pop("fixed_micros")
 
-        rate_per_unit_micros = d.pop("rate_per_unit_micros")
-
-        rate_structure = RuleTermsOutRateStructure(d.pop("rate_structure"))
-
-
-
-
-        unit_quantity = d.pop("unit_quantity")
-
-        def _parse_pricing_method(data: object) -> None | RuleTermsOutPricingMethodType0 | Unset:
+        def _parse_pricing_method(data: object) -> None | RuleTermsOutPricingMethodType0:
             if data is None:
-                return data
-            if isinstance(data, Unset):
                 return data
             try:
                 if not isinstance(data, str):
@@ -113,17 +100,26 @@ class RuleTermsOut:
                 return pricing_method_type_0
             except (TypeError, ValueError, AttributeError, KeyError):
                 pass
-            return cast(None | RuleTermsOutPricingMethodType0 | Unset, data)
+            return cast(None | RuleTermsOutPricingMethodType0, data)
 
-        pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
+        pricing_method = _parse_pricing_method(d.pop("pricing_method"))
 
+
+        rate_per_unit_micros = d.pop("rate_per_unit_micros")
+
+        rate_structure = RuleTermsOutRateStructure(d.pop("rate_structure"))
+
+
+
+
+        unit_quantity = d.pop("unit_quantity")
 
         rule_terms_out = cls(
             fixed_micros=fixed_micros,
+            pricing_method=pricing_method,
             rate_per_unit_micros=rate_per_unit_micros,
             rate_structure=rate_structure,
             unit_quantity=unit_quantity,
-            pricing_method=pricing_method,
         )
 
 

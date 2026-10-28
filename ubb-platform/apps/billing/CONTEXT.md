@@ -66,8 +66,9 @@ consumed before paid. The registry's closed `grant_kind`.
 Where a lot came from — `checkout`, `auto_top_up`, `api` or `other` — the registry's closed
 `grant_source` (R10-W4). `ck_credit_grant_source_known` refuses any other value.
 (`apps/billing/wallets/models.py:CreditGrant.source`)
-_Avoid_: `auto_topup`, the run-together spelling the column held until `wallets/0014` moved it — one
-concept, one spelling (ADR-0006 §2).
+_Avoid_: the run-together spelling the column held until `wallets/0014` moved it — one concept, one
+spelling (ADR-0006 §2). A top-up attempt's trigger, the wallet idempotency key's prefix, the outbox
+handler, the charge task, the SDK method and the `usage.recorded` field moved with it (`topups/0006`).
 
 **Consumption order**:
 The deterministic order lots are drawn down — soonest expiry first, promo before paid — with the

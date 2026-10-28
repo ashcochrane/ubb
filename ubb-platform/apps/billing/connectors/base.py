@@ -21,6 +21,6 @@ class PaymentConnector(Protocol):
         self, tenant_id: str, customer_id: str, balance_micros: int,
         suggested_topup_micros: int,
     ) -> None:
-        """Called when balance drops below auto-topup threshold.
+        """Called when balance drops below auto top-up threshold.
         Connector should initiate auto-charge if possible."""
         ...

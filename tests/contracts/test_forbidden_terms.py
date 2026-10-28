@@ -434,7 +434,10 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 300 -> 303 in R10-W4: the wallet's vocabulary lowercased, a usage
         # invoice's skip reason given its choices, and a selling rule's
         # method stated on every row.
-        "historical-migrations": (UNTIL_SLICE_8, 303, 19),
+        # 303 -> 306 in the owner's review of #620: the automatic top-up's
+        # one spelling (`topups/0006`) and two withheld statuses no longer
+        # offered (`tenant_billing/0016`, `referrals/0009`).
+        "historical-migrations": (UNTIL_SLICE_8, 306, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT

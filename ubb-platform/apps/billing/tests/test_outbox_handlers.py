@@ -402,7 +402,7 @@ class TestBillingOutboxHandler:
 
 
 class TestBillingHandlerEmitsWalletBalanceLow:
-    """After wallet deduction, if balance drops below auto-topup threshold,
+    """After wallet deduction, if balance drops below auto top-up threshold,
     emit a balance.low event instead of dispatching a Stripe task."""
 
     @pytest.mark.django_db
@@ -487,7 +487,7 @@ class TestBillingHandlerEmitsWalletBalanceLow:
         ).exists()
 
     @pytest.mark.django_db
-    def test_does_not_emit_when_no_auto_topup_config(self):
+    def test_does_not_emit_when_no_auto_top_up_config(self):
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(

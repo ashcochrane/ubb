@@ -111,7 +111,7 @@ def _op_registry(tenant, customer, wallet):
             repair=True, trigger_source=None), None),
         ("credit_top_up", lambda: wallet_ops.credit_top_up(
             customer_id=customer.id, tenant=tenant, amount_micros=5_000_000,
-            idempotency_key=f"auto_topup:{uuid.uuid4()}", source="auto_top_up",
+            idempotency_key=f"auto_top_up:{uuid.uuid4()}", source="auto_top_up",
             source_reference="att", description="Auto top-up"), 5_000_000),
         ("claw_back_dispute", lambda: wallet_ops.claw_back_dispute(
             customer_id=customer.id, tenant=tenant, amount_micros=1_000_000,
@@ -440,7 +440,7 @@ class TestReplays:
         t = _tenant()
         c = _customer(t)
         w = _wallet(c)
-        key = f"auto_topup:pi_{uuid.uuid4()}"
+        key = f"auto_top_up:pi_{uuid.uuid4()}"
         first = wallet_ops.credit_top_up(
             customer_id=c.id, tenant=t, amount_micros=5_000_000,
             idempotency_key=key, source="auto_top_up", source_reference="a1",

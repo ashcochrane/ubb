@@ -165,7 +165,7 @@ class CustomerBillingProfile(BaseModel):
     # values place it above zero). NULL = inherit the tenant default. Must
     # resolve to a line at or above the hard floor's (the resolver clamps).
     soft_min_balance_micros = models.BigIntegerField(null=True, blank=True)
-    # F4.3: when set, paid top-up credits (auto-topup + checkout) become a PAID
+    # F4.3: when set, paid top-up credits (auto top-up + checkout) become a PAID
     # grant expiring this many days after the credit lands. NULL = top-ups
     # never expire (legacy behavior, the default).
     topup_grant_expiry_days = models.PositiveIntegerField(null=True, blank=True)
@@ -179,8 +179,9 @@ class CustomerBillingProfile(BaseModel):
 
 # A credit grant's kind, status and source — the registry's closed
 # `grant_kind`, `grant_status` and `grant_source` (R10-W4), by reference.
-# The source spelled `auto_topup` until R10-W4; one concept has one spelling
-# (ADR-0006 §2), and `0014` moved the stored rows with the transaction types.
+# The source carried the run-together spelling until R10-W4; one concept has
+# one spelling (ADR-0006 §2), and `0014` moved the stored rows with the
+# transaction types.
 GRANT_KINDS = [(GRANT_KIND_PAID, "Paid"), (GRANT_KIND_PROMO, "Promo")]
 GRANT_STATUSES = [
     (GRANT_STATUS_ACTIVE, "Active"),

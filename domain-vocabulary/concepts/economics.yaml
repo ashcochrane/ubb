@@ -686,6 +686,33 @@ measurements_status:
     - surface: openapi
       path: openapi/v1.json
 
+markup_rung:
+  kind: closed
+  # DECLARED IN R10-W4 (the owner's review of #620). Until #558 this was a
+  # module constant, deliberately not a concept, because the receipt was
+  # published as an untyped record and nothing advertised the value to a
+  # consumer who could switch on it. #558 typed the receipt, so the value set
+  # reached the contract on `PricingReceiptProvenanceMarkup.rung` and takes one
+  # authority here — a one-value set is still a value set. ONE value: the
+  # customer-override and plan rungs named themselves here before #369 deleted
+  # the records they read, and only version-0/1 receipts on development
+  # databases carry those words, which are not product history (ruling 3).
+  # ADR-0006: the glossary's own words ("markup provenance … which rung
+  # supplied a percentage"); `rung` alone is the receipt's key, not the
+  # concept, and no other concept spends the name.
+  summary: >-
+    Which rung of the price ladder supplied a markup percentage, as a Pricing
+    Receipt's provenance names it: the tenant's own declared default markup,
+    the last rung, which prices what no rule in the books in play matched.
+  values:
+    - tenant_default
+  label_key_prefix: markup_rung
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/pricing/services/markup_service.py
+    - surface: openapi
+      path: openapi/v1.json
+
 pricing_receipt_subject_type:
   kind: closed
   summary: >-

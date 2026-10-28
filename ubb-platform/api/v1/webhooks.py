@@ -35,6 +35,9 @@ from apps.billing.connectors.stripe.invoice_routing import (  # noqa: F401
     livemode_filter,
     reject_for_mode,
 )
+from core.vocabulary import (
+    TENANT_INVOICE_STATUS_PAID,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -382,9 +385,9 @@ def handle_invoice_paid(event):
             tenant_invoice = TenantInvoice.objects.select_for_update().get(
                 id=tenant_invoice.id,
             )
-            if tenant_invoice.status == "paid":
+            if tenant_invoice.status == TENANT_INVOICE_STATUS_PAID:
                 return
-            tenant_invoice.status = "paid"
+            tenant_invoice.status = TENANT_INVOICE_STATUS_PAID
             tenant_invoice.paid_at = timezone.now()
             tenant_invoice.save(update_fields=["status", "paid_at", "updated_at"])
 

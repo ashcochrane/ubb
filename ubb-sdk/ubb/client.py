@@ -634,7 +634,7 @@ class UBBClient:
                               amount: int, enabled: bool = True) -> StatusResponse:
         """Configure auto top-up. Requires billing product."""
         billing = self._require_billing()
-        result = billing.configure_auto_topup(
+        result = billing.configure_auto_top_up(
             customer_id, is_enabled=enabled,
             trigger_threshold_micros=threshold,
             top_up_amount_micros=amount,

@@ -158,7 +158,7 @@ class UsageServiceCoreTest(TestCase):
     After decoupling, UsageService:
     - Records usage events
     - Writes outbox events
-    - Does NOT touch the wallet, suspend customers, or trigger auto-topup
+    - Does NOT touch the wallet, suspend customers, or trigger auto top-up
     - Always returns new_balance_micros=None, suspended=False
     """
     def setUp(self):
@@ -263,8 +263,8 @@ class UsageServiceCoreTest(TestCase):
         self.assertIsNone(result2["new_balance_micros"])
 
     @patch("apps.platform.events.tasks.process_single_event")
-    def test_auto_topup_not_triggered_by_metering(self, mock_process):
-        """Auto-topup is now billing's responsibility via outbox handler."""
+    def test_auto_top_up_not_triggered_by_metering(self, mock_process):
+        """Auto top-up is now billing's responsibility via outbox handler."""
         from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
 
         self.wallet.balance_micros = 0
@@ -283,7 +283,7 @@ class UsageServiceCoreTest(TestCase):
         )
         # No attempt created by metering -- billing handles this now
         attempt = TopUpAttempt.objects.filter(
-            customer=self.customer, trigger="auto_topup", status="pending"
+            customer=self.customer, trigger="auto_top_up", status="pending"
         ).first()
         self.assertIsNone(attempt)
 

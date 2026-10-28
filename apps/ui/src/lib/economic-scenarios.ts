@@ -746,7 +746,10 @@ export interface EconomicMeasureScenario {
   readonly measure: AnalyticsMeasure;
   readonly status: MeasureStatus;
   readonly amount_micros?: number | null;
-  readonly count?: number | null;
+  /** Present on every measure: the count measure's figure, null on a money
+   * one — required and nullable on the contract since the owner's review of
+   * #620, so a scenario cannot omit it either. */
+  readonly count: number | null;
   readonly unresolved_event_count?: number | null;
   readonly unpriced_event_count?: number | null;
   readonly available_from?: string | null;
@@ -795,18 +798,21 @@ function measuresFrom(
     {
       measure: "supplier_cogs",
       amount_micros: terms.cost.micros,
+      count: null,
       status: costStatus,
       unresolved_event_count: terms.cost.unresolved_event_count,
     },
     {
       measure: "customer_revenue",
       amount_micros: terms.revenue.micros,
+      count: null,
       status: revenueStatus,
       unpriced_event_count: terms.revenue.unpriced_event_count,
     },
     {
       measure: "gross_margin",
       amount_micros: noMargin ? null : terms.revenue.micros - terms.cost.micros,
+      count: null,
       status: marginStatus,
     },
     { measure: "recorded_events", count: terms.events, status: "known" },
@@ -1053,9 +1059,8 @@ export function measuresOutsideRetentionHorizon(
   return measures.map((measure) => ({
     measure,
     status: "unavailable_outside_retention_horizon",
-    ...(measure === "recorded_events"
-      ? { count: null }
-      : { amount_micros: null }),
+    count: null,
+    ...(measure === "recorded_events" ? {} : { amount_micros: null }),
     ...(measure === "supplier_cogs" ? { unresolved_event_count: null } : {}),
     ...(measure === "customer_revenue" ? { unpriced_event_count: null } : {}),
     available_from: availableFrom,
@@ -1078,7 +1083,7 @@ export function measureNotApplicable(
 ): EconomicMeasureScenario {
   return measure === "recorded_events"
     ? { measure, status: "not_applicable", count: null }
-    : { measure, status: "not_applicable", amount_micros: null };
+    : { measure, status: "not_applicable", amount_micros: null, count: null };
 }
 
 // ---------------------------------------------------------------------------

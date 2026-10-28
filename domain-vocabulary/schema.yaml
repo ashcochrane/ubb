@@ -76,6 +76,20 @@ concept_fields:
     # the Django-free contracts suite and the spec export must learn it from the
     # same place the backend does. Every value listed must be one of `values`,
     # and at least one value must remain.
+    #
+    # WHAT WITHHOLDING MEANS, AND WHAT IT IS NOT (the owner's review of #620),
+    # each held by `tests/contracts/test_end_state_vocabulary.py`:
+    #   * a withheld value is excluded from every enum the contract advertises;
+    #   * no ordinary writer can emit it — production code names its generated
+    #     constant only where a consumer filters it OUT;
+    #   * a value with a current legal production writer must not be withheld
+    #     — the first writer un-withholds it, in the same commit;
+    #   * it is never a compatibility alias — a retired spelling is a
+    #     `retired_aliases` entry, refused rather than kept answering;
+    #   * it is never a parking place for a planned value: each one is a
+    #     legitimate state with a recorded reachability proof beside it, and
+    #     the exact set is pinned with its reasons. The cutover audit action is
+    #     the temporary, W6-owned case; W6 removes it with its registration.
     - withheld_values
 
 # One entry per kind in ADR-0008 §2's table. `requires` and `forbids` are the

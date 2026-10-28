@@ -353,7 +353,9 @@ and calling the percentage a "margin", which names only the derived figure above
 **Markup provenance**:
 Which rung supplied a percentage and which record held it, recorded on the Pricing Receipt beside the
 percentage itself (#357). The percentage rides BY VALUE and the record only as a pointer, because a
-markup record can be edited or withdrawn and the receipt is what a tenant shows a customer.
+markup record can be edited or withdrawn and the receipt is what a tenant shows a customer. The rung
+is the registry's closed `markup_rung` — one value today, `tenant_default` — declared once #558
+published the receipt typed (the owner's review of #620).
 (`apps/metering/pricing/services/markup_service.py:ResolvedMarkup`)
 
 ## Pricing — the books, the rules and the ladder

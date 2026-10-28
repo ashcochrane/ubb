@@ -136,9 +136,9 @@ class WebhookDispatcherTest(TestCase):
         )
 
     @patch("api.v1.webhooks.stripe.Webhook.construct_event")
-    def test_checkout_completed_skips_expired_auto_topup_attempt(self, mock_construct):
+    def test_checkout_completed_skips_expired_auto_top_up_attempt(self, mock_construct):
         tenant, customer, wallet, attempt = self._create_checkout_fixtures(
-            attempt_status="expired", attempt_trigger="auto_topup",
+            attempt_status="expired", attempt_trigger="auto_top_up",
         )
         mock_event = self._make_checkout_event(tenant, customer, attempt, event_id="evt_expired_auto")
         mock_construct.return_value = mock_event

@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,582 of 3,057 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,584 of 3,062 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -3035,6 +3035,14 @@ measurement_key:
     # and its file carries the word no more. The two files that arrived are
     # swept: the console's rendering tests of a wallet movement's lowercase
     # type and of a usage invoice's null skip reason.
+    #
+    # 2026-10-28, R10-W4 (the owner's review of #620): 2,582 of 3,057 ->
+    # 2,584 of 3,062 tracked files (`units` UNMOVED). Five files arrived.
+    # Three are migrations excluded under `historical-migrations` (303 ->
+    # 306: `topups/0006`, `tenant_billing/0016`, `referrals/0009`). Two are
+    # swept: the SDK's generated model of the receipt's `markup_rung`, and
+    # the executor round trip of the top-up attempt's trigger. One test file
+    # was renamed in place, to the automatic top-up's one spelling.
 
     - term: units
       retired_as: >-

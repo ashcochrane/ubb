@@ -131,7 +131,7 @@ from .grouping_option_out_rollup_type_0 import GroupingOptionOutRollupType0
 from .grouping_options_out import GroupingOptionsOut
 from .inherited_pricing_rule import InheritedPricingRule
 from .inherited_pricing_rule_grouping_fields import InheritedPricingRuleGroupingFields
-from .inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
+from .inherited_pricing_rule_pricing_method import InheritedPricingRulePricingMethod
 from .inherited_pricing_rule_rate_structure import InheritedPricingRuleRateStructure
 from .inherited_rule_out import InheritedRuleOut
 from .integration_blueprint_agreed_price import IntegrationBlueprintAgreedPrice
@@ -245,6 +245,7 @@ from .pricing_receipt_pricing_status import PricingReceiptPricingStatus
 from .pricing_receipt_provenance import PricingReceiptProvenance
 from .pricing_receipt_provenance_cost_rate_ids_type_0 import PricingReceiptProvenanceCostRateIdsType0
 from .pricing_receipt_provenance_markup import PricingReceiptProvenanceMarkup
+from .pricing_receipt_provenance_markup_rung import PricingReceiptProvenanceMarkupRung
 from .pricing_receipt_provenance_price_rate_ids_type_0 import PricingReceiptProvenancePriceRateIdsType0
 from .pricing_receipt_subject_type import PricingReceiptSubjectType
 from .pricing_receipt_totals import PricingReceiptTotals
@@ -581,7 +582,7 @@ __all__ = (
     "GroupingOptionsOut",
     "InheritedPricingRule",
     "InheritedPricingRuleGroupingFields",
-    "InheritedPricingRulePricingMethodType0",
+    "InheritedPricingRulePricingMethod",
     "InheritedPricingRuleRateStructure",
     "InheritedRuleOut",
     "IntegrationBlueprintAgreedPrice",
@@ -695,6 +696,7 @@ __all__ = (
     "PricingReceiptProvenance",
     "PricingReceiptProvenanceCostRateIdsType0",
     "PricingReceiptProvenanceMarkup",
+    "PricingReceiptProvenanceMarkupRung",
     "PricingReceiptProvenancePriceRateIdsType0",
     "PricingReceiptSubjectType",
     "PricingReceiptTotals",

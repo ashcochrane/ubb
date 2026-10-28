@@ -1122,6 +1122,27 @@ The audit `resource_type` for the registry is `grouping_field_registry`.
 `kind`, and `invitation.created` and `member.activated` the `role`: each is now
 a required field.
 
+### The automatic top-up is spelled one way
+
+`BillingClient.configure_auto_topup` is now `configure_auto_top_up` (the
+wrapper `UBBClient.configure_auto_top_up` already was); the old name is gone,
+with no alias. The `usage.recorded` payload field is `auto_top_up_attempt_id`.
+
+### Each value says only what can be true
+
+- `InheritedPricingRule.pricing_method` is always set: the rule a customer is
+  priced from is a selling rule, which always states its method.
+- `RuleTermsOut.pricing_method` and `EconomicMeasureOut.count` are always
+  present. The method is null only on a cost book's rate, and `count` is null
+  on a money measure. Neither is ever omitted, and a null `count` never stands
+  in for zero.
+- A receipt's `provenance.markup.rung` is the enum `markup_rung` (one value
+  today, `tenant_default`).
+- `TenantInvoiceOut.status` no longer advertises `void` or `uncollectible`, and
+  a referral programme's `status` no longer advertises `paused`. Nothing
+  creates those states today; they return to the enum with the first writer
+  that does.
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

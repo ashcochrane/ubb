@@ -8,7 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-from ..models.inherited_pricing_rule_pricing_method_type_0 import InheritedPricingRulePricingMethodType0
+from ..models.inherited_pricing_rule_pricing_method import InheritedPricingRulePricingMethod
 from ..models.inherited_pricing_rule_rate_structure import InheritedPricingRuleRateStructure
 from ..types import UNSET, Unset
 from typing import cast
@@ -39,6 +39,7 @@ class InheritedPricingRule:
             event_type (str):
             fixed_micros (int):
             measurement_key (str):
+            pricing_method (InheritedPricingRulePricingMethod):
             provider (str):
             rate_per_unit_micros (int):
             rate_structure (InheritedPricingRuleRateStructure):
@@ -47,7 +48,6 @@ class InheritedPricingRule:
             task_type (str):
             unit_quantity (int):
             grouping_fields (InheritedPricingRuleGroupingFields | Unset):
-            pricing_method (InheritedPricingRulePricingMethodType0 | None | Unset):
      """
 
     book_id: str
@@ -55,6 +55,7 @@ class InheritedPricingRule:
     event_type: str
     fixed_micros: int
     measurement_key: str
+    pricing_method: InheritedPricingRulePricingMethod
     provider: str
     rate_per_unit_micros: int
     rate_structure: InheritedPricingRuleRateStructure
@@ -63,7 +64,6 @@ class InheritedPricingRule:
     task_type: str
     unit_quantity: int
     grouping_fields: InheritedPricingRuleGroupingFields | Unset = UNSET
-    pricing_method: InheritedPricingRulePricingMethodType0 | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -81,6 +81,8 @@ class InheritedPricingRule:
         fixed_micros = self.fixed_micros
 
         measurement_key = self.measurement_key
+
+        pricing_method = self.pricing_method.value
 
         provider = self.provider
 
@@ -100,14 +102,6 @@ class InheritedPricingRule:
         if not isinstance(self.grouping_fields, Unset):
             grouping_fields = self.grouping_fields.to_dict()
 
-        pricing_method: None | str | Unset
-        if isinstance(self.pricing_method, Unset):
-            pricing_method = UNSET
-        elif isinstance(self.pricing_method, InheritedPricingRulePricingMethodType0):
-            pricing_method = self.pricing_method.value
-        else:
-            pricing_method = self.pricing_method
-
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -117,6 +111,7 @@ class InheritedPricingRule:
             "event_type": event_type,
             "fixed_micros": fixed_micros,
             "measurement_key": measurement_key,
+            "pricing_method": pricing_method,
             "provider": provider,
             "rate_per_unit_micros": rate_per_unit_micros,
             "rate_structure": rate_structure,
@@ -127,8 +122,6 @@ class InheritedPricingRule:
         })
         if grouping_fields is not UNSET:
             field_dict["grouping_fields"] = grouping_fields
-        if pricing_method is not UNSET:
-            field_dict["pricing_method"] = pricing_method
 
         return field_dict
 
@@ -147,6 +140,11 @@ class InheritedPricingRule:
         fixed_micros = d.pop("fixed_micros")
 
         measurement_key = d.pop("measurement_key")
+
+        pricing_method = InheritedPricingRulePricingMethod(d.pop("pricing_method"))
+
+
+
 
         provider = d.pop("provider")
 
@@ -175,32 +173,13 @@ class InheritedPricingRule:
 
 
 
-        def _parse_pricing_method(data: object) -> InheritedPricingRulePricingMethodType0 | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, str):
-                    raise TypeError()
-                pricing_method_type_0 = InheritedPricingRulePricingMethodType0(data)
-
-
-
-                return pricing_method_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(InheritedPricingRulePricingMethodType0 | None | Unset, data)
-
-        pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
-
-
         inherited_pricing_rule = cls(
             book_id=book_id,
             currency=currency,
             event_type=event_type,
             fixed_micros=fixed_micros,
             measurement_key=measurement_key,
+            pricing_method=pricing_method,
             provider=provider,
             rate_per_unit_micros=rate_per_unit_micros,
             rate_structure=rate_structure,
@@ -209,7 +188,6 @@ class InheritedPricingRule:
             task_type=task_type,
             unit_quantity=unit_quantity,
             grouping_fields=grouping_fields,
-            pricing_method=pricing_method,
         )
 
 

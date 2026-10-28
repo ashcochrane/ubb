@@ -211,6 +211,7 @@
   "invitation_status.accepted": "Accepted",
   "invitation_status.pending": "Pending",
   "invitation_status.revoked": "Revoked",
+  "markup_rung.tenant_default": "Tenant default markup",
   "measure_status.incomplete": "Incomplete",
   "measure_status.known": "Known",
   "measure_status.not_applicable": "Not applicable",

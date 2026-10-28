@@ -32,14 +32,14 @@ class AutoTopUpServiceTest(TestCase):
             attempt = AutoTopUpService.create_pending_attempt(self.customer, self.wallet)
         self.assertIsNotNone(attempt)
         self.assertEqual(attempt.status, "pending")
-        self.assertEqual(attempt.trigger, "auto_topup")
+        self.assertEqual(attempt.trigger, "auto_top_up")
         self.assertEqual(attempt.amount_micros, 20_000_000)
 
     def test_returns_none_if_pending_exists(self):
         TopUpAttempt.objects.create(
             customer=self.customer,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
         with transaction.atomic():

@@ -9,6 +9,7 @@ from core.vocabulary import (
     REFERRAL_PROGRAM_STATUS_ACTIVE,
     REFERRAL_PROGRAM_STATUS_DEACTIVATED,
     REFERRAL_PROGRAM_STATUS_PAUSED,
+    REFERRAL_PROGRAM_STATUS_WITHHELD_VALUES,
     REFERRAL_STATUS_ACTIVE,
     REFERRAL_STATUS_EXPIRED,
     REFERRAL_STATUS_REVOKED,
@@ -26,10 +27,16 @@ REWARD_TYPE_CHOICES = [
     (REWARD_TYPE_PROFIT_SHARE, "Profit Share"),
 ]
 
+# The states a programme can reach TODAY. `paused` is declared but WITHHELD
+# (the owner's review of #620): nothing writes it (the registry entry records
+# the proof), so it is neither offered here nor advertised on the contract. A
+# pause route un-withholds it in the same commit.
 PROGRAM_STATUS_CHOICES = [
-    (REFERRAL_PROGRAM_STATUS_ACTIVE, "Active"),
-    (REFERRAL_PROGRAM_STATUS_PAUSED, "Paused"),
-    (REFERRAL_PROGRAM_STATUS_DEACTIVATED, "Deactivated"),
+    (value, label) for value, label in (
+        (REFERRAL_PROGRAM_STATUS_ACTIVE, "Active"),
+        (REFERRAL_PROGRAM_STATUS_PAUSED, "Paused"),
+        (REFERRAL_PROGRAM_STATUS_DEACTIVATED, "Deactivated"),
+    ) if value not in REFERRAL_PROGRAM_STATUS_WITHHELD_VALUES
 ]
 
 REFERRAL_STATUS_CHOICES = [

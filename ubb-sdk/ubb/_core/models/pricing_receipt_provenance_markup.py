@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.pricing_receipt_provenance_markup_rung import PricingReceiptProvenanceMarkupRung
 
 
 
@@ -24,11 +25,11 @@ class PricingReceiptProvenanceMarkup:
 
         Attributes:
             record_id (str):
-            rung (str):
+            rung (PricingReceiptProvenanceMarkupRung):
      """
 
     record_id: str
-    rung: str
+    rung: PricingReceiptProvenanceMarkupRung
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -38,7 +39,7 @@ class PricingReceiptProvenanceMarkup:
     def to_dict(self) -> dict[str, Any]:
         record_id = self.record_id
 
-        rung = self.rung
+        rung = self.rung.value
 
 
         field_dict: dict[str, Any] = {}
@@ -57,7 +58,10 @@ class PricingReceiptProvenanceMarkup:
         d = dict(src_dict)
         record_id = d.pop("record_id")
 
-        rung = d.pop("rung")
+        rung = PricingReceiptProvenanceMarkupRung(d.pop("rung"))
+
+
+
 
         pricing_receipt_provenance_markup = cls(
             record_id=record_id,

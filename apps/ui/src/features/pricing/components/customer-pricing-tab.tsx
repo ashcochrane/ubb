@@ -405,11 +405,10 @@ function fromInheritedRule(rule: InheritedPricingRule): RuleFormValues {
     task_type: rule.task_type,
     subtask_type: rule.subtask_type,
     grouping_fields: { ...(rule.grouping_fields ?? {}) },
-    // ⚠ THE METHOD IS PRESELECTED FROM THE RULE AND NOT DEFAULTED. A selling
-    // rule states its method since R10-W4 (ruling 4), so the copy is exact; the
-    // fallback answers only the published type's nullability, with the value a
-    // publish writes for a body that names none.
-    pricing_method: rule.pricing_method ?? "direct_event_price",
+    // ⚠ THE METHOD IS COPIED FROM THE RULE AND NEVER DEFAULTED. The inherited
+    // rule is a selling rule, which always states its method (R10-W4 ruling 4),
+    // and the contract publishes it as required and non-null.
+    pricing_method: rule.pricing_method,
     rate_structure: rule.rate_structure,
     rate: microsToUnitString(rule.rate_per_unit_micros),
     unit_choice: unitChoiceFor(rule.unit_quantity),

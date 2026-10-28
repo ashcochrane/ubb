@@ -1085,3 +1085,115 @@ def test_the_role_rank_is_the_registrys_order(registry):
 
     assert _backend_role_rank(ROLES_MODULE.read_text(encoding="utf-8"),
                               tokens) == declared
+
+
+# ---------------------------------------------------------------------------
+# What withholding means (the owner's review of #620)
+# ---------------------------------------------------------------------------
+
+#: EVERY WITHHELD VALUE IN THE REGISTRY, AND WHY — pinned, so that withholding
+#: stays a precise contract tool rather than a parking lot for planned
+#: vocabulary. A value is withheld only where it is a legitimate state that NO
+#: legal production transition can create today; the registry entry beside it
+#: records the reachability proof, and the first writer un-withholds it in the
+#: same commit. Adding a line here is a reviewed act with its reason.
+WITHHELD = {
+    ("audit_action", "system.preproduction_model_cutover"):
+        "temporary and W6-owned: the opening row is never written (#190 "
+        "6354381879); W6 deletes the registration and this exclusion together",
+    ("tenant_invoice_status", "void"):
+        "no writer: Stripe's invoice.voided never reaches a platform-fee "
+        "invoice, which lives on UBB's own account",
+    ("tenant_invoice_status", "uncollectible"):
+        "no writer: invoice.marked_uncollectible, on the same footing",
+    ("referral_program_status", "paused"):
+        "no writer: no route pauses a programme and the update body carries "
+        "no status",
+}
+
+#: Where a withheld value's generated constant may be named in production
+#: code, and why — the backend consumer that FILTERS it out of what it offers.
+#: Anywhere else, naming it is writing it.
+WITHHELD_NAMED_ONLY_IN = {
+    "ubb-platform/apps/billing/tenant_billing/models.py":
+        "the status choices, filtered through the withheld set",
+    "ubb-platform/apps/referrals/models.py":
+        "the programme status choices, filtered through the withheld set",
+}
+
+PRODUCTION = REPO_ROOT / "ubb-platform"
+
+
+def _registry_withheld(registry):
+    return {(name, value) for name, concept in registry.concepts.items()
+            for value in concept.withheld_values}
+
+
+def test_the_withheld_values_are_exactly_these_and_each_says_why(registry):
+    assert _registry_withheld(registry) == set(WITHHELD), (
+        "the registry withholds a different set from the one pinned here. "
+        "Withholding is for a legitimate value with NO legal production "
+        "writer today — never for a planned value — so a new one is added "
+        "here with its reachability proof, and a value that gained a writer "
+        "leaves both places in the same commit")
+    assert all(reason.strip() for reason in WITHHELD.values())
+
+
+def test_a_withheld_value_is_advertised_nowhere(registry):
+    """Excluded from every enum the contract publishes for its concept, on a
+    concept the contract does publish (so the absence is not vacuous)."""
+    document = json.loads((REPO_ROOT / "openapi" / "v1.json").read_text(
+        encoding="utf-8"))
+    enums = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "x-ubb-concept" in node and "enum" in node:
+                enums.setdefault(node["x-ubb-concept"], []).append(node["enum"])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+    walk(document)
+
+    for concept, value in sorted(WITHHELD):
+        assert enums.get(concept), f"`{concept}` is published nowhere"
+        for enum in enums[concept]:
+            assert value not in enum, (
+                f"`{concept}` advertises its withheld `{value}`")
+
+
+def test_no_production_writer_names_a_withheld_value(registry):
+    """Ordinary writers cannot emit one, and a value with a live writer cannot
+    be withheld: its generated constant is named only where it is filtered
+    OUT. A writer gaining it is what un-withholds the value."""
+    names = {f"{concept.upper()}_"
+             f"{re.sub(r'[^0-9A-Za-z]+', '_', value).upper()}": (concept, value)
+             for concept, value in WITHHELD}
+    pattern = re.compile(r"\b(" + "|".join(sorted(names)) + r")\b")
+    named = {}
+    for path in sorted(PRODUCTION.rglob("*.py")):
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        if ("/migrations/" in relative or "/tests/" in relative
+                or relative.endswith("core/vocabulary.py")):
+            continue
+        if pattern.search(path.read_text(encoding="utf-8")):
+            named[relative] = sorted(set(pattern.findall(
+                path.read_text(encoding="utf-8"))))
+    assert set(named) <= set(WITHHELD_NAMED_ONLY_IN), (
+        f"a production module names a withheld value outside the filters "
+        f"that withhold it: { {p: n for p, n in named.items() if p not in WITHHELD_NAMED_ONLY_IN} }")
+    assert named, "the scan found not even the filters — it is blind"
+
+
+def test_withholding_is_never_a_compatibility_alias(registry):
+    """A withheld value is a declared value of its own concept, never a
+    retired spelling kept answering for another: no withheld value is any
+    concept's retired alias, and none sits where a retired word would."""
+    retired = {alias for concept in registry.concepts.values()
+               for alias in concept.retired_aliases}
+    withheld = {value for _, value in _registry_withheld(registry)}
+    assert not withheld & retired
+    for concept, value in WITHHELD:
+        assert value in registry.concepts[concept].values

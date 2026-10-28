@@ -2790,7 +2790,7 @@
                 "type": "null"
               }
             ],
-            "description": "The count measure's figure: under `recorded_events`, how many metered usage events this row covers, never a Task Charge. Null on the three measures denominated in money, and wherever no figure can be stated.",
+            "description": "The count measure's figure: under `recorded_events`, how many metered usage events this row covers, never a Task Charge. Present on every measure; null on the three measures denominated in money, and wherever no figure can be stated \u2014 never a zero standing in.",
             "title": "Count"
           },
           "measure": {
@@ -2842,6 +2842,7 @@
         },
         "required": [
           "measure",
+          "count",
           "status"
         ],
         "title": "EconomicMeasureOut",
@@ -3725,20 +3726,13 @@
             "type": "string"
           },
           "pricing_method": {
-            "anyOf": [
-              {
-                "enum": [
-                  "margin_over_cost",
-                  "direct_event_price"
-                ],
-                "type": "string",
-                "x-ubb-concept": "pricing_method"
-              },
-              {
-                "type": "null"
-              }
+            "enum": [
+              "margin_over_cost",
+              "direct_event_price"
             ],
-            "title": "Pricing Method"
+            "title": "Pricing Method",
+            "type": "string",
+            "x-ubb-concept": "pricing_method"
           },
           "provider": {
             "title": "Provider",
@@ -3782,6 +3776,7 @@
           "event_type",
           "task_type",
           "subtask_type",
+          "pricing_method",
           "rate_structure",
           "rate_per_unit_micros",
           "unit_quantity",
@@ -6964,8 +6959,12 @@
             "type": "string"
           },
           "rung": {
+            "enum": [
+              "tenant_default"
+            ],
             "title": "Rung",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "markup_rung"
           }
         },
         "required": [
@@ -7234,7 +7233,6 @@
           "status": {
             "enum": [
               "active",
-              "paused",
               "deactivated"
             ],
             "title": "Status",
@@ -8920,6 +8918,7 @@
                 "type": "null"
               }
             ],
+            "description": "How the rule derives a customer price. Present on every row; null exactly where the rule is a cost book's rate, which derives no customer price. A Pricing Book rule always states one.",
             "title": "Pricing Method"
           },
           "rate_per_unit_micros": {
@@ -8944,6 +8943,7 @@
           "rate_per_unit_micros",
           "unit_quantity",
           "fixed_micros",
+          "pricing_method",
           "rate_structure"
         ],
         "title": "RuleTermsOut",
@@ -10864,9 +10864,7 @@
             "enum": [
               "draft",
               "finalized",
-              "paid",
-              "void",
-              "uncollectible"
+              "paid"
             ],
             "title": "Status",
             "type": "string",
@@ -25879,7 +25877,7 @@
                 "properties": {
                   "data": {
                     "properties": {
-                      "auto_topup_attempt_id": {
+                      "auto_top_up_attempt_id": {
                         "anyOf": [
                           {
                             "type": "string"
@@ -25889,7 +25887,7 @@
                           }
                         ],
                         "default": null,
-                        "title": "Auto Topup Attempt Id"
+                        "title": "Auto Top Up Attempt Id"
                       },
                       "billed_cost_micros": {
                         "anyOf": [

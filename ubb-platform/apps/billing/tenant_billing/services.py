@@ -10,6 +10,10 @@ from apps.platform.event_types.quarantine import refuse_a_silent_close
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.money import from_minor, to_minor
 from core.time_windows import utc_day_start
+from core.vocabulary import (
+    BILLING_PERIOD_STATUS_CLOSED,
+    BILLING_PERIOD_STATUS_OPEN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +111,7 @@ class TenantBillingService:
         billed_cost_micros = billed_cost_micros or 0
         events = 1 if counts_as_event else 0
         period = TenantBillingService.get_or_create_current_period(tenant)
-        rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
+        rows = TenantBillingPeriod.objects.filter(id=period.id, status=BILLING_PERIOD_STATUS_OPEN).update(
             total_billed_cost_micros=F("total_billed_cost_micros") + billed_cost_micros,
             recorded_events=F("recorded_events") + events,
         )
@@ -118,7 +122,7 @@ class TenantBillingService:
                 extra={"data": {"tenant_id": str(tenant.id), "period_id": str(period.id)}},
             )
             period = TenantBillingService.get_or_create_current_period(tenant)
-            rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
+            rows = TenantBillingPeriod.objects.filter(id=period.id, status=BILLING_PERIOD_STATUS_OPEN).update(
                 total_billed_cost_micros=F("total_billed_cost_micros") + billed_cost_micros,
                 recorded_events=F("recorded_events") + events,
             )
@@ -316,7 +320,7 @@ class TenantBillingService:
         # This read is unlocked and can be stale, which is safe in the only
         # direction that matters: a stale "closed" skips a close rather than
         # performing one, and the authority is still the locked check below.
-        if period.status != "open":
+        if period.status != BILLING_PERIOD_STATUS_OPEN:
             return
 
         refuse_a_silent_close(
@@ -334,7 +338,7 @@ class TenantBillingService:
 
         with transaction.atomic():
             period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
-            if period.status != "open":
+            if period.status != BILLING_PERIOD_STATUS_OPEN:
                 return
 
             fee_micros, line_items = TenantBillingService._calculate_fees(
@@ -342,7 +346,7 @@ class TenantBillingService:
             )
             fee_micros = TenantBillingService._bank_fee_carry(period, fee_micros)
 
-            period.status = "closed"
+            period.status = BILLING_PERIOD_STATUS_CLOSED
             period.platform_fee_micros = fee_micros
             period.save(update_fields=["status", "platform_fee_micros", "updated_at"])
 

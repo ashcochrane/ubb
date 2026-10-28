@@ -31,13 +31,13 @@ class ExpireStaleTopupAttemptsTest(TestCase):
         )
         return attempt
 
-    def test_expires_stale_auto_topup_attempts(self):
-        stale = self._create_attempt("auto_topup", minutes_ago=31)
-        # Use separate customer to avoid UniqueConstraint on pending auto_topup
+    def test_expires_stale_auto_top_up_attempts(self):
+        stale = self._create_attempt("auto_top_up", minutes_ago=31)
+        # Use separate customer to avoid UniqueConstraint on pending auto_top_up
         customer2 = Customer.objects.create(
             tenant=self.tenant, external_id="c2"
         )
-        fresh = self._create_attempt("auto_topup", minutes_ago=10, customer=customer2)
+        fresh = self._create_attempt("auto_top_up", minutes_ago=10, customer=customer2)
 
         expire_stale_topup_attempts()
 
@@ -58,7 +58,7 @@ class ExpireStaleTopupAttemptsTest(TestCase):
         self.assertEqual(fresh.status, "pending")
 
     def test_does_not_expire_already_succeeded(self):
-        attempt = self._create_attempt("auto_topup", minutes_ago=60)
+        attempt = self._create_attempt("auto_top_up", minutes_ago=60)
         TopUpAttempt.objects.filter(pk=attempt.pk).update(status="succeeded")
 
         expire_stale_topup_attempts()

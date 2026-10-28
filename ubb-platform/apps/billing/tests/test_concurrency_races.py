@@ -116,7 +116,7 @@ class ConcurrentTopUpCreditRace(RailActivated, TransactionTestCase):
             customer=customer,
             billing_owner_id=customer.id,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
 
@@ -152,7 +152,7 @@ class ConcurrentTopUpCreditRace(RailActivated, TransactionTestCase):
         self.assertEqual(
             WalletTransaction.objects.filter(
                 wallet=wallet,
-                idempotency_key=f"auto_topup:{pi_id}",
+                idempotency_key=f"auto_top_up:{pi_id}",
             ).count(),
             1,
             "expected exactly one WalletTransaction for the top-up credit",

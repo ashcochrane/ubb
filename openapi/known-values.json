@@ -482,6 +482,15 @@
       "kind": "free_text",
       "representation": "none"
     },
+    "markup_rung": {
+      "advertised": true,
+      "backend_serves": "1 of 1 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "tenant_default"
+      ]
+    },
     "measure_status": {
       "advertised": true,
       "backend_serves": "5 of 5 values",
@@ -703,7 +712,6 @@
       "representation": "enum",
       "values": [
         "active",
-        "paused",
         "deactivated"
       ]
     },
@@ -882,9 +890,7 @@
       "values": [
         "draft",
         "finalized",
-        "paid",
-        "void",
-        "uncollectible"
+        "paid"
       ]
     },
     "tenant_posture": {

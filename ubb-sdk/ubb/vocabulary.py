@@ -1119,6 +1119,23 @@ INVITATION_STATUS_VALUES = frozenset({
 # generator lost.
 
 
+# --- markup_rung -------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Which rung of the price ladder supplied a markup percentage, as a Pricing
+# Receipt's provenance names it: the tenant's own declared default markup, the
+# last rung, which prices what no rule in the books in play matched.
+#
+# Declared in concepts/economics.yaml.
+
+MARKUP_RUNG_TENANT_DEFAULT = 'tenant_default'
+
+MARKUP_RUNG_VALUES = frozenset({
+    MARKUP_RUNG_TENANT_DEFAULT,
+})
+
+
 # --- measure_status ----------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
@@ -1687,6 +1704,10 @@ REFERRAL_PROGRAM_STATUS_VALUES = frozenset({
     REFERRAL_PROGRAM_STATUS_DEACTIVATED,
 })
 
+REFERRAL_PROGRAM_STATUS_WITHHELD_VALUES = frozenset({
+    REFERRAL_PROGRAM_STATUS_PAUSED,
+})
+
 
 # --- referral_status ---------------------------------------------------------
 #
@@ -2108,6 +2129,11 @@ TENANT_INVOICE_STATUS_VALUES = frozenset({
     TENANT_INVOICE_STATUS_DRAFT,
     TENANT_INVOICE_STATUS_FINALIZED,
     TENANT_INVOICE_STATUS_PAID,
+    TENANT_INVOICE_STATUS_VOID,
+    TENANT_INVOICE_STATUS_UNCOLLECTIBLE,
+})
+
+TENANT_INVOICE_STATUS_WITHHELD_VALUES = frozenset({
     TENANT_INVOICE_STATUS_VOID,
     TENANT_INVOICE_STATUS_UNCOLLECTIBLE,
 })
