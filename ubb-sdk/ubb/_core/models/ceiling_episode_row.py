@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 from ..models.ceiling_episode_row_ceiling_basis import CeilingEpisodeRowCeilingBasis
 from ..models.ceiling_episode_row_control_family import CeilingEpisodeRowControlFamily
+from ..models.ceiling_episode_row_stop_scope import CeilingEpisodeRowStopScope
 from ..types import UNSET, Unset
 from typing import cast
 from uuid import UUID
@@ -48,7 +49,7 @@ class CeilingEpisodeRow:
                 can never read complete while its own events read partial.
             opened_at (datetime.datetime):
             reason_code (str):
-            stop_scope (str):
+            stop_scope (CeilingEpisodeRowStopScope):
             task_cogs_ceiling_micros (int):
             task_id (UUID):
             task_type (str):
@@ -67,7 +68,7 @@ class CeilingEpisodeRow:
     itemised: ItemisedEventsOut
     opened_at: datetime.datetime
     reason_code: str
-    stop_scope: str
+    stop_scope: CeilingEpisodeRowStopScope
     task_cogs_ceiling_micros: int
     task_id: UUID
     task_type: str
@@ -100,7 +101,7 @@ class CeilingEpisodeRow:
 
         reason_code = self.reason_code
 
-        stop_scope = self.stop_scope
+        stop_scope = self.stop_scope.value
 
         task_cogs_ceiling_micros = self.task_cogs_ceiling_micros
 
@@ -207,7 +208,10 @@ class CeilingEpisodeRow:
 
         reason_code = d.pop("reason_code")
 
-        stop_scope = d.pop("stop_scope")
+        stop_scope = CeilingEpisodeRowStopScope(d.pop("stop_scope"))
+
+
+
 
         task_cogs_ceiling_micros = d.pop("task_cogs_ceiling_micros")
 

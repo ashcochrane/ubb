@@ -31,6 +31,43 @@
  * of its concept, at the moment a value is added to the registry.
  */
 
+// --- actor_kind -------------------------------------------------------------
+//
+// open — UBB records the values it knows; consumers accept future and external
+// ones. Checking is asymmetric — a registry-known value missing from a
+// UBB-owned consumer is a defect, a runtime value the registry has never seen
+// is legal.
+//
+// Who performed an audited act or a recorded publish: a team member, an API
+// key, a UBB operator (recorded as staff, never as which staffer), an end
+// customer through the widget, or the system where no principal resolved.
+//
+// Declared in concepts/governance.yaml.
+
+export const ACTOR_KIND_KNOWN_VALUES = [
+  "member",
+  "api_key",
+  "operator",
+  "end_customer",
+  "system",
+] as const;
+
+export type ActorKindKnown = (typeof ACTOR_KIND_KNOWN_VALUES)[number];
+
+// An `open` concept: a value UBB has never seen is legal (ADR-0003), so the
+// type admits any string. The intersection is what stops TypeScript collapsing
+// the union to `string` and losing the known values a reader is offered.
+export type ActorKind = ActorKindKnown | (string & {});
+
+export const ACTOR_KIND_LABEL_KEYS = {
+  "member": "actor_kind.member",
+  "api_key": "actor_kind.api_key",
+  "operator": "actor_kind.operator",
+  "end_customer": "actor_kind.end_customer",
+  "system": "actor_kind.system",
+} as const satisfies Record<ActorKindKnown, string>;
+
+
 // --- affordability_reason ---------------------------------------------------
 //
 // open — UBB records the values it knows; consumers accept future and external
@@ -214,14 +251,6 @@ export const AUDIT_ACTION_VALUES = [
   "usage.refunded",
   "grant.created",
   "grant.voided",
-  "pricing_book.created",
-  "pricing_book.assigned",
-  "pricing_book.published",
-  "cost_rate.added",
-  "cost_rate.deleted",
-  "pricing_rule.added",
-  "pricing_rule.deleted",
-  "customer_pricing_override.set",
   "tenant_default_markup.declared",
   "tenant_default_markup.withdrawn",
   "pricing_book_publish.declared",
@@ -297,14 +326,6 @@ export const AUDIT_ACTION_LABEL_KEYS = {
   "usage.refunded": "audit_action.usage.refunded",
   "grant.created": "audit_action.grant.created",
   "grant.voided": "audit_action.grant.voided",
-  "pricing_book.created": "audit_action.pricing_book.created",
-  "pricing_book.assigned": "audit_action.pricing_book.assigned",
-  "pricing_book.published": "audit_action.pricing_book.published",
-  "cost_rate.added": "audit_action.cost_rate.added",
-  "cost_rate.deleted": "audit_action.cost_rate.deleted",
-  "pricing_rule.added": "audit_action.pricing_rule.added",
-  "pricing_rule.deleted": "audit_action.pricing_rule.deleted",
-  "customer_pricing_override.set": "audit_action.customer_pricing_override.set",
   "tenant_default_markup.declared": "audit_action.tenant_default_markup.declared",
   "tenant_default_markup.withdrawn": "audit_action.tenant_default_markup.withdrawn",
   "pricing_book_publish.declared": "audit_action.pricing_book_publish.declared",
@@ -355,6 +376,121 @@ export const AUDIT_ACTION_LABEL_KEYS = {
 } as const satisfies Record<AuditAction, string>;
 
 
+// --- audit_resource_type ----------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Which kind of record an audited action changed, beside its id, so a
+// governance reader can find every act on one record. Exactly the resource
+// types UBB writes: one per record the tenant's governance surface can change.
+// The noun is the record's, which is why an action and its resource type need
+// not share a word (a Pricing Book's publish is recorded on the publish
+// record).
+//
+// Declared in concepts/governance.yaml.
+
+export const AUDIT_RESOURCE_TYPE_VALUES = [
+  "api_key",
+  "sandbox",
+  "tenant",
+  "connect",
+  "wallet",
+  "auto_top_up",
+  "grant",
+  "customer_spend_pool",
+  "billing_profile",
+  "postpaid_config",
+  "plan",
+  "customer",
+  "subscription",
+  "margin_threshold",
+  "tenant_supplied_revenue",
+  "tenant_default_markup",
+  "pricing_book",
+  "cost_book",
+  "pricing_book_publish",
+  "resolution_run",
+  "grouping_field_registry",
+  "task_type_registry",
+  "provider",
+  "event_category",
+  "event_type",
+  "measurement",
+  "reported_cost_mapping",
+  "invitation",
+  "member",
+  "referral_program",
+  "referrer",
+  "referral",
+  "webhook_config",
+] as const;
+
+export type AuditResourceType = (typeof AUDIT_RESOURCE_TYPE_VALUES)[number];
+
+export const AUDIT_RESOURCE_TYPE_LABEL_KEYS = {
+  "api_key": "audit_resource_type.api_key",
+  "sandbox": "audit_resource_type.sandbox",
+  "tenant": "audit_resource_type.tenant",
+  "connect": "audit_resource_type.connect",
+  "wallet": "audit_resource_type.wallet",
+  "auto_top_up": "audit_resource_type.auto_top_up",
+  "grant": "audit_resource_type.grant",
+  "customer_spend_pool": "audit_resource_type.customer_spend_pool",
+  "billing_profile": "audit_resource_type.billing_profile",
+  "postpaid_config": "audit_resource_type.postpaid_config",
+  "plan": "audit_resource_type.plan",
+  "customer": "audit_resource_type.customer",
+  "subscription": "audit_resource_type.subscription",
+  "margin_threshold": "audit_resource_type.margin_threshold",
+  "tenant_supplied_revenue": "audit_resource_type.tenant_supplied_revenue",
+  "tenant_default_markup": "audit_resource_type.tenant_default_markup",
+  "pricing_book": "audit_resource_type.pricing_book",
+  "cost_book": "audit_resource_type.cost_book",
+  "pricing_book_publish": "audit_resource_type.pricing_book_publish",
+  "resolution_run": "audit_resource_type.resolution_run",
+  "grouping_field_registry": "audit_resource_type.grouping_field_registry",
+  "task_type_registry": "audit_resource_type.task_type_registry",
+  "provider": "audit_resource_type.provider",
+  "event_category": "audit_resource_type.event_category",
+  "event_type": "audit_resource_type.event_type",
+  "measurement": "audit_resource_type.measurement",
+  "reported_cost_mapping": "audit_resource_type.reported_cost_mapping",
+  "invitation": "audit_resource_type.invitation",
+  "member": "audit_resource_type.member",
+  "referral_program": "audit_resource_type.referral_program",
+  "referrer": "audit_resource_type.referrer",
+  "referral": "audit_resource_type.referral",
+  "webhook_config": "audit_resource_type.webhook_config",
+} as const satisfies Record<AuditResourceType, string>;
+
+
+// --- billing_period_status --------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where one calendar month of a tenant's usage on UBB's own books stands: open
+// while it takes usage, closed once, then invoicing and invoiced as the
+// platform fee is billed.
+//
+// Declared in concepts/billing.yaml.
+
+export const BILLING_PERIOD_STATUS_VALUES = [
+  "open",
+  "closed",
+  "invoicing",
+  "invoiced",
+] as const;
+
+export type BillingPeriodStatus = (typeof BILLING_PERIOD_STATUS_VALUES)[number];
+
+export const BILLING_PERIOD_STATUS_LABEL_KEYS = {
+  "open": "billing_period_status.open",
+  "closed": "billing_period_status.closed",
+  "invoicing": "billing_period_status.invoicing",
+  "invoiced": "billing_period_status.invoiced",
+} as const satisfies Record<BillingPeriodStatus, string>;
+
+
 // --- binding_class ----------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
@@ -383,6 +519,32 @@ export const BINDING_CLASS_LABEL_KEYS = {
   "runtime_bound": "binding_class.runtime_bound",
   "secret_reference": "binding_class.secret_reference",
 } as const satisfies Record<BindingClass, string>;
+
+
+// --- calculation_method -----------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// How one reward-ledger entry's amount was derived (ADR-0006 §3: a method says
+// how an amount is derived): from the referred customer's actual supplier
+// cost, from an estimated cost where the actual one was not known, or as a
+// flat fee.
+//
+// Declared in concepts/referrals.yaml.
+
+export const CALCULATION_METHOD_VALUES = [
+  "actual_cost",
+  "estimated_cost",
+  "flat_fee",
+] as const;
+
+export type CalculationMethod = (typeof CALCULATION_METHOD_VALUES)[number];
+
+export const CALCULATION_METHOD_LABEL_KEYS = {
+  "actual_cost": "calculation_method.actual_cost",
+  "estimated_cost": "calculation_method.estimated_cost",
+  "flat_fee": "calculation_method.flat_fee",
+} as const satisfies Record<CalculationMethod, string>;
 
 
 // --- ceiling_basis ----------------------------------------------------------
@@ -762,6 +924,31 @@ export const DIAGNOSTIC_SEVERITY_LABEL_KEYS = {
 } as const satisfies Record<DiagnosticSeverity, string>;
 
 
+// --- enforcement_mode -------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// The tenant's one switch for real-time spend control: off, where no signal is
+// raised and no counter is kept, or enforcing, where the whole signal suite
+// and its state changes run. A mode in ADR-0006 §3's sense — which operating
+// regime applies — and a different concept from a customer spend pool's own
+// enforce mode.
+//
+// Declared in concepts/spend-controls.yaml.
+
+export const ENFORCEMENT_MODE_VALUES = [
+  "off",
+  "enforcing",
+] as const;
+
+export type EnforcementMode = (typeof ENFORCEMENT_MODE_VALUES)[number];
+
+export const ENFORCEMENT_MODE_LABEL_KEYS = {
+  "off": "enforcement_mode.off",
+  "enforcing": "enforcement_mode.enforcing",
+} as const satisfies Record<EnforcementMode, string>;
+
+
 // --- event_type_key ---------------------------------------------------------
 //
 // tenant_defined — The tenant owns the values. UBB defines the field and its
@@ -797,6 +984,81 @@ export const DIAGNOSTIC_SEVERITY_LABEL_KEYS = {
 // No constants: this kind declares no values by construction. The section is
 // here so that fact is visible, rather than looking like a concept the
 // generator lost.
+
+
+// --- grant_kind -------------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Whether a credit grant (a lot on the wallet) is paid — money from a top-up,
+// withdrawable — or promo, never withdrawable and consumed first.
+//
+// Declared in concepts/billing.yaml.
+
+export const GRANT_KIND_VALUES = [
+  "paid",
+  "promo",
+] as const;
+
+export type GrantKind = (typeof GRANT_KIND_VALUES)[number];
+
+export const GRANT_KIND_LABEL_KEYS = {
+  "paid": "grant_kind.paid",
+  "promo": "grant_kind.promo",
+} as const satisfies Record<GrantKind, string>;
+
+
+// --- grant_source -----------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where a credit grant came from: a checkout top-up, an automatic top-up, a
+// grant made through the API, or anything else.
+//
+// Declared in concepts/billing.yaml.
+
+export const GRANT_SOURCE_VALUES = [
+  "checkout",
+  "auto_top_up",
+  "api",
+  "other",
+] as const;
+
+export type GrantSource = (typeof GRANT_SOURCE_VALUES)[number];
+
+export const GRANT_SOURCE_LABEL_KEYS = {
+  "checkout": "grant_source.checkout",
+  "auto_top_up": "grant_source.auto_top_up",
+  "api": "grant_source.api",
+  "other": "grant_source.other",
+} as const satisfies Record<GrantSource, string>;
+
+
+// --- grant_status -----------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where a credit grant stands: active while it has a remaining balance,
+// depleted once drawn to nothing, expired once its expiry passed, voided when
+// withdrawn by hand or clawed back.
+//
+// Declared in concepts/billing.yaml.
+
+export const GRANT_STATUS_VALUES = [
+  "active",
+  "depleted",
+  "expired",
+  "voided",
+] as const;
+
+export type GrantStatus = (typeof GRANT_STATUS_VALUES)[number];
+
+export const GRANT_STATUS_LABEL_KEYS = {
+  "active": "grant_status.active",
+  "depleted": "grant_status.depleted",
+  "expired": "grant_status.expired",
+  "voided": "grant_status.voided",
+} as const satisfies Record<GrantStatus, string>;
 
 
 // --- grouping_field_scope ---------------------------------------------------
@@ -844,6 +1106,34 @@ export const GROUPING_FIELD_SCOPE_LABEL_KEYS = {
 // No constants: this kind declares no values by construction. The section is
 // here so that fact is visible, rather than looking like a concept the
 // generator lost.
+
+
+// --- grouping_field_value_status --------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// What an economic row says about its value on each grouping axis, one entry
+// per axis: recorded, where the value beside it is the axis's value;
+// not_recorded, where these events could have carried one and did not; or
+// not_applicable, where this kind of row never carries one (a Task Charge
+// names no supplier and no Event Type). Both absences leave the axis without a
+// value, and they read differently on purpose: only the first has a remedy.
+//
+// Declared in concepts/economics.yaml.
+
+export const GROUPING_FIELD_VALUE_STATUS_VALUES = [
+  "recorded",
+  "not_recorded",
+  "not_applicable",
+] as const;
+
+export type GroupingFieldValueStatus = (typeof GROUPING_FIELD_VALUE_STATUS_VALUES)[number];
+
+export const GROUPING_FIELD_VALUE_STATUS_LABEL_KEYS = {
+  "recorded": "grouping_field_value_status.recorded",
+  "not_recorded": "grouping_field_value_status.not_recorded",
+  "not_applicable": "grouping_field_value_status.not_applicable",
+} as const satisfies Record<GroupingFieldValueStatus, string>;
 
 
 // --- idempotency_key --------------------------------------------------------
@@ -899,6 +1189,30 @@ export const INTEGRATION_READINESS_LABEL_KEYS = {
   "blocked": "integration_readiness.blocked",
   "complete": "integration_readiness.complete",
 } as const satisfies Record<IntegrationReadiness, string>;
+
+
+// --- invitation_status ------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where an invitation by email stands: pending until the invitee activates the
+// seat it created (accepted) or an admin cancels it first (revoked).
+//
+// Declared in concepts/team.yaml.
+
+export const INVITATION_STATUS_VALUES = [
+  "pending",
+  "accepted",
+  "revoked",
+] as const;
+
+export type InvitationStatus = (typeof INVITATION_STATUS_VALUES)[number];
+
+export const INVITATION_STATUS_LABEL_KEYS = {
+  "pending": "invitation_status.pending",
+  "accepted": "invitation_status.accepted",
+  "revoked": "invitation_status.revoked",
+} as const satisfies Record<InvitationStatus, string>;
 
 
 // --- live_counter_maintenance_enabled ---------------------------------------
@@ -1068,6 +1382,29 @@ export const MEASUREMENTS_STATUS_LABEL_KEYS = {
   "pruned": "measurements_status.pruned",
   "not_applicable": "measurements_status.not_applicable",
 } as const satisfies Record<MeasurementsStatus, string>;
+
+
+// --- member_status ----------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where a team member's seat stands: pending until the invitee's first
+// verified login activates it, active after. Removing a member deletes the
+// seat rather than moving it to a third state.
+//
+// Declared in concepts/team.yaml.
+
+export const MEMBER_STATUS_VALUES = [
+  "pending",
+  "active",
+] as const;
+
+export type MemberStatus = (typeof MEMBER_STATUS_VALUES)[number];
+
+export const MEMBER_STATUS_LABEL_KEYS = {
+  "pending": "member_status.pending",
+  "active": "member_status.active",
+} as const satisfies Record<MemberStatus, string>;
 
 
 // --- metadata_key -----------------------------------------------------------
@@ -1525,6 +1862,55 @@ export const RECOGNITION_METHOD_LABEL_KEYS = {
 } as const satisfies Record<RecognitionMethod, string>;
 
 
+// --- referral_program_status ------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where a tenant's referral programme stands: active, paused or deactivated. A
+// different record from a referral, so a different concept even where a word
+// coincides.
+//
+// Declared in concepts/referrals.yaml.
+
+export const REFERRAL_PROGRAM_STATUS_VALUES = [
+  "active",
+  "paused",
+  "deactivated",
+] as const;
+
+export type ReferralProgramStatus = (typeof REFERRAL_PROGRAM_STATUS_VALUES)[number];
+
+export const REFERRAL_PROGRAM_STATUS_LABEL_KEYS = {
+  "active": "referral_program_status.active",
+  "paused": "referral_program_status.paused",
+  "deactivated": "referral_program_status.deactivated",
+} as const satisfies Record<ReferralProgramStatus, string>;
+
+
+// --- referral_status --------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where one referral stands: active while its reward window is open, expired
+// once it closes, revoked when the tenant withdraws it.
+//
+// Declared in concepts/referrals.yaml.
+
+export const REFERRAL_STATUS_VALUES = [
+  "active",
+  "expired",
+  "revoked",
+] as const;
+
+export type ReferralStatus = (typeof REFERRAL_STATUS_VALUES)[number];
+
+export const REFERRAL_STATUS_LABEL_KEYS = {
+  "active": "referral_status.active",
+  "expired": "referral_status.expired",
+  "revoked": "referral_status.revoked",
+} as const satisfies Record<ReferralStatus, string>;
+
+
 // --- reserved_grouping_axis -------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
@@ -1612,6 +1998,92 @@ export const REVENUE_BASIS_LABEL_KEYS = {
   "recorded": "revenue_basis.recorded",
   "recognised": "revenue_basis.recognised",
 } as const satisfies Record<RevenueBasis, string>;
+
+
+// --- reward_type ------------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Which reward scheme a referral programme runs: a flat fee per referral, a
+// share of the referred customer's revenue, or a share of the profit on it.
+// Snapshotted onto each referral when it is attributed, so a later change to
+// the programme does not rewrite what an earlier referral earns.
+//
+// Declared in concepts/referrals.yaml.
+
+export const REWARD_TYPE_VALUES = [
+  "flat_fee",
+  "revenue_share",
+  "profit_share",
+] as const;
+
+export type RewardType = (typeof REWARD_TYPE_VALUES)[number];
+
+export const REWARD_TYPE_LABEL_KEYS = {
+  "flat_fee": "reward_type.flat_fee",
+  "revenue_share": "reward_type.revenue_share",
+  "profit_share": "reward_type.profit_share",
+} as const satisfies Record<RewardType, string>;
+
+
+// --- role -------------------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// A tenant principal's authority — admin, write or read. Carried by both a
+// Member and a tenant API key, and compared as a floor (admin ≥ write ≥ read)
+// by every route that binds one. No owner tier and no fourth role (#62).
+// Closed: a principal holding any other value meets no floor.
+//
+// Declared in concepts/team.yaml.
+
+export const ROLE_VALUES = [
+  "read",
+  "write",
+  "admin",
+] as const;
+
+export type Role = (typeof ROLE_VALUES)[number];
+
+export const ROLE_LABEL_KEYS = {
+  "read": "role.read",
+  "write": "role.write",
+  "admin": "role.admin",
+} as const satisfies Record<Role, string>;
+
+
+// --- skip_reason ------------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Why a usage invoice was skipped rather than pushed. Two are terminal truths
+// about the period — nothing was recorded (no_usage), or what was recorded
+// priced at exactly nothing (nothing_to_bill) — one says a newer seat
+// superseded it, and three are recoverable: the customer has no Stripe
+// customer yet, the tenant's account cannot take charges yet, or the payment
+// rail is closed. Present only on a skipped invoice; null on every other one.
+//
+// Declared in concepts/billing.yaml.
+
+export const SKIP_REASON_VALUES = [
+  "no_usage",
+  "nothing_to_bill",
+  "seat_superseded",
+  "no_stripe_customer",
+  "not_charge_ready",
+  "payment_rail_closed",
+] as const;
+
+export type SkipReason = (typeof SKIP_REASON_VALUES)[number];
+
+export const SKIP_REASON_LABEL_KEYS = {
+  "no_usage": "skip_reason.no_usage",
+  "nothing_to_bill": "skip_reason.nothing_to_bill",
+  "seat_superseded": "skip_reason.seat_superseded",
+  "no_stripe_customer": "skip_reason.no_stripe_customer",
+  "not_charge_ready": "skip_reason.not_charge_ready",
+  "payment_rail_closed": "skip_reason.payment_rail_closed",
+} as const satisfies Record<SkipReason, string>;
 
 
 // --- source_kind ------------------------------------------------------------
@@ -1752,6 +2224,32 @@ export const STOP_BEHAVIOR_LABEL_KEYS = {
 } as const satisfies Record<StopBehavior, string>;
 
 
+// --- stop_scope -------------------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// What a stop applies to: the Task the work runs under, the Subtask itself, or
+// the whole customer. Read off the stopped row's altitude, never off which
+// control fired (slice 6 §7), so a parent's ceiling crossing is the Task's
+// scope and a contained unit's own crossing is the Subtask's.
+//
+// Declared in concepts/spend-controls.yaml.
+
+export const STOP_SCOPE_VALUES = [
+  "task",
+  "subtask",
+  "customer",
+] as const;
+
+export type StopScope = (typeof STOP_SCOPE_VALUES)[number];
+
+export const STOP_SCOPE_LABEL_KEYS = {
+  "task": "stop_scope.task",
+  "subtask": "stop_scope.subtask",
+  "customer": "stop_scope.customer",
+} as const satisfies Record<StopScope, string>;
+
+
 // --- task_outcome -----------------------------------------------------------
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
@@ -1853,6 +2351,35 @@ export const TASK_TYPE_KIND_LABEL_KEYS = {
   "task": "task_type_kind.task",
   "subtask": "task_type_kind.subtask",
 } as const satisfies Record<TaskTypeKind, string>;
+
+
+// --- tenant_invoice_status --------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where UBB's own platform-fee invoice to a tenant stands: draft, finalized,
+// paid, void or uncollectible. A different record from a customer's usage
+// invoice, so a different concept.
+//
+// Declared in concepts/billing.yaml.
+
+export const TENANT_INVOICE_STATUS_VALUES = [
+  "draft",
+  "finalized",
+  "paid",
+  "void",
+  "uncollectible",
+] as const;
+
+export type TenantInvoiceStatus = (typeof TENANT_INVOICE_STATUS_VALUES)[number];
+
+export const TENANT_INVOICE_STATUS_LABEL_KEYS = {
+  "draft": "tenant_invoice_status.draft",
+  "finalized": "tenant_invoice_status.finalized",
+  "paid": "tenant_invoice_status.paid",
+  "void": "tenant_invoice_status.void",
+  "uncollectible": "tenant_invoice_status.uncollectible",
+} as const satisfies Record<TenantInvoiceStatus, string>;
 
 
 // --- tenant_posture ---------------------------------------------------------
@@ -2059,6 +2586,82 @@ export const USAGE_EVENT_KIND_LABEL_KEYS = {
   "metered_usage": "usage_event_kind.metered_usage",
   "task_charge": "usage_event_kind.task_charge",
 } as const satisfies Record<UsageEventKind, string>;
+
+
+// --- usage_invoice_status ---------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// Where a postpaid customer's monthly usage invoice stands in its push to
+// Stripe: pending, pushing, pushed; skipped when there is nothing it may or
+// need push (the skip reason says which); failed while retries remain, and
+// failed permanently once they are exhausted.
+//
+// Declared in concepts/billing.yaml.
+
+export const USAGE_INVOICE_STATUS_VALUES = [
+  "pending",
+  "pushing",
+  "pushed",
+  "skipped",
+  "failed",
+  "failed_permanent",
+] as const;
+
+export type UsageInvoiceStatus = (typeof USAGE_INVOICE_STATUS_VALUES)[number];
+
+export const USAGE_INVOICE_STATUS_LABEL_KEYS = {
+  "pending": "usage_invoice_status.pending",
+  "pushing": "usage_invoice_status.pushing",
+  "pushed": "usage_invoice_status.pushed",
+  "skipped": "usage_invoice_status.skipped",
+  "failed": "usage_invoice_status.failed",
+  "failed_permanent": "usage_invoice_status.failed_permanent",
+} as const satisfies Record<UsageInvoiceStatus, string>;
+
+
+// --- wallet_transaction_type ------------------------------------------------
+//
+// closed — UBB owns the whole value set — exactly these values, no more.
+//
+// What one movement on a customer's wallet ledger was: money in (a top-up, a
+// credit grant, an adjustment), money out (a usage deduction, a debit, a
+// withdrawal, a grant's expiry or void), or money returned or reclaimed (a
+// refund, a Stripe refund, a dispute deduction). Closed: every movement is
+// written by UBB's wallet operations, and the ledger column holds exactly
+// these.
+//
+// Declared in concepts/billing.yaml.
+
+export const WALLET_TRANSACTION_TYPE_VALUES = [
+  "top_up",
+  "usage_deduction",
+  "withdrawal",
+  "refund",
+  "adjustment",
+  "dispute_deduction",
+  "stripe_refund",
+  "debit",
+  "grant",
+  "grant_expiry",
+  "grant_void",
+] as const;
+
+export type WalletTransactionType = (typeof WALLET_TRANSACTION_TYPE_VALUES)[number];
+
+export const WALLET_TRANSACTION_TYPE_LABEL_KEYS = {
+  "top_up": "wallet_transaction_type.top_up",
+  "usage_deduction": "wallet_transaction_type.usage_deduction",
+  "withdrawal": "wallet_transaction_type.withdrawal",
+  "refund": "wallet_transaction_type.refund",
+  "adjustment": "wallet_transaction_type.adjustment",
+  "dispute_deduction": "wallet_transaction_type.dispute_deduction",
+  "stripe_refund": "wallet_transaction_type.stripe_refund",
+  "debit": "wallet_transaction_type.debit",
+  "grant": "wallet_transaction_type.grant",
+  "grant_expiry": "wallet_transaction_type.grant_expiry",
+  "grant_void": "wallet_transaction_type.grant_void",
+} as const satisfies Record<WalletTransactionType, string>;
 
 
 // --- webhook_event_type -----------------------------------------------------

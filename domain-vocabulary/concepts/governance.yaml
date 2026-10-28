@@ -47,17 +47,15 @@ audit_action:
     - usage.refunded
     - grant.created
     - grant.voided
-    # The catalogue of what things cost and what they sell for. The single
-    # entity that once held both is split across the COGS boundary, so the two
-    # sides are recorded separately rather than under one word.
-    - pricing_book.created
-    - pricing_book.assigned
-    - pricing_book.published
-    - cost_rate.added
-    - cost_rate.deleted
-    - pricing_rule.added
-    - pricing_rule.deleted
-    - customer_pricing_override.set
+    # ⚠ EIGHT REGISTRATIONS THAT NOTHING EVER WROTE WERE HERE AND ARE DELETED
+    # (R10-W4, #154 §4.2's catalogue half, ruled 2026-10-27). They were the
+    # ratified spellings of acts on records that were split or deleted before
+    # any route wrote them — the old book's create/assign/publish, a cost
+    # rate's add/delete, a pricing rule's add/delete, and the number once set
+    # on a customer's row of the deleted markup record. None is a rename of a
+    # live action (each block below says so of its own successors), so none
+    # becomes a retired alias: an alias is added only where one concept
+    # carries on under a new spelling. No audit row ever held one.
     # The tenant's default markup rung — the last rung of the price ladder,
     # and what prices an event no rule matched. Declaring it and withdrawing
     # it are two acts under the same rule the satellites below follow: a
@@ -106,13 +104,12 @@ audit_action:
     # and it would put a governance reader asking when a tenant withdrew a
     # PRICING book back to reading `resource_type`.
     #
-    # ⚠ NOT RENAMES OF `pricing_book.created` / `.assigned` / `.published`
-    # ABOVE, which are the ratified spellings of three acts that CEASE with
-    # the entity rather than carry forward: the container is replaced, the
-    # record that assigned one to a customer is deleted, and what is published
-    # is the publish record beside them. Those three stay declared until the
-    # cutover reconciles this registry with the live set; these four are what
-    # the routes actually write.
+    # ⚠ NOT RENAMES OF THE OLD BOOK'S THREE ACTS — created, assigned and
+    # published — which ceased with the entity rather than carrying forward:
+    # the container is replaced, the record that assigned one to a customer is
+    # deleted, and what is published is the publish record beside them. Those
+    # three were deleted from this registry in R10-W4, never written; these
+    # four are what the routes actually write.
     - pricing_book.declared
     - pricing_book.withdrawn
     - cost_book.declared
@@ -125,12 +122,11 @@ audit_action:
     # follow: a governance reader asking when a customer stopped having their
     # own price must not have to read metadata to find out.
     #
-    # NEITHER IS A RENAME OF `customer_pricing_override.set` ABOVE, which is
-    # the end-state spelling of a NUMBER written onto the per-customer row of
-    # the markup record slice 4 deletes. An override is not a number inside a
+    # NEITHER IS A RENAME OF THE OLD `.set` SPELLING (deleted in R10-W4, never
+    # written), which named a NUMBER written onto the per-customer row of the
+    # markup record slice 4 deleted. An override is not a number inside a
     # rule; it is a whole rule, declared through a publish. Two acts on two
-    # records, so two names, and the two sets are live at once until that
-    # record is deleted.
+    # records, so two names.
     - customer_pricing_override.declared
     - customer_pricing_override.withdrawn
     # Executing a Resolution Run — the one recovery mechanism, and the only
@@ -208,9 +204,19 @@ audit_action:
     - webhook_config.updated
     - webhook_config.deleted
     - webhook_config.secret_rotated
-    # The one entry that opens the production ledger, written at the cutover.
-    # It is registered here rather than invented there because it is an action
-    # like any other, and the ledger refuses names it does not know.
+    # The entry that was to open the production ledger at the cutover. Ruled
+    # 2026-10-23 (#190 comment 6354381879): NO opening row is ever written,
+    # because nothing was deployed and no tenant audit trail is being cut
+    # over. The registration stays until W6 retires it with the reset, and
+    # until then it is WITHHELD below: declared, never recordable, never
+    # advertised.
+    - system.preproduction_model_cutover
+  # A closed public concept advertises only values that can occur (R10-W4,
+  # §0.4 C). `record()` refuses a withheld action and the published
+  # `AuditRecordOut.action` enum leaves it out; both read this one list, by way
+  # of the generated `AUDIT_ACTION_WITHHELD_VALUES`. W6 deletes the value above
+  # and this exclusion together.
+  withheld_values:
     - system.preproduction_model_cutover
   label_key_prefix: audit_action
   retired_aliases:
@@ -242,3 +248,93 @@ audit_action:
       path: ubb-platform/apps/platform/audit/actions.py
     - surface: openapi
       path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/lib/audit-vocabulary.ts
+
+audit_resource_type:
+  kind: closed
+  # DECLARED IN R10-W4 (slice 8, ruling 6). Every writer passed a literal, and
+  # one passed a variable, so the set the ledger could hold was whatever the
+  # code happened to spell; the console humanised it
+  # (`g6-humanises-audit-log-page`). Now `record()` refuses a resource type
+  # this concept does not declare, and every writer names one by reference.
+  summary: >-
+    Which kind of record an audited action changed, beside its id, so a
+    governance reader can find every act on one record. Exactly the resource
+    types UBB writes: one per record the tenant's governance surface can
+    change. The noun is the record's, which is why an action and its
+    resource type need not share a word (a Pricing Book's publish is
+    recorded on the publish record).
+  values:
+    - api_key
+    - sandbox
+    - tenant
+    - connect
+    - wallet
+    - auto_top_up
+    - grant
+    - customer_spend_pool
+    - billing_profile
+    - postpaid_config
+    - plan
+    - customer
+    - subscription
+    - margin_threshold
+    - tenant_supplied_revenue
+    - tenant_default_markup
+    - pricing_book
+    - cost_book
+    - pricing_book_publish
+    - resolution_run
+    - grouping_field_registry
+    - task_type_registry
+    - provider
+    - event_category
+    - event_type
+    - measurement
+    - reported_cost_mapping
+    - invitation
+    - member
+    - referral_program
+    - referrer
+    - referral
+    - webhook_config
+  label_key_prefix: audit_resource_type
+  retired_aliases:
+    # The Grouping Field registry was recorded under the retired grouping
+    # word until #541 (R10-W4, ruling 2). Same record, new spelling.
+    - dimension_registry
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/audit/actions.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/lib/audit-vocabulary.ts
+
+actor_kind:
+  kind: open
+  # DECLARED IN R10-W4 (slice 8). ADR-004 §4 made it open from day one: the
+  # feed and its clients must tolerate it growing, so a value outside these
+  # five is legal and renders as the token it is
+  # (`components/shared/open-set-value.tsx`), never humanised.
+  summary: >-
+    Who performed an audited act or a recorded publish: a team member, an
+    API key, a UBB operator (recorded as staff, never as which staffer), an
+    end customer through the widget, or the system where no principal
+    resolved.
+  known_values:
+    - member
+    - api_key
+    - operator
+    - end_customer
+    - system
+  allow_unknown: true
+  label_key_prefix: actor_kind
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/audit/actors.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/lib/audit-vocabulary.ts

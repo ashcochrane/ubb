@@ -78,7 +78,11 @@ from apps.platform.work.services import (
     KindOfWorkDeclaration, RegimeChangeRefused)
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.problems import Problem, ProblemOut
-from core.vocabulary import TASK_TYPE_KIND_VALUES
+from core.vocabulary import (
+    AUDIT_ACTION_TASK_TYPE_DECLARED,
+    AUDIT_RESOURCE_TYPE_TASK_TYPE_REGISTRY,
+    TASK_TYPE_KIND_VALUES,
+)
 
 task_type_router = Router(auth=ApiKeyAuth())
 
@@ -106,7 +110,7 @@ def _standing(tenant, requested):
                       response={200: TaskTypeRegistryOut, 409: ProblemOut,
                                 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("task_type.declared")
+@records_audit(AUDIT_ACTION_TASK_TYPE_DECLARED)
 def declare_task_types(request, payload: TaskTypeRegistryIn):
     """Declare the kinds of work you meter, and the policy each one carries.
 
@@ -252,9 +256,9 @@ def declare_kinds(tenant, payload):
         # would then be wrong about the other three. What each item did is in
         # the metadata, per item, which is where a reader can act on it.
         audit_record(
-            action="task_type.declared",
+            action=AUDIT_ACTION_TASK_TYPE_DECLARED,
             tenant_id=tenant.id,
-            resource_type="task_type_registry",
+            resource_type=AUDIT_RESOURCE_TYPE_TASK_TYPE_REGISTRY,
             resource_id=tenant.id,
             metadata={"task_types": recorded},
         )

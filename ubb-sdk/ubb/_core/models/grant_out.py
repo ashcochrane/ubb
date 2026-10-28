@@ -8,6 +8,9 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.grant_out_kind import GrantOutKind
+from ..models.grant_out_source import GrantOutSource
+from ..models.grant_out_status import GrantOutStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -29,10 +32,10 @@ class GrantOut:
             expired_micros (int):
             granted_micros (int):
             id (str):
-            kind (str):
+            kind (GrantOutKind):
             remaining_micros (int):
-            source (str):
-            status (str):
+            source (GrantOutSource):
+            status (GrantOutStatus):
             voided_micros (int):
             balance_micros (int | None | Unset):
             expires_at (None | str | Unset):
@@ -45,10 +48,10 @@ class GrantOut:
     expired_micros: int
     granted_micros: int
     id: str
-    kind: str
+    kind: GrantOutKind
     remaining_micros: int
-    source: str
-    status: str
+    source: GrantOutSource
+    status: GrantOutStatus
     voided_micros: int
     balance_micros: int | None | Unset = UNSET
     expires_at: None | str | Unset = UNSET
@@ -71,13 +74,13 @@ class GrantOut:
 
         id = self.id
 
-        kind = self.kind
+        kind = self.kind.value
 
         remaining_micros = self.remaining_micros
 
-        source = self.source
+        source = self.source.value
 
-        status = self.status
+        status = self.status.value
 
         voided_micros = self.voided_micros
 
@@ -146,13 +149,22 @@ class GrantOut:
 
         id = d.pop("id")
 
-        kind = d.pop("kind")
+        kind = GrantOutKind(d.pop("kind"))
+
+
+
 
         remaining_micros = d.pop("remaining_micros")
 
-        source = d.pop("source")
+        source = GrantOutSource(d.pop("source"))
 
-        status = d.pop("status")
+
+
+
+        status = GrantOutStatus(d.pop("status"))
+
+
+
 
         voided_micros = d.pop("voided_micros")
 

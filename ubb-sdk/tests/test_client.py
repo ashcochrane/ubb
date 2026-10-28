@@ -24,6 +24,7 @@ from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 from ubb._core.models.withdraw_response import WithdrawResponse
 from ubb._core.models.balance_response import BalanceResponse
+from tests._receipt import A_RECEIPT
 
 
 class UBBClientTest(unittest.TestCase):
@@ -65,7 +66,7 @@ class UBBClientTest(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_1", "new_balance_micros": 8500000, "suspended": False,
-                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             }
         )
@@ -144,7 +145,7 @@ class UBBClientTest(unittest.TestCase):
             data=[from_wire(UsageEventOut, {
                 "id": "00000000-0000-0000-0000-0000000000e1",
                 "kind": "metered_usage",
-                "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"})],
             next_cursor="cur_abc", has_more=True,
         )

@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.wallet_transaction_out_transaction_type import WalletTransactionOutTransactionType
 from uuid import UUID
 
 
@@ -29,7 +30,7 @@ class WalletTransactionOut:
             description (str):
             id (UUID):
             reference_id (str):
-            transaction_type (str):
+            transaction_type (WalletTransactionOutTransactionType):
      """
 
     amount_micros: int
@@ -38,7 +39,7 @@ class WalletTransactionOut:
     description: str
     id: UUID
     reference_id: str
-    transaction_type: str
+    transaction_type: WalletTransactionOutTransactionType
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -58,7 +59,7 @@ class WalletTransactionOut:
 
         reference_id = self.reference_id
 
-        transaction_type = self.transaction_type
+        transaction_type = self.transaction_type.value
 
 
         field_dict: dict[str, Any] = {}
@@ -95,7 +96,10 @@ class WalletTransactionOut:
 
         reference_id = d.pop("reference_id")
 
-        transaction_type = d.pop("transaction_type")
+        transaction_type = WalletTransactionOutTransactionType(d.pop("transaction_type"))
+
+
+
 
         wallet_transaction_out = cls(
             amount_micros=amount_micros,

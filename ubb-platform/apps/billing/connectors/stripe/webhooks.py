@@ -19,6 +19,7 @@ from apps.billing.stripe.services.stripe_service import api_key_for_tenant
 from core.locking import lock_customer
 from core.currency_policy import the_rails_currency
 from core.money import from_minor
+from core.vocabulary import GRANT_SOURCE_CHECKOUT
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ def handle_checkout_completed(event):
             customer_id=owner.id, tenant=customer.tenant,
             amount_micros=amount_micros,
             idempotency_key=f"topup:{session.id}",
-            source="checkout",
+            source=GRANT_SOURCE_CHECKOUT,
             source_reference=str(attempt.id) if attempt else session.id,
             description="Stripe top-up",
             reference_id=str(attempt.id) if attempt else "")

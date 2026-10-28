@@ -6,6 +6,9 @@ from ninja import Router, Schema
 
 from api.v1.pagination import Paginated, page
 from api.v1.schemas import (
+    InvitationStatus,
+    MemberStatus,
+    Role,
     TenantBillingPeriodListResponse,
     TenantConfigIn,
     TenantConfigOut,
@@ -22,6 +25,20 @@ from apps.platform.membership import services as membership_services
 from apps.platform.membership.models import Invitation, Member
 from apps.platform.membership.roles import ADMIN, READ
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from core.vocabulary import (
+    AUDIT_ACTION_API_KEY_CREATED,
+    AUDIT_ACTION_API_KEY_REVOKED,
+    AUDIT_ACTION_API_KEY_ROTATED,
+    AUDIT_ACTION_INVITATION_CREATED,
+    AUDIT_ACTION_INVITATION_REVOKED,
+    AUDIT_ACTION_MEMBER_REMOVED,
+    AUDIT_ACTION_MEMBER_ROLE_CHANGED,
+    AUDIT_ACTION_SANDBOX_CREATED,
+    AUDIT_ACTION_TENANT_CONFIG_CHANGED,
+    AUDIT_RESOURCE_TYPE_API_KEY,
+    AUDIT_RESOURCE_TYPE_SANDBOX,
+    AUDIT_RESOURCE_TYPE_TENANT,
+)
 
 #: THE TENANT'S NULLABLE KERNEL RUNGS THIS ROUTE WRITES, each with what its
 #: null means: the two default COGS ceilings for work with no declared kind,
@@ -112,7 +129,7 @@ def list_api_keys(request, cursor: str = None, limit: int = 50):
 
 @tenant_router.post("/api-keys", response={201: dict, 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("api_key.created")
+@records_audit(AUDIT_ACTION_API_KEY_CREATED)
 def create_api_key(request, payload: ApiKeyCreateIn):
     """Mint a new API key. The RAW key is returned exactly once, here.
 
@@ -141,9 +158,9 @@ def create_api_key(request, payload: ApiKeyCreateIn):
             # even when a test key routes onto its sandbox sibling. Curated
             # metadata only — never the raw key or its hash (no secret snapshots).
             audit_record(
-                action="api_key.created",
+                action=AUDIT_ACTION_API_KEY_CREATED,
                 tenant_id=request.auth.tenant.id,
-                resource_type="api_key",
+                resource_type=AUDIT_RESOURCE_TYPE_API_KEY,
                 resource_id=key_obj.id,
                 metadata={
                     "label": key_obj.label,
@@ -165,7 +182,7 @@ def create_api_key(request, payload: ApiKeyCreateIn):
 
 @tenant_router.post("/api-keys/{key_id}/rotate", response={200: dict, 404: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("api_key.rotated")
+@records_audit(AUDIT_ACTION_API_KEY_ROTATED)
 def rotate_api_key(request, key_id: UUID):
     """Replace a key in one transaction: mint successor, deactivate old.
 
@@ -195,8 +212,8 @@ def rotate_api_key(request, key_id: UUID):
         # Audit the rotation in the same transaction (ADR-004). Curated
         # metadata only — never a raw key or its hash.
         audit_record(
-            action="api_key.rotated", tenant_id=tenant.id,
-            resource_type="api_key", resource_id=new_obj.id,
+            action=AUDIT_ACTION_API_KEY_ROTATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_API_KEY, resource_id=new_obj.id,
             metadata={"old_api_key_id": str(old.id),
                       "new_api_key_id": str(new_obj.id),
                       "key_prefix": new_obj.key_prefix, "label": new_obj.label})
@@ -211,7 +228,7 @@ def rotate_api_key(request, key_id: UUID):
 
 @tenant_router.delete("/api-keys/{key_id}", response={200: dict, 404: ProblemOut, 409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("api_key.revoked")
+@records_audit(AUDIT_ACTION_API_KEY_REVOKED)
 def revoke_api_key(request, key_id: UUID):
     """Soft-revoke a key (is_active=False). Idempotent on an inactive key.
 
@@ -245,8 +262,8 @@ def revoke_api_key(request, key_id: UUID):
             # Audit only the real revoke — an idempotent revoke of an already
             # inactive key never reaches here, so the feed shows one entry.
             audit_record(
-                action="api_key.revoked", tenant_id=tenant.id,
-                resource_type="api_key", resource_id=key.id,
+                action=AUDIT_ACTION_API_KEY_REVOKED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_API_KEY, resource_id=key.id,
                 metadata={"key_prefix": key.key_prefix, "label": key.label})
     return 200, {"id": str(key.id), "is_active": False}
 
@@ -264,14 +281,14 @@ def revoke_api_key(request, key_id: UUID):
 
 class InvitationCreateIn(Schema):
     email: str
-    role: str
+    role: Role
 
 
 class InvitationOut(Schema):
     id: str
     email: str
-    role: str
-    status: str
+    role: Role
+    status: InvitationStatus
     created_at: str
 
 
@@ -282,8 +299,8 @@ class InvitationListResponse(Paginated[InvitationOut]):
 class MemberOut(Schema):
     id: str
     email: str
-    role: str
-    status: str
+    role: Role
+    status: MemberStatus
     # Empty until the member activates on first Clerk login.
     clerk_user_id: str = ""
     activated_at: Optional[str] = None
@@ -295,7 +312,7 @@ class MemberListResponse(Paginated[MemberOut]):
 
 
 class MemberRoleUpdateIn(Schema):
-    role: str
+    role: Role
 
 
 def _invitation_out(inv):
@@ -325,7 +342,7 @@ def _member_out(m):
     response={201: InvitationOut, 403: ProblemOut, 409: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
-@records_audit("invitation.created")
+@records_audit(AUDIT_ACTION_INVITATION_CREATED)
 def create_invitation(request, payload: InvitationCreateIn):
     """Invite a teammate by email with a role (Admin only).
 
@@ -358,7 +375,7 @@ def list_invitations(request, cursor: str = None, limit: int = 50):
     response={200: dict, 403: ProblemOut, 404: ProblemOut, 409: ProblemOut},
 )
 @role_floor(ADMIN)
-@records_audit("invitation.revoked")
+@records_audit(AUDIT_ACTION_INVITATION_REVOKED)
 def revoke_invitation(request, invitation_id: UUID):
     """Revoke a still-pending invitation (Admin only). Idempotent on an
     already-revoked invite; 409 if it was already accepted (removing an active
@@ -383,7 +400,7 @@ def list_members(request, cursor: str = None, limit: int = 50):
               409: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
-@records_audit("member.role_changed")
+@records_audit(AUDIT_ACTION_MEMBER_ROLE_CHANGED)
 def update_member_role(request, member_id: UUID, payload: MemberRoleUpdateIn):
     """Change a member's role (Admin only). 404 if unknown; 422 on an unknown
     role; 409 when the change would demote the tenant's last active Admin (the
@@ -398,7 +415,7 @@ def update_member_role(request, member_id: UUID, payload: MemberRoleUpdateIn):
     response={200: dict, 403: ProblemOut, 404: ProblemOut, 409: ProblemOut},
 )
 @role_floor(ADMIN)
-@records_audit("member.removed")
+@records_audit(AUDIT_ACTION_MEMBER_REMOVED)
 def remove_member(request, member_id: UUID):
     """Remove a member (Admin only). 404 if unknown; 409 when removing the
     tenant's last active Admin (the last-Admin guard). The removed principal
@@ -412,7 +429,7 @@ def remove_member(request, member_id: UUID):
 
 @tenant_router.post("/sandbox", response={200: dict, 403: ProblemOut, 409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("sandbox.created")
+@records_audit(AUDIT_ACTION_SANDBOX_CREATED)
 def create_sandbox(request):
     """Provision (or fetch) the sandbox sibling and mint a ubb_test_ API key.
 
@@ -434,8 +451,8 @@ def create_sandbox(request):
         # Audit the provisioning on the LIVE tenant the principal administers —
         # the sandbox sibling is the resource. The minted key is never captured.
         audit_record(
-            action="sandbox.created", tenant_id=tenant.id,
-            resource_type="sandbox", resource_id=sandbox.id,
+            action=AUDIT_ACTION_SANDBOX_CREATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_SANDBOX, resource_id=sandbox.id,
             metadata={"sandbox_tenant_id": str(sandbox.id),
                       "key_prefix": _key_obj.key_prefix})
     return 200, {
@@ -498,7 +515,7 @@ def get_tenant_config(request):
 
 @tenant_router.patch("/config", response={200: TenantConfigOut, 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("tenant.config_changed")
+@records_audit(AUDIT_ACTION_TENANT_CONFIG_CHANGED)
 def update_tenant_config(request, payload: TenantConfigIn):
     from django.core.exceptions import ValidationError
     from apps.platform.tenants.models import PaymentRailNotActivated
@@ -674,8 +691,8 @@ def update_tenant_config(request, payload: TenantConfigIn):
     # still records — a no-field call is itself a (benign) principal action.
     changed = sorted(payload.model_fields_set)
     audit_record(
-        action="tenant.config_changed", tenant_id=t.id,
-        resource_type="tenant", resource_id=t.id,
+        action=AUDIT_ACTION_TENANT_CONFIG_CHANGED, tenant_id=t.id,
+        resource_type=AUDIT_RESOURCE_TYPE_TENANT, resource_id=t.id,
         metadata={"changed_fields": changed,
                   "changes": {f: getattr(payload, f) for f in changed}})
     return 200, _config_out(t)

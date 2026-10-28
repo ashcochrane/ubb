@@ -225,7 +225,7 @@ class TestPin12PairExactlyOnce:
         _drain(t, c, 1_000_000)   # -3M -> -4M: still landing, still billing
         w = Wallet.objects.get(customer=c)
         assert w.balance_micros == -4_000_000
-        assert w.transactions.filter(transaction_type="USAGE_DEDUCTION").count() == 2
+        assert w.transactions.filter(transaction_type="usage_deduction").count() == 2
         # The edge already crossed — no re-fire, no second episode.
         assert _crossed().count() == 1
 

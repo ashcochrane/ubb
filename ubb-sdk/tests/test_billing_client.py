@@ -238,7 +238,7 @@ class BillingClientTest(unittest.TestCase):
             "data": [
                 {
                     "id": "6f0f2a4e-3f09-4bb5-8f2e-2a1c07f13a90",
-                    "transaction_type": "DEBIT", "amount_micros": -100000,
+                    "transaction_type": "debit", "amount_micros": -100000,
                     "balance_after_micros": 9_900_000, "description": "Usage debit",
                     "reference_id": "evt_1", "created_at": "2025-01-01T00:00:00Z",
                 },

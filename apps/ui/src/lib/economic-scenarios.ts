@@ -109,6 +109,7 @@ import {
   type PricingStatusReason,
   type ReasonCode,
   type SpendPoolEnforceMode,
+  type StopScope,
   type TriggerSource,
   type UnresolvedReason,
 } from "@/lib/vocabulary";
@@ -574,7 +575,7 @@ export function ceilingAssessment(
  */
 export interface StopScenario {
   readonly stop: true;
-  readonly stop_scope: string;
+  readonly stop_scope: StopScope;
   readonly stop_reason: ReasonCode;
   readonly trigger_source: TriggerSource | null;
   readonly stop_bound_micros: ExactMicros | null;

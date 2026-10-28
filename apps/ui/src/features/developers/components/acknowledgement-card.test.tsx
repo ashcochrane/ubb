@@ -59,6 +59,21 @@ import { verificationFromText } from "../api/exact-figures";
 import type { VerifiedAcknowledgement } from "../api/types";
 import { AcknowledgementCard, REPLAY_TASK_TOTALS } from "./acknowledgement-card";
 
+/** A version-2 Pricing Receipt, the only shape the contract publishes (#558). */
+const A_RECEIPT: VerifiedAcknowledgement["pricing_receipt"] = {
+  receipt_schema_version: 2,
+  pricing_engine_version: "3.0.0",
+  subject_type: "usage_event",
+  subject_id: "b1c2d3e4-5f60-4718-a92b-3c4d5e6f7081",
+  effective_at: "2026-07-09T12:14:07Z",
+  currency: "usd",
+  costing: { method: "calculated", status: "known", detail: {} },
+  pricing: { method: "direct_event_price", status: "known",
+             detail: { pricing_mode: "event_priced" } },
+  totals: { provider_cost_micros: 61_000, billed_cost_micros: 1 },
+  provenance: {},
+};
+
 /**
  * One recorded response, with its price composed and everything else ordinary.
  *
@@ -74,7 +89,7 @@ function responseWith(price: CustomerPriceScenario): VerifiedAcknowledgement {
     new_balance_micros: 4_000_000,
     measurements: { input_tokens: "900" },
     uncosted_measurement_keys: [],
-    pricing_receipt: {},
+    pricing_receipt: A_RECEIPT,
     stop: false,
     stop_reason: null,
     stop_scope: null,
@@ -237,10 +252,10 @@ describe("AcknowledgementCard — the task totals", () => {
 
 describe("AcknowledgementCard — the Pricing Receipt", () => {
   it("carries the receipt as returned", () => {
-    renderCard({ ...responseWith(knownPrice(1)), pricing_receipt: { receipt_schema_version: 1 } });
+    renderCard({ ...responseWith(knownPrice(1)), pricing_receipt: A_RECEIPT });
 
     expect(screen.getByText("Pricing Receipt")).toBeInTheDocument();
-    expect(document.body.textContent).toContain('"receipt_schema_version": 1');
+    expect(document.body.textContent).toContain('"receipt_schema_version": 2');
   });
 });
 

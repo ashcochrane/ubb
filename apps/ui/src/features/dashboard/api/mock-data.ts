@@ -50,7 +50,10 @@ import {
   EVERY_MEASURE,
   MONEY_MEASURES,
 } from "@/lib/economic-query";
-import type { AnalyticsMeasure } from "@/lib/vocabulary";
+import type {
+  AnalyticsMeasure,
+  GroupingFieldValueStatus,
+} from "@/lib/vocabulary";
 
 import type {
   ApiKeyList,
@@ -98,7 +101,7 @@ function economicRow({
   asked = EVERY_MEASURE,
 }: {
   values?: (string | null)[];
-  statuses?: string[];
+  statuses?: GroupingFieldValueStatus[];
   bucket?: string | null;
   measures: EconomicMeasureScenario[];
   asked?: readonly AnalyticsMeasure[];
@@ -107,7 +110,10 @@ function economicRow({
     bucket_start: bucket,
     grouping_field_value: values,
     grouping_field_value_status:
-      statuses.length ? statuses : values.map((v) => (v === null ? "not_recorded" : "recorded")),
+      statuses.length
+        ? statuses
+        : values.map((v): GroupingFieldValueStatus =>
+            v === null ? "not_recorded" : "recorded"),
     measures: measures.filter((entry) => asked.includes(entry.measure)),
   };
 }

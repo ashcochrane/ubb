@@ -34,7 +34,7 @@ def _make_grant(wallet, tenant, *, kind, amount, expires_at=None, source="api",
         w, _c = lock_for_billing(wallet.customer_id)
         new_balance = w.balance_micros + amount
         txn = WalletTransaction.objects.create(
-            wallet=w, transaction_type="GRANT", amount_micros=amount,
+            wallet=w, transaction_type="grant", amount_micros=amount,
             balance_after_micros=new_balance, description="test grant",
             idempotency_key=key)
         grant = GrantLedger.create_grant(
@@ -227,7 +227,7 @@ class TestG3ExpiryNeverNegative:
         w.refresh_from_db()
         assert w.balance_micros == 0
         for txn in WalletTransaction.objects.filter(
-                wallet=w, transaction_type="GRANT_EXPIRY"):
+                wallet=w, transaction_type="grant_expiry"):
             assert txn.balance_after_micros >= 0
         assert not OutboxEvent.objects.filter(
             event_type__in=["wallet.balance_overage",
@@ -278,7 +278,7 @@ class TestTopUpGrants:
         grants = CreditGrant.objects.filter(wallet=w)
         assert grants.count() == 1
         g = grants.get()
-        assert g.kind == "paid" and g.source == "auto_topup"
+        assert g.kind == "paid" and g.source == "auto_top_up"
         assert g.source_reference == str(a.id)
         assert g.granted_micros == 20_000_000 and g.remaining_micros == 20_000_000
         assert g.expires_at is None  # no profile -> never expires
@@ -499,7 +499,7 @@ class TestReconcileGrants:
             wallet.balance_micros += 4_000_000
             wallet.save(update_fields=["balance_micros", "updated_at"])
             WalletTransaction.objects.create(
-                wallet=wallet, transaction_type="REFUND",
+                wallet=wallet, transaction_type="refund",
                 amount_micros=4_000_000,
                 balance_after_micros=wallet.balance_micros,
                 idempotency_key=f"refund:{ev}")

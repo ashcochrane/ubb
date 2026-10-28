@@ -18,6 +18,7 @@ from ubb._core.models.record_usage_response import RecordUsageResponse
 from ubb._core.models.problem_out import ProblemOut
 from ubb._core.models.usage_batch_item_response import UsageBatchItemResponse
 from ubb._core.types import UNSET, Unset
+from tests._receipt import A_RECEIPT
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COMMITTED_SPEC = REPO_ROOT / "openapi" / "v1.json"
@@ -36,7 +37,7 @@ class TestOpenWorldFieldTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
-                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 **NOTHING_STOPPED,
                 # A field added to the response after this client was pinned:
                 "brand_new_field": {"nested": 1},
@@ -71,7 +72,7 @@ class TestOpenEnumTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
-                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 **NOTHING_STOPPED,
                 "stop": True,
                 "stop_scope": "a_scope_invented_next_year",
@@ -98,18 +99,18 @@ class TestRequiredWhereTrueTyping:
 
     def test_optional_field_defaults_to_unset(self):
         r = RecordUsageResponse.from_dict(
-            {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
              **NOTHING_STOPPED})
         assert isinstance(r.task_id, Unset)
         assert r.task_id is UNSET
 
     @pytest.mark.parametrize("model, body", [
         (RecordUsageResponse,
-         {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None}),
+         {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT}),
         # A rejected batch item recorded nothing, and carries the three as null.
         (UsageBatchItemResponse,
          {"accepted": False, "code": "validation_error", "detail": "refused", "stop": False,
-          "pricing_status_reason": None}),
+          "pricing_status_reason": None, "pricing_receipt": None}),
     ])
     def test_a_stop_fact_is_a_required_key_whose_value_may_be_null(self, model, body):
         # The owner's review of #612: the three are REQUIRED AND NULLABLE.
@@ -138,7 +139,7 @@ class TestRequiredWhereTrueTyping:
         # #603: pricing_status_reason is REQUIRED AND NULLABLE wherever
         # pricing_status is published. Null says no reason applies; a body
         # without the key is the server not sending what it promised.
-        parsed = model.from_dict({**body, **NOTHING_STOPPED, "pricing_status_reason": None})
+        parsed = model.from_dict({**body, **NOTHING_STOPPED, "pricing_status_reason": None, "pricing_receipt": A_RECEIPT})
         assert parsed.pricing_status_reason is None
         with pytest.raises(KeyError, match="pricing_status_reason"):
             model.from_dict({**body, **NOTHING_STOPPED})
@@ -147,7 +148,7 @@ class TestRequiredWhereTrueTyping:
         parsed = RecordUsageResponse.from_dict({
             "event_id": "evt_1", "suspended": False, "costing_status": "known",
             "pricing_status": "unknown",
-            "pricing_status_reason": "negative_price_unsupported",
+            "pricing_status_reason": "negative_price_unsupported", "pricing_receipt": A_RECEIPT,
             **NOTHING_STOPPED})
         assert parsed.pricing_status == "unknown"
         assert parsed.pricing_status_reason == "negative_price_unsupported"

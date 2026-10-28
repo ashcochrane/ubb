@@ -406,7 +406,9 @@ export async function getUsageTimeseries(
         // grouped question carries one value, an ungrouped one carries none.
         grouping_field_value: group === undefined ? [] : [group],
         grouping_field_value_status:
-          group === undefined ? [] : [group === null ? "not_recorded" : "recorded"],
+          group === undefined
+            ? []
+            : [group === null ? ("not_recorded" as const) : ("recorded" as const)],
         measures: measuresOver(bucketed, billed, provider).filter((entry) =>
           asked.includes(entry.measure),
         ),

@@ -310,7 +310,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
   [CUS_ACME]: [
     {
       id: "7a10a5e2-0000-4000-8000-000000000010",
-      transaction_type: "USAGE_DEDUCTION",
+      transaction_type: "usage_deduction",
       amount_micros: -8_420_000,
       balance_after_micros: 258_400_000,
       description: "Usage — claude-sonnet batch",
@@ -319,7 +319,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000009",
-      transaction_type: "GRANT",
+      transaction_type: "grant",
       amount_micros: 25_000_000,
       balance_after_micros: 266_820_000,
       description: "Promo credit — launch offer",
@@ -328,7 +328,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000008",
-      transaction_type: "TOP_UP",
+      transaction_type: "top_up",
       amount_micros: 200_000_000,
       balance_after_micros: 241_820_000,
       description: "Stripe Checkout top-up",
@@ -337,7 +337,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000007",
-      transaction_type: "USAGE_DEDUCTION",
+      transaction_type: "usage_deduction",
       amount_micros: -31_180_000,
       balance_after_micros: 41_820_000,
       description: "Usage — embeddings backfill",
@@ -346,7 +346,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000006",
-      transaction_type: "REFUND",
+      transaction_type: "refund",
       amount_micros: 2_150_000,
       balance_after_micros: 73_000_000,
       description: "Refund — duplicate charge",
@@ -355,7 +355,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000005",
-      transaction_type: "DEBIT",
+      transaction_type: "debit",
       amount_micros: -5_000_000,
       balance_after_micros: 70_850_000,
       description: "Manual debit — SLA credit clawback",
@@ -364,7 +364,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000004",
-      transaction_type: "ADJUSTMENT",
+      transaction_type: "adjustment",
       amount_micros: 10_000_000,
       balance_after_micros: 75_850_000,
       description: "Manual credit — onboarding goodwill",
@@ -373,7 +373,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000003",
-      transaction_type: "WITHDRAWAL",
+      transaction_type: "withdrawal",
       amount_micros: -40_000_000,
       balance_after_micros: 65_850_000,
       description: "Withdrawal to Stripe balance",
@@ -384,7 +384,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
   [CUS_LUNA]: [
     {
       id: "7a10a5e2-0000-4000-8000-000000000102",
-      transaction_type: "USAGE_DEDUCTION",
+      transaction_type: "usage_deduction",
       amount_micros: -14_500_000,
       balance_after_micros: -12_500_000,
       description: "Usage — overnight crawl",
@@ -393,7 +393,7 @@ export const MOCK_TRANSACTIONS: Record<string, WalletTransactionOut[]> = {
     },
     {
       id: "7a10a5e2-0000-4000-8000-000000000101",
-      transaction_type: "TOP_UP",
+      transaction_type: "top_up",
       amount_micros: 20_000_000,
       balance_after_micros: 2_000_000,
       description: "Stripe Checkout top-up",
@@ -542,7 +542,7 @@ export const MOCK_USAGE_INVOICES: Record<string, UsageInvoiceOut[]> = {
       currency: "usd",
       status: "pushed",
       stripe_invoice_id: "in_mock_usage_2026_06",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 1,
       last_attempt_error: null,
     },
@@ -553,7 +553,7 @@ export const MOCK_USAGE_INVOICES: Record<string, UsageInvoiceOut[]> = {
       currency: "usd",
       status: "pushed",
       stripe_invoice_id: "in_mock_usage_2026_05",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 2,
       last_attempt_error: null,
     },
@@ -566,7 +566,7 @@ export const MOCK_USAGE_INVOICES: Record<string, UsageInvoiceOut[]> = {
       currency: "usd",
       status: "failed_permanent",
       stripe_invoice_id: "",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 5,
       last_attempt_error:
         "Stripe: no such customer — the customer has no Stripe customer on file.",
@@ -577,7 +577,7 @@ export const MOCK_USAGE_INVOICES: Record<string, UsageInvoiceOut[]> = {
       total_billed_micros: 0,
       currency: "usd",
       status: "skipped",
-      skip_reason: "zero_usage",
+      skip_reason: "no_usage",
       stripe_invoice_id: "",
       push_attempts: 0,
       last_attempt_error: null,

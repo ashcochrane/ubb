@@ -1,14 +1,18 @@
-import { fireEvent, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { UNRECOGNISED_MARK } from "@/components/shared/open-set-value";
+
+import { settingsApi } from "../api/provider";
+import type { AuditRecord } from "../api/types";
 import { renderWithQuery } from "../test-utils";
 import { AuditLogPage } from "./audit-log-page";
 
 describe("AuditLogPage", () => {
-  it("renders records with humanized actions, actor badges, and load more", async () => {
+  it("renders records in the catalogue's words, actor badges, and load more", async () => {
     renderWithQuery(<AuditLogPage />);
 
-    expect(await screen.findByText("Config updated")).toBeInTheDocument();
+    expect(await screen.findByText("Tenant configuration changed")).toBeInTheDocument();
     expect(screen.getByText("API key rotated")).toBeInTheDocument();
     expect(screen.getAllByText("mia@acme.ai").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Team member").length).toBeGreaterThan(0);
@@ -20,13 +24,13 @@ describe("AuditLogPage", () => {
 
   it("expands a row into a key-value metadata tree (not raw JSON)", async () => {
     renderWithQuery(<AuditLogPage />);
-    await screen.findByText("Config updated");
+    await screen.findByText("Tenant configuration changed");
 
     const toggles = screen.getAllByRole("button", { name: "Show details" });
     expect(toggles.length).toBeGreaterThan(0);
     fireEvent.click(toggles[0] as HTMLElement);
 
-    // config.updated → changes → enforcement_mode → from/to.
+    // tenant.config_changed → changes → enforcement_mode → from/to.
     //
     // The keys render AS THE TENANT WROTE THEM (#279, ADR-0008 §4.4). They used
     // to arrive title-cased — "Changes", "Enforcement mode" — which is UBB
@@ -73,7 +77,46 @@ describe("AuditLogPage", () => {
       />,
     );
 
-    expect(await screen.findByText("Pricing book declared")).toBeInTheDocument();
-    expect(screen.queryByText("Config updated")).not.toBeInTheDocument();
+    expect(await screen.findByText("Pricing Book declared")).toBeInTheDocument();
+    expect(screen.queryByText("Tenant configuration changed")).not.toBeInTheDocument();
+  });
+});
+
+// R10-W4: the action, the resource type and who acted are the catalogue's
+// words, on a record assembled HERE rather than read from the mock, so the
+// mock cannot narrow along with the page. Who acted is OPEN (ADR-004 §4): a
+// kind the console has never met renders as its token, marked, never guessed.
+describe("AuditLogPage — the catalogue's words", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("words the action and the resource type, and marks an unfamiliar actor kind", async () => {
+    const record: AuditRecord = {
+      id: "aud-x",
+      created_at: "2026-10-27T09:00:00Z",
+      action: "grouping_field.declared",
+      actor_kind: "a_kind_from_next_year",
+      actor_id: "who",
+      actor_display: "someone",
+      resource_type: "grouping_field_registry",
+      resource_id: "tenant-1",
+      correlation_id: "corr-x",
+      metadata: {},
+    };
+    vi.spyOn(settingsApi, "listAuditRecords").mockResolvedValue({
+      data: [record],
+      has_more: false,
+      next_cursor: null,
+    });
+
+    renderWithQuery(<AuditLogPage />);
+
+    expect(await screen.findByText("Grouping Field declared")).toBeInTheDocument();
+    expect(screen.getByText("Grouping Fields")).toBeInTheDocument();
+    const actor = screen.getByText("a_kind_from_next_year").closest("[data-label]");
+    expect(actor?.getAttribute("data-label")).toBe("unfamiliar");
+    expect(within(actor as HTMLElement).getByText(UNRECOGNISED_MARK)).toBeInTheDocument();
+    expect(screen.queryByText("A kind from next year")).not.toBeInTheDocument();
   });
 });

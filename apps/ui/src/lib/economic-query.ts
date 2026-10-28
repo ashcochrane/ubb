@@ -33,6 +33,7 @@ import {
   ANALYTICS_MEASURE_VALUES,
   type AnalyticsMeasure,
   type AnalyticsRollup,
+  type GroupingFieldValueStatus,
   type MeasureStatus,
 } from "@/lib/vocabulary";
 
@@ -512,6 +513,18 @@ export function axisValueOn(
   position = 0,
 ): string | null {
   return row?.grouping_field_value[position] ?? null;
+}
+
+/**
+ * Why the axis in the same position holds the value it holds (#550): the
+ * registry's `grouping_field_value_status`, or null on an answer not grouped
+ * by any axis.
+ */
+export function axisStatusOn(
+  row: EconomicRow | undefined,
+  position = 0,
+): GroupingFieldValueStatus | null {
+  return row?.grouping_field_value_status[position] ?? null;
 }
 
 /**

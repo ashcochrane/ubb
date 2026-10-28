@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.invitation_create_in_role import InvitationCreateInRole
 
 
 
@@ -23,11 +24,11 @@ class InvitationCreateIn:
     """ 
         Attributes:
             email (str):
-            role (str):
+            role (InvitationCreateInRole):
      """
 
     email: str
-    role: str
+    role: InvitationCreateInRole
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -37,7 +38,7 @@ class InvitationCreateIn:
     def to_dict(self) -> dict[str, Any]:
         email = self.email
 
-        role = self.role
+        role = self.role.value
 
 
         field_dict: dict[str, Any] = {}
@@ -56,7 +57,10 @@ class InvitationCreateIn:
         d = dict(src_dict)
         email = d.pop("email")
 
-        role = d.pop("role")
+        role = InvitationCreateInRole(d.pop("role"))
+
+
+
 
         invitation_create_in = cls(
             email=email,

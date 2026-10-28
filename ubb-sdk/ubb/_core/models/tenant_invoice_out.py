@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.tenant_invoice_out_status import TenantInvoiceOutStatus
 
 
 
@@ -25,7 +26,7 @@ class TenantInvoiceOut:
             billing_period_id (str):
             created_at (str):
             id (str):
-            status (str):
+            status (TenantInvoiceOutStatus):
             stripe_invoice_id (str):
             total_amount_micros (int):
      """
@@ -33,7 +34,7 @@ class TenantInvoiceOut:
     billing_period_id: str
     created_at: str
     id: str
-    status: str
+    status: TenantInvoiceOutStatus
     stripe_invoice_id: str
     total_amount_micros: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -49,7 +50,7 @@ class TenantInvoiceOut:
 
         id = self.id
 
-        status = self.status
+        status = self.status.value
 
         stripe_invoice_id = self.stripe_invoice_id
 
@@ -80,7 +81,10 @@ class TenantInvoiceOut:
 
         id = d.pop("id")
 
-        status = d.pop("status")
+        status = TenantInvoiceOutStatus(d.pop("status"))
+
+
+
 
         stripe_invoice_id = d.pop("stripe_invoice_id")
 

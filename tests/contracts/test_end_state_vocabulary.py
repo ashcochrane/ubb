@@ -49,9 +49,15 @@ def registry():
 #: `code-builder.yaml` joined in #576: the six value sets an Integration
 #: Blueprint publishes are consumed by the Blueprint and by nothing else, so
 #: they are a domain of their own rather than a tail on the unit of work's.
-DOMAIN_FILES = ("code-builder.yaml", "economics.yaml", "governance.yaml",
-                "payment-rails.yaml", "retired.yaml", "spend-controls.yaml",
-                "tasks.yaml", "webhooks.yaml")
+#:
+#: `billing.yaml`, `referrals.yaml` and `team.yaml` joined in R10-W4 (slice 8),
+#: with the value sets the console's legacy label maps had worded by hand:
+#: the wallet, its grants and the two kinds of invoice; the referral feature's
+#: four; and who may act for a tenant.
+DOMAIN_FILES = ("billing.yaml", "code-builder.yaml", "economics.yaml",
+                "governance.yaml", "payment-rails.yaml", "referrals.yaml",
+                "retired.yaml", "spend-controls.yaml", "tasks.yaml",
+                "team.yaml", "webhooks.yaml")
 
 
 def test_the_registry_is_split_across_the_declared_domains(registry):
@@ -352,12 +358,23 @@ def test_the_audit_action_rename_is_carried_as_retired_data(registry):
     assert {"budget.set", "dimension.declared", "rate_card.created",
             "rate.added", "revenue_mode.set"} <= retired
     for renamed in ("customer_spend_pool.set", "grouping_field.declared",
-                    "pricing_book.created", "cost_rate.added",
-                    "pricing_rule.added", "tenant_supplied_revenue.recorded"):
+                    "tenant_supplied_revenue.recorded"):
         assert renamed in actions.values, renamed
-    # The entry that opens the production ledger. It is registered like any
-    # other action because the ledger refuses a name it does not know.
+    # The cutover's catalogue half (#154 §4.2; R10-W4, ruled 2026-10-27): the
+    # eight registrations nothing ever wrote are gone, and none of them became
+    # a retired alias, because none had a same-concept successor.
+    never_written = {"pricing_book.created", "pricing_book.assigned",
+                     "pricing_book.published", "cost_rate.added",
+                     "cost_rate.deleted", "pricing_rule.added",
+                     "pricing_rule.deleted", "customer_pricing_override.set"}
+    assert not never_written & set(actions.values)
+    assert not never_written & retired
+    # The entry that was to open the production ledger stays declared until W6
+    # retires it (#190 ruling 6354381879), WITHHELD: no row may hold it, so the
+    # contract does not advertise it either.
     assert "system.preproduction_model_cutover" in actions.values
+    assert actions.withheld_values == ("system.preproduction_model_cutover",)
+    assert "system.preproduction_model_cutover" not in actions.occurring_values
     # Deleted outright rather than renamed: the configured input the first pair
     # recorded is now a field of a pricing rule, and the setting the third
     # recorded is gone because posture derives.

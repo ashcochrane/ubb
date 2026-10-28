@@ -466,7 +466,7 @@ class TestThePostingsIdIsStillTheExactlyOnceMoneyKey(ProjectionTestBase):
 
         projection = self._projection_of(started)
         debits = WalletTransaction.objects.filter(
-            usage_event_id=projection.id, transaction_type="USAGE_DEDUCTION")
+            usage_event_id=projection.id, transaction_type="usage_deduction")
         assert debits.count() == 1
         assert debits.get().amount_micros == -THE_AGREED_PRICE
 
@@ -492,7 +492,7 @@ class TestThePostingsIdIsStillTheExactlyOnceMoneyKey(ProjectionTestBase):
             customer=self.customer).balance_micros == before
         assert WalletTransaction.objects.filter(
             usage_event_id=self._projection_of(started).id,
-            transaction_type="USAGE_DEDUCTION").count() == 1
+            transaction_type="usage_deduction").count() == 1
 
     def test_the_amount_mismatch_guard_still_fires_on_a_second_amount(
             self, caplog):

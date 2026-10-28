@@ -25,7 +25,7 @@ import {
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatMicros, formatShortDate } from "@/lib/format";
-import { humanize, rewardTypeLabel } from "@/lib/labels";
+import { referralStatusLabel, rewardTypeLabel } from "../lib/referral-vocabulary";
 import { toastSuccess } from "@/lib/mutations";
 
 import { useReferrerReferrals, useRevokeReferral } from "../api/queries";
@@ -106,7 +106,7 @@ export function ReferralsTable({
                     </TableCell>
                     <TableCell>
                       <Badge variant={referral.status === "active" ? "secondary" : "outline"}>
-                        {humanize(referral.status)}
+                        {referralStatusLabel(referral.status)}
                       </Badge>
                     </TableCell>
                     <TableCell>{rewardTypeLabel(referral.reward_type)}</TableCell>

@@ -78,6 +78,10 @@ from core.vocabulary import (
     GROUPING_FIELD_SCOPE_SUBTASK,
     GROUPING_FIELD_SCOPE_TASK,
     GROUPING_FIELD_SCOPE_VALUES,
+    GROUPING_FIELD_VALUE_STATUS_NOT_APPLICABLE,
+    GROUPING_FIELD_VALUE_STATUS_NOT_RECORDED,
+    GROUPING_FIELD_VALUE_STATUS_RECORDED,
+    GROUPING_FIELD_VALUE_STATUS_VALUES,
     MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_KNOWN,
     MEASURE_STATUS_NOT_APPLICABLE,
@@ -1865,12 +1869,17 @@ assert set(_BUCKET_TRUNCATIONS) == set(ECONOMIC_BUCKETS), (
 #:
 #: The value is present exactly when the status is `recorded`, so a reader never
 #: has to decide what an empty string meant.
+#:
+#: The three are the registry's closed `grouping_field_value_status` (#550,
+#: R10-W4), held here by reference — this module is its declared backend
+#: consumer — and the wire key is the concept's own name.
 GROUPED_VALUE_STATUS_KEY = "grouping_field_value_status"
-VALUE_RECORDED = "recorded"
-VALUE_NOT_RECORDED = "not_recorded"
-VALUE_NOT_APPLICABLE = "not_applicable"
+VALUE_RECORDED = GROUPING_FIELD_VALUE_STATUS_RECORDED
+VALUE_NOT_RECORDED = GROUPING_FIELD_VALUE_STATUS_NOT_RECORDED
+VALUE_NOT_APPLICABLE = GROUPING_FIELD_VALUE_STATUS_NOT_APPLICABLE
 GROUPED_VALUE_STATUSES = (VALUE_RECORDED, VALUE_NOT_RECORDED,
                           VALUE_NOT_APPLICABLE)
+assert frozenset(GROUPED_VALUE_STATUSES) == GROUPING_FIELD_VALUE_STATUS_VALUES
 
 #: The axes a charge posting cannot carry a value on, whatever the tenant does.
 #:

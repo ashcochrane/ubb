@@ -111,7 +111,7 @@ def _op_registry(tenant, customer, wallet):
             repair=True, trigger_source=None), None),
         ("credit_top_up", lambda: wallet_ops.credit_top_up(
             customer_id=customer.id, tenant=tenant, amount_micros=5_000_000,
-            idempotency_key=f"auto_topup:{uuid.uuid4()}", source="auto_topup",
+            idempotency_key=f"auto_topup:{uuid.uuid4()}", source="auto_top_up",
             source_reference="att", description="Auto top-up"), 5_000_000),
         ("claw_back_dispute", lambda: wallet_ops.claw_back_dispute(
             customer_id=customer.id, tenant=tenant, amount_micros=1_000_000,
@@ -331,7 +331,7 @@ class TestRefusals:
         assert result.balance_micros == 0  # the promo lot expired away
         grant.refresh_from_db()
         assert grant.status == "expired"  # ...and that expiry COMMITTED
-        assert _txns(Wallet.objects.get(customer=c), "GRANT_EXPIRY").exists()
+        assert _txns(Wallet.objects.get(customer=c), "grant_expiry").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +398,7 @@ class TestReplays:
         assert again.outcome in ("replayed", "noop")
         assert again.transaction_id is None
         assert again.grant.status == "voided"
-        assert _txns(Wallet.objects.get(customer=c), "GRANT_VOID").count() == 1
+        assert _txns(Wallet.objects.get(customer=c), "grant_void").count() == 1
 
     def test_mint_replay_returns_the_original_grant_and_txn(self):
         t = _tenant()
@@ -443,11 +443,11 @@ class TestReplays:
         key = f"auto_topup:pi_{uuid.uuid4()}"
         first = wallet_ops.credit_top_up(
             customer_id=c.id, tenant=t, amount_micros=5_000_000,
-            idempotency_key=key, source="auto_topup", source_reference="a1",
+            idempotency_key=key, source="auto_top_up", source_reference="a1",
             description="Auto top-up")
         again = wallet_ops.credit_top_up(
             customer_id=c.id, tenant=t, amount_micros=5_000_000,
-            idempotency_key=key, source="auto_topup", source_reference="a1",
+            idempotency_key=key, source="auto_top_up", source_reference="a1",
             description="Auto top-up")
         assert first.outcome == "applied"
         assert again.outcome == "replayed"
@@ -537,7 +537,7 @@ class TestExpiryPlacement:
                                        grant_id=grant.id)
         assert result.outcome == "noop"
         assert result.grant.status == "expired"  # expiry won; the void no-oped
-        assert not _txns(Wallet.objects.get(customer=c), "GRANT_VOID").exists()
+        assert not _txns(Wallet.objects.get(customer=c), "grant_void").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -778,4 +778,4 @@ class TestExpireDueSweep:
         assert wallet_ops.expire_due_sweep(c.id) == 0  # nothing left due
         w.refresh_from_db()
         assert w.balance_micros == 0
-        assert _txns(w, "GRANT_EXPIRY").count() == 1
+        assert _txns(w, "grant_expiry").count() == 1

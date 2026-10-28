@@ -50,8 +50,12 @@ from django.utils import timezone
 
 from core.crossing import ceiling_reached_q
 from core.vocabulary import (
-    TASK_STATUS_ACTIVE, TASK_STATUS_EXPIRED, TASK_STATUS_KILLED,
-    TRIGGER_SOURCE_ENFORCEMENT_PATROL)
+    STOP_SCOPE_CUSTOMER,
+    TASK_STATUS_ACTIVE,
+    TASK_STATUS_EXPIRED,
+    TASK_STATUS_KILLED,
+    TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -178,12 +182,12 @@ def _remint_signal_row(row, tenant):
         if row.state == STATE_STOPPED:
             schema = CustomerStopped(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
-                scope="customer", episode_seq=row.episode_seq,
+                scope=STOP_SCOPE_CUSTOMER, episode_seq=row.episode_seq,
                 re_announcement=True, **control)
         else:
             schema = CustomerStopCleared(
                 tenant_id=str(tenant.id), owner_id=str(row.owner_id),
-                scope="customer", episode_seq=row.episode_seq,
+                scope=STOP_SCOPE_CUSTOMER, episode_seq=row.episode_seq,
                 # The same rule the clearing door applies (#610): null where
                 # the customer holds no wallet balance, the durable balance
                 # where it does — a re-mint measured nothing of its own.

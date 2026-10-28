@@ -23,7 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatCalendarDate, formatMicros } from "@/lib/format";
-import { humanize, usageInvoiceStatusLabel } from "@/lib/labels";
+import { skipReasonLabel, usageInvoiceStatusLabel } from "@/lib/usage-invoice";
 
 import { useCustomerUsageInvoices } from "../api/queries";
 import type { UsageInvoiceOut } from "../api/types";
@@ -103,7 +103,7 @@ function UsageInvoiceRow({ invoice }: { invoice: UsageInvoiceOut }) {
         <TableCell>
           <Badge
             variant={failed ? "destructive" : "outline"}
-            title={invoice.skip_reason ? humanize(invoice.skip_reason) : undefined}
+            title={invoice.skip_reason ? skipReasonLabel(invoice.skip_reason) : undefined}
           >
             {usageInvoiceStatusLabel(invoice.status)}
           </Badge>

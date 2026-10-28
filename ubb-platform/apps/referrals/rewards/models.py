@@ -1,6 +1,11 @@
 from django.db import models
 
 from core.models import BaseModel
+from core.vocabulary import (
+    CALCULATION_METHOD_ACTUAL_COST,
+    CALCULATION_METHOD_ESTIMATED_COST,
+    CALCULATION_METHOD_FLAT_FEE,
+)
 
 
 class ReferralRewardAccumulator(BaseModel):
@@ -29,10 +34,11 @@ class ReferralRewardAccumulator(BaseModel):
 class ReferralRewardLedger(BaseModel):
     """Immutable log of reward entries, written by batch reconciliation."""
 
+    # The registry's closed `calculation_method` (R10-W4), by reference.
     CALCULATION_METHOD_CHOICES = [
-        ("actual_cost", "Actual Cost"),
-        ("estimated_cost", "Estimated Cost"),
-        ("flat_fee", "Flat Fee"),
+        (CALCULATION_METHOD_ACTUAL_COST, "Actual Cost"),
+        (CALCULATION_METHOD_ESTIMATED_COST, "Estimated Cost"),
+        (CALCULATION_METHOD_FLAT_FEE, "Flat Fee"),
     ]
 
     referral = models.ForeignKey(

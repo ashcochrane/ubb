@@ -28,12 +28,12 @@ import {
   formatMicros,
   formatShortDate,
 } from "@/lib/format";
+
+import { useBillingPeriods, useTenantInvoices } from "../api/queries";
 import {
   billingPeriodStatusLabel,
   tenantInvoiceStatusLabel,
-} from "@/lib/labels";
-
-import { useBillingPeriods, useTenantInvoices } from "../api/queries";
+} from "../lib/tenant-billing";
 
 /** What UBB charges THIS workspace — platform fees, not customer invoices. */
 export function TenantBillingPage() {

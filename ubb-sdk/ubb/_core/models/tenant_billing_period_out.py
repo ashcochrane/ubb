@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.tenant_billing_period_out_status import TenantBillingPeriodOutStatus
 
 
 
@@ -29,7 +30,7 @@ class TenantBillingPeriodOut:
             recorded_events (int): Every metered usage event recorded in this period, whatever it was priced at — unpriced
                 and zero-priced events included. It EXCLUDES the synthetic charge for a unit of work sold at one agreed price,
                 whose money `total_billed_cost_micros` includes.
-            status (str):
+            status (TenantBillingPeriodOutStatus):
             total_billed_cost_micros (int): What the tenant's customers were billed in this period: the sum of
                 `billed_cost_micros` over the period's postings, placed by when UBB received them. It INCLUDES the charge for a
                 unit of work sold at one agreed price, which is revenue, so it can include money that `recorded_events` does not
@@ -42,7 +43,7 @@ class TenantBillingPeriodOut:
     period_start: str
     platform_fee_micros: int
     recorded_events: int
-    status: str
+    status: TenantBillingPeriodOutStatus
     total_billed_cost_micros: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -61,7 +62,7 @@ class TenantBillingPeriodOut:
 
         recorded_events = self.recorded_events
 
-        status = self.status
+        status = self.status.value
 
         total_billed_cost_micros = self.total_billed_cost_micros
 
@@ -95,7 +96,10 @@ class TenantBillingPeriodOut:
 
         recorded_events = d.pop("recorded_events")
 
-        status = d.pop("status")
+        status = TenantBillingPeriodOutStatus(d.pop("status"))
+
+
+
 
         total_billed_cost_micros = d.pop("total_billed_cost_micros")
 

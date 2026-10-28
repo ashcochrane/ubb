@@ -14,16 +14,16 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="UsageBatchItemResponsePricingReceiptType0")
+T = TypeVar("T", bound="PricingReceiptCostingDetailUndeclaredQuantitiesType0")
 
 
 
 @_attrs_define
-class UsageBatchItemResponsePricingReceiptType0:
+class PricingReceiptCostingDetailUndeclaredQuantitiesType0:
     """ 
      """
 
-    additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
+    additional_properties: dict[str, str] = _attrs_field(init=False, factory=dict)
 
 
 
@@ -41,21 +41,21 @@ class UsageBatchItemResponsePricingReceiptType0:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        usage_batch_item_response_pricing_receipt_type_0 = cls(
+        pricing_receipt_costing_detail_undeclared_quantities_type_0 = cls(
         )
 
 
-        usage_batch_item_response_pricing_receipt_type_0.additional_properties = d
-        return usage_batch_item_response_pricing_receipt_type_0
+        pricing_receipt_costing_detail_undeclared_quantities_type_0.additional_properties = d
+        return pricing_receipt_costing_detail_undeclared_quantities_type_0
 
     @property
     def additional_keys(self) -> list[str]:
         return list(self.additional_properties.keys())
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: str) -> str:
         return self.additional_properties[key]
 
-    def __setitem__(self, key: str, value: Any) -> None:
+    def __setitem__(self, key: str, value: str) -> None:
         self.additional_properties[key] = value
 
     def __delitem__(self, key: str) -> None:

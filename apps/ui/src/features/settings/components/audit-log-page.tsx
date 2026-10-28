@@ -5,6 +5,7 @@ import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ErrorCard } from "@/components/shared/error-card";
 import { LoadMore } from "@/components/shared/load-more";
+import { OpenSetValue } from "@/components/shared/open-set-value";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,11 +19,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatDate, formatRelativeDate } from "@/lib/format";
-import { actorKindLabel, humanize } from "@/lib/labels";
 
 import { useAuditRecords } from "../api/queries";
 import type { AuditFilters } from "../api/types";
-import { auditActionLabel, truncateId, type AuditSearch } from "../lib/settings";
+import {
+  ACTOR_KIND_LABELS,
+  auditActionLabel,
+  auditResourceTypeLabel,
+} from "../lib/audit-vocabulary";
+import { truncateId, type AuditSearch } from "../lib/settings";
 import { MetadataTree } from "./metadata-tree";
 
 export interface AuditLogPageProps {
@@ -200,7 +205,10 @@ export function AuditLogPage({ search = {}, onSearchChange }: AuditLogPageProps)
                               {record.actor_display}
                             </span>
                             <Badge variant="outline">
-                              {actorKindLabel(record.actor_kind)}
+                              <OpenSetValue
+                                labelKeys={ACTOR_KIND_LABELS}
+                                value={record.actor_kind}
+                              />
                             </Badge>
                           </span>
                         </TableCell>
@@ -210,7 +218,7 @@ export function AuditLogPage({ search = {}, onSearchChange }: AuditLogPageProps)
                         <TableCell>
                           <span className="flex items-center gap-1.5">
                             <span className="text-muted-foreground">
-                              {humanize(record.resource_type)}
+                              {auditResourceTypeLabel(record.resource_type)}
                             </span>
                             <span
                               className="font-mono text-[12px]"

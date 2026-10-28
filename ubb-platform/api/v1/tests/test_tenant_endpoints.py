@@ -553,7 +553,7 @@ class TenantConfigCurrencyTest(TestCase):
         customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         wallet = Wallet.objects.create(customer=customer)
         WalletTransaction.objects.create(
-            wallet=wallet, transaction_type="TOP_UP",
+            wallet=wallet, transaction_type="top_up",
             amount_micros=1_000_000, balance_after_micros=1_000_000)
         a_plan(tenant=self.tenant, key="pro", name="Pro",
                access_fee_micros=10_000_000, stripe_access_price_id="price_123")

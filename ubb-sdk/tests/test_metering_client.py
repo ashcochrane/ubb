@@ -35,6 +35,7 @@ from ubb._core.models.grouping_option_out import GroupingOptionOut
 # in its import block is a test nobody reads the top of.
 from ubb import vocabulary
 from ubb.metering import group_by_field, group_by_rollup, measure_on
+from tests._receipt import A_RECEIPT
 
 
 class MeteringClientTest(unittest.TestCase):
@@ -51,7 +52,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_basic(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_1", "new_balance_micros": 8_500_000, "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         result = self.client.record_usage(
@@ -84,7 +85,7 @@ class MeteringClientTest(unittest.TestCase):
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_2", "new_balance_micros": 9_000_000, "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             "provider_cost_micros": 500_000, "billed_cost_micros": 1_000_000,
         })
@@ -122,7 +123,7 @@ class MeteringClientTest(unittest.TestCase):
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_c", "new_balance_micros": 9_000_000,
-            "suspended": False, "costing_status": "unresolved", "pricing_status": "known", "pricing_status_reason": None,
+            "suspended": False, "costing_status": "unresolved", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             "unresolved_reason": "reported_cost_missing",
             "claimed_provider_cost_micros": 987_654,
@@ -148,7 +149,7 @@ class MeteringClientTest(unittest.TestCase):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_r", "new_balance_micros": 9_000_000,
             "suspended": False, "costing_status": "known",
-            "pricing_status": "known", "pricing_status_reason": None, "provider_cost_micros": 7_350,
+            "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "provider_cost_micros": 7_350,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None})
         result = self.client.record_usage(
             customer_id="cust_1", idempotency_key="ir",
@@ -170,7 +171,7 @@ class MeteringClientTest(unittest.TestCase):
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_d", "new_balance_micros": 9_000_000,
-            "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None})
 
         self.client.record_usage(customer_id="cust_1",
@@ -184,7 +185,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_with_the_open_bag(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3", "new_balance_micros": 7_000_000, "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         result = self.client.record_usage(
@@ -203,7 +204,7 @@ class MeteringClientTest(unittest.TestCase):
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3b", "new_balance_micros": 7_000_000, "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         self.client.record_usage(
@@ -217,7 +218,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_omitted_grouping_fields_not_in_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_3c", "new_balance_micros": 7_000_000, "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         self.client.record_usage(
@@ -233,7 +234,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_recorded_at_datetime_serialized(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_4", "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         ts = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
@@ -249,7 +250,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_recorded_at_iso_string_passthrough(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_5", "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         self.client.record_usage(
@@ -307,7 +308,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_omitted_recorded_at_not_in_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_7", "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         self.client.record_usage(
@@ -323,10 +324,10 @@ class MeteringClientTest(unittest.TestCase):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "results": [
                 {"accepted": True, "event_id": "evt_1", "suspended": False, "billed_cost_micros": 5,
-                 "pricing_status_reason": None, "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None},
+                 "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None},
                 {"accepted": False, "code": "effective_at_too_old",
                  "detail": "too old", "stop": False, "stop_reason": None,
-                 "stop_scope": None, "pricing_status_reason": None, "trigger_source": None,
+                 "stop_scope": None, "pricing_status_reason": None, "pricing_receipt": None, "trigger_source": None,
                  "stop_bound_micros": None, "stop_measured_micros": None},
             ],
             "accepted": 1, "rejected": 1,
@@ -379,7 +380,7 @@ class MeteringClientTest(unittest.TestCase):
         # included — rather than the pre-#78 `ok` / `succeeded` shape it was.
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "results": [{"accepted": True, "event_id": "e1", "suspended": False,
-                         "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                         "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                          "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None}],
             "accepted": 1, "rejected": 0,
         })
@@ -397,7 +398,7 @@ class MeteringClientTest(unittest.TestCase):
             "data": [
                 {"id": "00000000-0000-0000-0000-0000000000e1",
                  "kind": "metered_usage",
-                 "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                 "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                  "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"},
             ],
             "next_cursor": "cur_abc",
@@ -507,7 +508,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_with_measurements_no_cost(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_m1", "new_balance_micros": 9_000_000, "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         result = self.client.record_usage(
@@ -529,7 +530,7 @@ class MeteringClientTest(unittest.TestCase):
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             "provider_cost_micros": 2000, "billed_cost_micros": 2000,
             "measurements": {"input_tokens": "1000"},
-            "pricing_receipt": {"engine_version": "x"},
+            "pricing_receipt": A_RECEIPT,
             "uncosted_measurement_keys": ["foo"],
         })
         res = self.client.record_usage(
@@ -546,7 +547,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_task_id_on_wire_and_totals_parsed(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_t1", "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             "task_id": "task_1", "parent_task_id": None,
             "task_total_billed_cost_micros": 750_000,
@@ -569,7 +570,7 @@ class MeteringClientTest(unittest.TestCase):
     def test_record_usage_omitted_task_id_not_in_body(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
             "event_id": "evt_t2", "suspended": False,
-            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+            "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
         })
         self.client.record_usage(
@@ -1134,7 +1135,7 @@ class BatchRefusesAnUndeclaredKeyTest(unittest.TestCase):
         the failure describes a mock rather than a missing refusal.
         """
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "results": [{"accepted": True, "event_id": event_id, "pricing_status_reason": None, "trigger_source": None,
+            "results": [{"accepted": True, "event_id": event_id, "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "trigger_source": None,
                          "stop_bound_micros": None, "stop_measured_micros": None}
                         for event_id in ("evt_1", "evt_2")]})
         with self.assertRaises(UBBValidationError) as caught:
@@ -1157,7 +1158,7 @@ class BatchRefusesAnUndeclaredKeyTest(unittest.TestCase):
         and asserted as a WHOLE BODY, because a guard that admitted most keys
         and dropped one would pass a per-key check."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "results": [{"accepted": True, "event_id": "evt_1", "pricing_status_reason": None, "trigger_source": None,
+            "results": [{"accepted": True, "event_id": "evt_1", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "trigger_source": None,
                          "stop_bound_micros": None, "stop_measured_micros": None}]})
         self.client.record_batch([{
             "customer_id": "c1", "idempotency_key": "i1",
@@ -1181,7 +1182,7 @@ class BatchRefusesAnUndeclaredKeyTest(unittest.TestCase):
         `effective_at`. The guard has to admit the alias it itself translates,
         which is why the derived set is the model's fields PLUS that one name."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "results": [{"accepted": True, "event_id": "evt_1", "pricing_status_reason": None, "trigger_source": None,
+            "results": [{"accepted": True, "event_id": "evt_1", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "trigger_source": None,
                          "stop_bound_micros": None, "stop_measured_micros": None}]})
         self.client.record_batch([{
             "customer_id": "c1", "idempotency_key": "i1",

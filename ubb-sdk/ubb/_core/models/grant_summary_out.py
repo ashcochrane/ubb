@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.grant_summary_out_kind import GrantSummaryOutKind
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -25,13 +26,13 @@ class GrantSummaryOut:
     """ 
         Attributes:
             id (str):
-            kind (str):
+            kind (GrantSummaryOutKind):
             remaining_micros (int):
             expires_at (None | str | Unset):
      """
 
     id: str
-    kind: str
+    kind: GrantSummaryOutKind
     remaining_micros: int
     expires_at: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -43,7 +44,7 @@ class GrantSummaryOut:
     def to_dict(self) -> dict[str, Any]:
         id = self.id
 
-        kind = self.kind
+        kind = self.kind.value
 
         remaining_micros = self.remaining_micros
 
@@ -73,7 +74,10 @@ class GrantSummaryOut:
         d = dict(src_dict)
         id = d.pop("id")
 
-        kind = d.pop("kind")
+        kind = GrantSummaryOutKind(d.pop("kind"))
+
+
+
 
         remaining_micros = d.pop("remaining_micros")
 

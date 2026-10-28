@@ -9,6 +9,7 @@ from apps.platform.audit.actors import get_current_actor
 from apps.platform.audit.marker import records_audit
 from core.auth import ADMIN, ApiKeyAuth, role_floor
 from core.problems import Problem, ProblemOut
+from core.vocabulary import AUDIT_ACTION_SANDBOX_RESET
 
 sandbox_router = Router(auth=ApiKeyAuth())
 
@@ -19,7 +20,7 @@ class SandboxResetIn(Schema):
 
 @sandbox_router.post("/reset", response={202: dict, 403: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("sandbox.reset")
+@records_audit(AUDIT_ACTION_SANDBOX_RESET)
 def reset_sandbox(request, payload: SandboxResetIn = None):
     """Asynchronously wipe the calling SANDBOX tenant's domain data.
 

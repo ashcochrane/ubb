@@ -8,6 +8,10 @@ from core.problems import Problem, ProblemOut
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
+from core.vocabulary import (
+    AUDIT_ACTION_CUSTOMER_CREATED,
+    AUDIT_RESOURCE_TYPE_CUSTOMER,
+)
 
 
 class CreateCustomerRequest(Schema):
@@ -63,7 +67,7 @@ platform_router = Router(auth=ApiKeyAuth())
 
 @platform_router.post("/customers", response={201: CustomerResponse, 409: ProblemOut, 422: ProblemOut})
 @role_floor(WRITE)
-@records_audit("customer.created")
+@records_audit(AUDIT_ACTION_CUSTOMER_CREATED)
 def create_customer(request, payload: CreateCustomerRequest):
     tenant = request.auth.tenant
     at = payload.account_type or "individual"
@@ -103,8 +107,8 @@ def create_customer(request, payload: CreateCustomerRequest):
                 sync_seat_quantity_on_commit(parent)
             # Audit the new customer in the same transaction (ADR-004).
             audit_record(
-                action="customer.created", tenant_id=tenant.id,
-                resource_type="customer", resource_id=customer.id,
+                action=AUDIT_ACTION_CUSTOMER_CREATED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_CUSTOMER, resource_id=customer.id,
                 metadata={"external_id": customer.external_id,
                           "account_type": at,
                           "billing_topology": topology,

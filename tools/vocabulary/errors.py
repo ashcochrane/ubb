@@ -33,6 +33,8 @@ INVALID_TOKEN_PATTERN = "invalid_token_pattern"  # a per-concept override that i
 EMPTY_VALUE_SET = "empty_value_set"            # a closed/open concept declaring no values
 DUPLICATE_VALUE = "duplicate_value"            # the same value twice in one concept
 OPEN_MUST_ALLOW_UNKNOWN = "open_must_allow_unknown"  # `open` with allow_unknown not true
+WITHHELD_VALUE_UNDECLARED = "withheld_value_undeclared"  # a withheld value not in `values`
+WITHHELD_EVERY_VALUE = "withheld_every_value"            # nothing left that can occur
 RETIRED_ALIAS_COLLISION = "retired_alias_collision"  # a retired term that is also live
 DUPLICATE_RETIRED_ALIAS = "duplicate_retired_alias"  # one term retired by two concepts
 

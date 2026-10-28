@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.create_grant_request_kind import CreateGrantRequestKind
 from ..types import UNSET, Unset
 from typing import cast
 import datetime
@@ -27,7 +28,7 @@ class CreateGrantRequest:
         Attributes:
             amount_micros (int):
             idempotency_key (str):
-            kind (str):
+            kind (CreateGrantRequestKind):
             description (str | Unset):  Default: ''.
             expires_at (datetime.datetime | None | Unset):
             expires_in_days (int | None | Unset):
@@ -35,7 +36,7 @@ class CreateGrantRequest:
 
     amount_micros: int
     idempotency_key: str
-    kind: str
+    kind: CreateGrantRequestKind
     description: str | Unset = ''
     expires_at: datetime.datetime | None | Unset = UNSET
     expires_in_days: int | None | Unset = UNSET
@@ -50,7 +51,7 @@ class CreateGrantRequest:
 
         idempotency_key = self.idempotency_key
 
-        kind = self.kind
+        kind = self.kind.value
 
         description = self.description
 
@@ -94,7 +95,10 @@ class CreateGrantRequest:
 
         idempotency_key = d.pop("idempotency_key")
 
-        kind = d.pop("kind")
+        kind = CreateGrantRequestKind(d.pop("kind"))
+
+
+
 
         description = d.pop("description", UNSET)
 

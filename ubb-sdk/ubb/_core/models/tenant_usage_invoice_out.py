@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.tenant_usage_invoice_out_skip_reason_type_0 import TenantUsageInvoiceOutSkipReasonType0
+from ..models.tenant_usage_invoice_out_status import TenantUsageInvoiceOutStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -27,22 +29,23 @@ class TenantUsageInvoiceOut:
             customer_id (str):
             external_id (str):
             period_start (str):
-            status (str):
+            skip_reason (None | TenantUsageInvoiceOutSkipReasonType0): Why this invoice was skipped rather than pushed; null
+                unless status is 'skipped'.
+            status (TenantUsageInvoiceOutStatus):
             total_billed_micros (int):
             last_attempt_error (None | str | Unset):
             push_attempts (int | None | Unset):
-            skip_reason (str | Unset):  Default: ''.
             stripe_invoice_id (str | Unset):  Default: ''.
      """
 
     customer_id: str
     external_id: str
     period_start: str
-    status: str
+    skip_reason: None | TenantUsageInvoiceOutSkipReasonType0
+    status: TenantUsageInvoiceOutStatus
     total_billed_micros: int
     last_attempt_error: None | str | Unset = UNSET
     push_attempts: int | None | Unset = UNSET
-    skip_reason: str | Unset = ''
     stripe_invoice_id: str | Unset = ''
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -57,7 +60,13 @@ class TenantUsageInvoiceOut:
 
         period_start = self.period_start
 
-        status = self.status
+        skip_reason: None | str
+        if isinstance(self.skip_reason, TenantUsageInvoiceOutSkipReasonType0):
+            skip_reason = self.skip_reason.value
+        else:
+            skip_reason = self.skip_reason
+
+        status = self.status.value
 
         total_billed_micros = self.total_billed_micros
 
@@ -73,8 +82,6 @@ class TenantUsageInvoiceOut:
         else:
             push_attempts = self.push_attempts
 
-        skip_reason = self.skip_reason
-
         stripe_invoice_id = self.stripe_invoice_id
 
 
@@ -84,6 +91,7 @@ class TenantUsageInvoiceOut:
             "customer_id": customer_id,
             "external_id": external_id,
             "period_start": period_start,
+            "skip_reason": skip_reason,
             "status": status,
             "total_billed_micros": total_billed_micros,
         })
@@ -91,8 +99,6 @@ class TenantUsageInvoiceOut:
             field_dict["last_attempt_error"] = last_attempt_error
         if push_attempts is not UNSET:
             field_dict["push_attempts"] = push_attempts
-        if skip_reason is not UNSET:
-            field_dict["skip_reason"] = skip_reason
         if stripe_invoice_id is not UNSET:
             field_dict["stripe_invoice_id"] = stripe_invoice_id
 
@@ -109,7 +115,28 @@ class TenantUsageInvoiceOut:
 
         period_start = d.pop("period_start")
 
-        status = d.pop("status")
+        def _parse_skip_reason(data: object) -> None | TenantUsageInvoiceOutSkipReasonType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                skip_reason_type_0 = TenantUsageInvoiceOutSkipReasonType0(data)
+
+
+
+                return skip_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | TenantUsageInvoiceOutSkipReasonType0, data)
+
+        skip_reason = _parse_skip_reason(d.pop("skip_reason"))
+
+
+        status = TenantUsageInvoiceOutStatus(d.pop("status"))
+
+
+
 
         total_billed_micros = d.pop("total_billed_micros")
 
@@ -133,19 +160,17 @@ class TenantUsageInvoiceOut:
         push_attempts = _parse_push_attempts(d.pop("push_attempts", UNSET))
 
 
-        skip_reason = d.pop("skip_reason", UNSET)
-
         stripe_invoice_id = d.pop("stripe_invoice_id", UNSET)
 
         tenant_usage_invoice_out = cls(
             customer_id=customer_id,
             external_id=external_id,
             period_start=period_start,
+            skip_reason=skip_reason,
             status=status,
             total_billed_micros=total_billed_micros,
             last_attempt_error=last_attempt_error,
             push_attempts=push_attempts,
-            skip_reason=skip_reason,
             stripe_invoice_id=stripe_invoice_id,
         )
 

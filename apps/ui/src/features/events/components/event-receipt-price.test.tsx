@@ -91,7 +91,24 @@ const METERING_ONLY_DETAIL: UsageEventDetail = {
   provider: "openai",
   grouping_fields: {},
   ...availableMeasurements({ input_tokens: "1100", output_tokens: "320" }),
-  pricing_receipt: {},
+  // A version-2 receipt, the only shape the contract publishes (#558): the
+  // price section says the regime decided it does not apply.
+  pricing_receipt: {
+    receipt_schema_version: 2,
+    pricing_engine_version: "3.0.0",
+    subject_type: "usage_event",
+    subject_id: "fixed-task-event",
+    effective_at: "2026-07-09T12:14:07Z",
+    currency: "usd",
+    costing: { method: "calculated", status: "known", detail: {} },
+    pricing: {
+      method: null,
+      status: "not_applicable",
+      detail: { pricing_mode: "fixed", not_applicable_reason: "fixed_task_pricing" },
+    },
+    totals: { provider_cost_micros: 61_000, billed_cost_micros: null },
+    provenance: {},
+  },
   metadata: {},
   task_id: null,
   stop_context: null,

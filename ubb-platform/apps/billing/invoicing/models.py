@@ -2,6 +2,20 @@ from django.db import models
 
 from core.currency_policy import usd_only_check
 from core.models import BaseModel
+from core.vocabulary import (
+    SKIP_REASON_NOTHING_TO_BILL,
+    SKIP_REASON_NOT_CHARGE_READY,
+    SKIP_REASON_NO_STRIPE_CUSTOMER,
+    SKIP_REASON_NO_USAGE,
+    SKIP_REASON_PAYMENT_RAIL_CLOSED,
+    SKIP_REASON_SEAT_SUPERSEDED,
+    USAGE_INVOICE_STATUS_FAILED,
+    USAGE_INVOICE_STATUS_FAILED_PERMANENT,
+    USAGE_INVOICE_STATUS_PENDING,
+    USAGE_INVOICE_STATUS_PUSHED,
+    USAGE_INVOICE_STATUS_PUSHING,
+    USAGE_INVOICE_STATUS_SKIPPED,
+)
 
 
 INVOICE_STATUS_CHOICES = [
@@ -44,9 +58,27 @@ class Invoice(BaseModel):
         return f"Invoice({self.customer.external_id}: {self.status})"
 
 
+# A usage invoice's status and why one was skipped — the registry's closed
+# `usage_invoice_status` and `skip_reason` (R10-W4), by reference. The skip
+# reason was a bare string with no `choices=` until then, written as literals
+# by the postpaid service; `""` is what every invoice that was NOT skipped
+# holds, and the read serves it as null.
 USAGE_INVOICE_STATUS = [
-    ("pending", "Pending"), ("pushing", "Pushing"), ("pushed", "Pushed"),
-    ("skipped", "Skipped"), ("failed", "Failed"), ("failed_permanent", "Failed permanent"),
+    (USAGE_INVOICE_STATUS_PENDING, "Pending"),
+    (USAGE_INVOICE_STATUS_PUSHING, "Pushing"),
+    (USAGE_INVOICE_STATUS_PUSHED, "Pushed"),
+    (USAGE_INVOICE_STATUS_SKIPPED, "Skipped"),
+    (USAGE_INVOICE_STATUS_FAILED, "Failed"),
+    (USAGE_INVOICE_STATUS_FAILED_PERMANENT, "Failed permanent"),
+]
+
+USAGE_INVOICE_SKIP_REASONS = [
+    (SKIP_REASON_NO_USAGE, "No usage recorded"),
+    (SKIP_REASON_NOTHING_TO_BILL, "Nothing to bill"),
+    (SKIP_REASON_SEAT_SUPERSEDED, "Superseded by a newer seat"),
+    (SKIP_REASON_NO_STRIPE_CUSTOMER, "No Stripe customer yet"),
+    (SKIP_REASON_NOT_CHARGE_READY, "Account cannot take charges yet"),
+    (SKIP_REASON_PAYMENT_RAIL_CLOSED, "Payment rail closed"),
 ]
 
 USAGE_INVOICE_PUSH_PHASE = [
@@ -69,7 +101,8 @@ class CustomerUsageInvoice(BaseModel):
     currency = models.CharField(max_length=3, default="usd")
     status = models.CharField(max_length=20, choices=USAGE_INVOICE_STATUS, default="pending", db_index=True)
     stripe_invoice_id = models.CharField(max_length=255, blank=True, default="", db_index=True)
-    skip_reason = models.CharField(max_length=50, blank=True, default="")
+    skip_reason = models.CharField(max_length=50, blank=True, default="",
+                                   choices=USAGE_INVOICE_SKIP_REASONS)
     push_attempts = models.PositiveIntegerField(default=0)
     first_attempted_at = models.DateTimeField(null=True, blank=True)
     last_attempt_error = models.TextField(blank=True, default="")

@@ -30,11 +30,14 @@ from .apps_subscriptions_api_margin_endpoints_get_supplied_revenue_basis_type_0 
 from .assign_plan_in import AssignPlanIn
 from .attribute_request import AttributeRequest
 from .attribute_response import AttributeResponse
+from .attribute_response_status import AttributeResponseStatus
 from .attributed_supplied_revenue_out import AttributedSuppliedRevenueOut
 from .attributed_supplied_revenue_out_recognition_method import AttributedSuppliedRevenueOutRecognitionMethod
 from .audit_record_list_response import AuditRecordListResponse
 from .audit_record_out import AuditRecordOut
+from .audit_record_out_action import AuditRecordOutAction
 from .audit_record_out_metadata import AuditRecordOutMetadata
+from .audit_record_out_resource_type import AuditRecordOutResourceType
 from .balance_response import BalanceResponse
 from .book_agreed_price_change_diff_out import BookAgreedPriceChangeDiffOut
 from .book_agreed_price_change_in import BookAgreedPriceChangeIn
@@ -52,6 +55,7 @@ from .business_margin_totals import BusinessMarginTotals
 from .ceiling_episode_row import CeilingEpisodeRow
 from .ceiling_episode_row_ceiling_basis import CeilingEpisodeRowCeilingBasis
 from .ceiling_episode_row_control_family import CeilingEpisodeRowControlFamily
+from .ceiling_episode_row_stop_scope import CeilingEpisodeRowStopScope
 from .ceiling_utilisation_row import CeilingUtilisationRow
 from .ceiling_utilisation_row_ceiling_status import CeilingUtilisationRowCeilingStatus
 from .close_task_request import CloseTaskRequest
@@ -67,6 +71,7 @@ from .cost_book_out import CostBookOut
 from .create_customer_request import CreateCustomerRequest
 from .create_customer_request_metadata import CreateCustomerRequestMetadata
 from .create_grant_request import CreateGrantRequest
+from .create_grant_request_kind import CreateGrantRequestKind
 from .create_top_up_request import CreateTopUpRequest
 from .credit_request import CreditRequest
 from .credit_request_movement_reason_type_0 import CreditRequestMovementReasonType0
@@ -100,6 +105,7 @@ from .economic_measure_out import EconomicMeasureOut
 from .economic_measure_out_measure import EconomicMeasureOutMeasure
 from .economic_measure_out_status import EconomicMeasureOutStatus
 from .economic_row_out import EconomicRowOut
+from .economic_row_out_grouping_field_value_status_item import EconomicRowOutGroupingFieldValueStatusItem
 from .economics_out import EconomicsOut
 from .economics_out_basis import EconomicsOutBasis
 from .event_category_in import EventCategoryIn
@@ -113,7 +119,11 @@ from .event_type_update_in import EventTypeUpdateIn
 from .event_type_update_in_costing_method_type_0 import EventTypeUpdateInCostingMethodType0
 from .grant_list_response import GrantListResponse
 from .grant_out import GrantOut
+from .grant_out_kind import GrantOutKind
+from .grant_out_source import GrantOutSource
+from .grant_out_status import GrantOutStatus
 from .grant_summary_out import GrantSummaryOut
+from .grant_summary_out_kind import GrantSummaryOutKind
 from .grouping_field_values_out import GroupingFieldValuesOut
 from .grouping_option_out import GroupingOptionOut
 from .grouping_option_out_kind import GroupingOptionOutKind
@@ -149,8 +159,11 @@ from .integration_blueprint_verification_record_in_measurements import Integrati
 from .integration_blueprint_verification_refusal import IntegrationBlueprintVerificationRefusal
 from .integration_blueprint_verification_unit import IntegrationBlueprintVerificationUnit
 from .invitation_create_in import InvitationCreateIn
+from .invitation_create_in_role import InvitationCreateInRole
 from .invitation_list_response import InvitationListResponse
 from .invitation_out import InvitationOut
+from .invitation_out_role import InvitationOutRole
+from .invitation_out_status import InvitationOutStatus
 from .invoice_out import InvoiceOut
 from .itemised_event_row import ItemisedEventRow
 from .itemised_event_row_costing_status import ItemisedEventRowCostingStatus
@@ -158,6 +171,7 @@ from .itemised_event_row_pricing_status import ItemisedEventRowPricingStatus
 from .itemised_event_row_pricing_status_reason_type_0 import ItemisedEventRowPricingStatusReasonType0
 from .itemised_events_out import ItemisedEventsOut
 from .ledger_entry_out import LedgerEntryOut
+from .ledger_entry_out_calculation_method import LedgerEntryOutCalculationMethod
 from .margin_threshold_in import MarginThresholdIn
 from .margin_threshold_out import MarginThresholdOut
 from .me_balance_response import MeBalanceResponse
@@ -171,7 +185,10 @@ from .measurement_out_source_kind import MeasurementOutSourceKind
 from .measurement_out_value_type import MeasurementOutValueType
 from .member_list_response import MemberListResponse
 from .member_out import MemberOut
+from .member_out_role import MemberOutRole
+from .member_out_status import MemberOutStatus
 from .member_role_update_in import MemberRoleUpdateIn
+from .member_role_update_in_role import MemberRoleUpdateInRole
 from .paginated_agreed_prices import PaginatedAgreedPrices
 from .paginated_book_publishes import PaginatedBookPublishes
 from .paginated_cost_books import PaginatedCostBooks
@@ -206,11 +223,37 @@ from .postpaid_config_in import PostpaidConfigIn
 from .postpaid_config_out import PostpaidConfigOut
 from .pricing_book_in import PricingBookIn
 from .pricing_book_out import PricingBookOut
+from .pricing_receipt import PricingReceipt
+from .pricing_receipt_component import PricingReceiptComponent
+from .pricing_receipt_component_rate_structure import PricingReceiptComponentRateStructure
+from .pricing_receipt_costing import PricingReceiptCosting
+from .pricing_receipt_costing_detail import PricingReceiptCostingDetail
+from .pricing_receipt_costing_detail_reported_cost_source_kind_type_0 import PricingReceiptCostingDetailReportedCostSourceKindType0
+from .pricing_receipt_costing_detail_uncosted_quantities_type_0 import PricingReceiptCostingDetailUncostedQuantitiesType0
+from .pricing_receipt_costing_detail_undeclared_quantities_type_0 import PricingReceiptCostingDetailUndeclaredQuantitiesType0
+from .pricing_receipt_costing_detail_unresolved_reason_type_0 import PricingReceiptCostingDetailUnresolvedReasonType0
+from .pricing_receipt_costing_method_type_0 import PricingReceiptCostingMethodType0
+from .pricing_receipt_costing_status import PricingReceiptCostingStatus
+from .pricing_receipt_markup_terms import PricingReceiptMarkupTerms
+from .pricing_receipt_pricing import PricingReceiptPricing
+from .pricing_receipt_pricing_detail import PricingReceiptPricingDetail
+from .pricing_receipt_pricing_detail_not_applicable_reason_type_0 import PricingReceiptPricingDetailNotApplicableReasonType0
+from .pricing_receipt_pricing_detail_pricing_mode_type_0 import PricingReceiptPricingDetailPricingModeType0
+from .pricing_receipt_pricing_detail_pricing_status_reason_type_0 import PricingReceiptPricingDetailPricingStatusReasonType0
+from .pricing_receipt_pricing_method_type_0 import PricingReceiptPricingMethodType0
+from .pricing_receipt_pricing_status import PricingReceiptPricingStatus
+from .pricing_receipt_provenance import PricingReceiptProvenance
+from .pricing_receipt_provenance_markup import PricingReceiptProvenanceMarkup
+from .pricing_receipt_subject_type import PricingReceiptSubjectType
+from .pricing_receipt_totals import PricingReceiptTotals
 from .problem_out import ProblemOut
 from .program_create_request import ProgramCreateRequest
 from .program_create_request_reward_type import ProgramCreateRequestRewardType
 from .program_out import ProgramOut
+from .program_out_reward_type import ProgramOutRewardType
+from .program_out_status import ProgramOutStatus
 from .program_update_request import ProgramUpdateRequest
+from .program_update_request_reward_type_type_0 import ProgramUpdateRequestRewardTypeType0
 from .projected_adjustment_out import ProjectedAdjustmentOut
 from .projected_adjustment_row import ProjectedAdjustmentRow
 from .provider_in import ProviderIn
@@ -232,11 +275,13 @@ from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasur
 from .record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
 from .record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
 from .record_usage_response_pricing_receipt_subject_type_type_0 import RecordUsageResponsePricingReceiptSubjectTypeType0
-from .record_usage_response_pricing_receipt_type_0 import RecordUsageResponsePricingReceiptType0
 from .record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from .record_usage_response_pricing_status_reason_type_0 import RecordUsageResponsePricingStatusReasonType0
+from .record_usage_response_stop_scope_type_0 import RecordUsageResponseStopScopeType0
 from .record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from .referral_out import ReferralOut
+from .referral_out_reward_type import ReferralOutRewardType
+from .referral_out_status import ReferralOutStatus
 from .referrer_earnings_summary import ReferrerEarningsSummary
 from .referrer_out import ReferrerOut
 from .refund_request import RefundRequest
@@ -304,27 +349,34 @@ from .task_type_registry_in import TaskTypeRegistryIn
 from .task_type_registry_out import TaskTypeRegistryOut
 from .tenant_billing_period_list_response import TenantBillingPeriodListResponse
 from .tenant_billing_period_out import TenantBillingPeriodOut
+from .tenant_billing_period_out_status import TenantBillingPeriodOutStatus
 from .tenant_config_in import TenantConfigIn
 from .tenant_config_in_billing_mode_type_0 import TenantConfigInBillingModeType0
+from .tenant_config_in_enforcement_mode_type_0 import TenantConfigInEnforcementModeType0
 from .tenant_config_in_products_type_0_item import TenantConfigInProductsType0Item
 from .tenant_config_out import TenantConfigOut
 from .tenant_config_out_billing_mode import TenantConfigOutBillingMode
+from .tenant_config_out_enforcement_mode import TenantConfigOutEnforcementMode
 from .tenant_config_out_products_item import TenantConfigOutProductsItem
 from .tenant_config_out_tenant_posture import TenantConfigOutTenantPosture
 from .tenant_default_markup_in import TenantDefaultMarkupIn
 from .tenant_default_markup_out import TenantDefaultMarkupOut
 from .tenant_invoice_list_response import TenantInvoiceListResponse
 from .tenant_invoice_out import TenantInvoiceOut
+from .tenant_invoice_out_status import TenantInvoiceOutStatus
 from .tenant_supplied_revenue_in import TenantSuppliedRevenueIn
 from .tenant_supplied_revenue_in_recognition_method import TenantSuppliedRevenueInRecognitionMethod
 from .tenant_supplied_revenue_out import TenantSuppliedRevenueOut
 from .tenant_supplied_revenue_out_recognition_method import TenantSuppliedRevenueOutRecognitionMethod
 from .tenant_usage_invoice_list_response import TenantUsageInvoiceListResponse
 from .tenant_usage_invoice_out import TenantUsageInvoiceOut
+from .tenant_usage_invoice_out_skip_reason_type_0 import TenantUsageInvoiceOutSkipReasonType0
+from .tenant_usage_invoice_out_status import TenantUsageInvoiceOutStatus
 from .top_up_checkout_response import TopUpCheckoutResponse
 from .top_up_request import TopUpRequest
 from .top_up_response import TopUpResponse
 from .transaction_out import TransactionOut
+from .transaction_out_transaction_type import TransactionOutTransactionType
 from .unprofitable_customer_row import UnprofitableCustomerRow
 from .unprofitable_out import UnprofitableOut
 from .unresolved_queue_row import UnresolvedQueueRow
@@ -342,9 +394,9 @@ from .usage_batch_item_response_measurements_type_0 import UsageBatchItemRespons
 from .usage_batch_item_response_not_applicable_reason_type_0 import UsageBatchItemResponseNotApplicableReasonType0
 from .usage_batch_item_response_pricing_method_type_0 import UsageBatchItemResponsePricingMethodType0
 from .usage_batch_item_response_pricing_receipt_subject_type_type_0 import UsageBatchItemResponsePricingReceiptSubjectTypeType0
-from .usage_batch_item_response_pricing_receipt_type_0 import UsageBatchItemResponsePricingReceiptType0
 from .usage_batch_item_response_pricing_status_reason_type_0 import UsageBatchItemResponsePricingStatusReasonType0
 from .usage_batch_item_response_pricing_status_type_0 import UsageBatchItemResponsePricingStatusType0
+from .usage_batch_item_response_stop_scope_type_0 import UsageBatchItemResponseStopScopeType0
 from .usage_batch_item_response_unresolved_reason_type_0 import UsageBatchItemResponseUnresolvedReasonType0
 from .usage_batch_request import UsageBatchRequest
 from .usage_batch_response import UsageBatchResponse
@@ -357,7 +409,6 @@ from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasu
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
 from .usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
-from .usage_event_detail_out_pricing_receipt import UsageEventDetailOutPricingReceipt
 from .usage_event_detail_out_pricing_receipt_subject_type_type_0 import UsageEventDetailOutPricingReceiptSubjectTypeType0
 from .usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from .usage_event_detail_out_pricing_status_reason_type_0 import UsageEventDetailOutPricingStatusReasonType0
@@ -372,12 +423,15 @@ from .usage_event_out_pricing_status_reason_type_0 import UsageEventOutPricingSt
 from .usage_event_out_unresolved_reason_type_0 import UsageEventOutUnresolvedReasonType0
 from .usage_invoice_list_response import UsageInvoiceListResponse
 from .usage_invoice_out import UsageInvoiceOut
+from .usage_invoice_out_skip_reason_type_0 import UsageInvoiceOutSkipReasonType0
+from .usage_invoice_out_status import UsageInvoiceOutStatus
 from .utilisation_and_headroom_response import UtilisationAndHeadroomResponse
 from .waived_loss_out import WaivedLossOut
 from .waived_loss_row import WaivedLossRow
 from .wallet_policy_episode_row import WalletPolicyEpisodeRow
 from .wallet_policy_episode_row_control_family import WalletPolicyEpisodeRowControlFamily
 from .wallet_transaction_out import WalletTransactionOut
+from .wallet_transaction_out_transaction_type import WalletTransactionOutTransactionType
 from .webhook_config_create_request import WebhookConfigCreateRequest
 from .webhook_config_create_request_event_types_item_type_0 import WebhookConfigCreateRequestEventTypesItemType0
 from .webhook_config_list_response import WebhookConfigListResponse
@@ -425,9 +479,12 @@ __all__ = (
     "AttributedSuppliedRevenueOutRecognitionMethod",
     "AttributeRequest",
     "AttributeResponse",
+    "AttributeResponseStatus",
     "AuditRecordListResponse",
     "AuditRecordOut",
+    "AuditRecordOutAction",
     "AuditRecordOutMetadata",
+    "AuditRecordOutResourceType",
     "BalanceResponse",
     "BookAgreedPriceChangeDiffOut",
     "BookAgreedPriceChangeIn",
@@ -445,6 +502,7 @@ __all__ = (
     "CeilingEpisodeRow",
     "CeilingEpisodeRowCeilingBasis",
     "CeilingEpisodeRowControlFamily",
+    "CeilingEpisodeRowStopScope",
     "CeilingUtilisationRow",
     "CeilingUtilisationRowCeilingStatus",
     "CloseTaskRequest",
@@ -460,6 +518,7 @@ __all__ = (
     "CreateCustomerRequest",
     "CreateCustomerRequestMetadata",
     "CreateGrantRequest",
+    "CreateGrantRequestKind",
     "CreateTopUpRequest",
     "CreditRequest",
     "CreditRequestMovementReasonType0",
@@ -493,6 +552,7 @@ __all__ = (
     "EconomicMeasureOutMeasure",
     "EconomicMeasureOutStatus",
     "EconomicRowOut",
+    "EconomicRowOutGroupingFieldValueStatusItem",
     "EconomicsOut",
     "EconomicsOutBasis",
     "EventCategoryIn",
@@ -506,7 +566,11 @@ __all__ = (
     "EventTypeUpdateInCostingMethodType0",
     "GrantListResponse",
     "GrantOut",
+    "GrantOutKind",
+    "GrantOutSource",
+    "GrantOutStatus",
     "GrantSummaryOut",
+    "GrantSummaryOutKind",
     "GroupingFieldValuesOut",
     "GroupingOptionOut",
     "GroupingOptionOutKind",
@@ -542,8 +606,11 @@ __all__ = (
     "IntegrationBlueprintVerificationRefusal",
     "IntegrationBlueprintVerificationUnit",
     "InvitationCreateIn",
+    "InvitationCreateInRole",
     "InvitationListResponse",
     "InvitationOut",
+    "InvitationOutRole",
+    "InvitationOutStatus",
     "InvoiceOut",
     "ItemisedEventRow",
     "ItemisedEventRowCostingStatus",
@@ -551,6 +618,7 @@ __all__ = (
     "ItemisedEventRowPricingStatusReasonType0",
     "ItemisedEventsOut",
     "LedgerEntryOut",
+    "LedgerEntryOutCalculationMethod",
     "MarginThresholdIn",
     "MarginThresholdOut",
     "MeasurementIn",
@@ -562,7 +630,10 @@ __all__ = (
     "MeBalanceResponse",
     "MemberListResponse",
     "MemberOut",
+    "MemberOutRole",
+    "MemberOutStatus",
     "MemberRoleUpdateIn",
+    "MemberRoleUpdateInRole",
     "MeSubscriptionInvoiceOut",
     "MeUsageInvoiceOut",
     "PaginatedAgreedPrices",
@@ -599,11 +670,37 @@ __all__ = (
     "PostpaidConfigOut",
     "PricingBookIn",
     "PricingBookOut",
+    "PricingReceipt",
+    "PricingReceiptComponent",
+    "PricingReceiptComponentRateStructure",
+    "PricingReceiptCosting",
+    "PricingReceiptCostingDetail",
+    "PricingReceiptCostingDetailReportedCostSourceKindType0",
+    "PricingReceiptCostingDetailUncostedQuantitiesType0",
+    "PricingReceiptCostingDetailUndeclaredQuantitiesType0",
+    "PricingReceiptCostingDetailUnresolvedReasonType0",
+    "PricingReceiptCostingMethodType0",
+    "PricingReceiptCostingStatus",
+    "PricingReceiptMarkupTerms",
+    "PricingReceiptPricing",
+    "PricingReceiptPricingDetail",
+    "PricingReceiptPricingDetailNotApplicableReasonType0",
+    "PricingReceiptPricingDetailPricingModeType0",
+    "PricingReceiptPricingDetailPricingStatusReasonType0",
+    "PricingReceiptPricingMethodType0",
+    "PricingReceiptPricingStatus",
+    "PricingReceiptProvenance",
+    "PricingReceiptProvenanceMarkup",
+    "PricingReceiptSubjectType",
+    "PricingReceiptTotals",
     "ProblemOut",
     "ProgramCreateRequest",
     "ProgramCreateRequestRewardType",
     "ProgramOut",
+    "ProgramOutRewardType",
+    "ProgramOutStatus",
     "ProgramUpdateRequest",
+    "ProgramUpdateRequestRewardTypeType0",
     "ProjectedAdjustmentOut",
     "ProjectedAdjustmentRow",
     "ProviderIn",
@@ -625,11 +722,13 @@ __all__ = (
     "RecordUsageResponseNotApplicableReasonType0",
     "RecordUsageResponsePricingMethodType0",
     "RecordUsageResponsePricingReceiptSubjectTypeType0",
-    "RecordUsageResponsePricingReceiptType0",
     "RecordUsageResponsePricingStatus",
     "RecordUsageResponsePricingStatusReasonType0",
+    "RecordUsageResponseStopScopeType0",
     "RecordUsageResponseUnresolvedReasonType0",
     "ReferralOut",
+    "ReferralOutRewardType",
+    "ReferralOutStatus",
     "ReferrerEarningsSummary",
     "ReferrerOut",
     "RefundRequest",
@@ -697,27 +796,34 @@ __all__ = (
     "TaskTypeRegistryOut",
     "TenantBillingPeriodListResponse",
     "TenantBillingPeriodOut",
+    "TenantBillingPeriodOutStatus",
     "TenantConfigIn",
     "TenantConfigInBillingModeType0",
+    "TenantConfigInEnforcementModeType0",
     "TenantConfigInProductsType0Item",
     "TenantConfigOut",
     "TenantConfigOutBillingMode",
+    "TenantConfigOutEnforcementMode",
     "TenantConfigOutProductsItem",
     "TenantConfigOutTenantPosture",
     "TenantDefaultMarkupIn",
     "TenantDefaultMarkupOut",
     "TenantInvoiceListResponse",
     "TenantInvoiceOut",
+    "TenantInvoiceOutStatus",
     "TenantSuppliedRevenueIn",
     "TenantSuppliedRevenueInRecognitionMethod",
     "TenantSuppliedRevenueOut",
     "TenantSuppliedRevenueOutRecognitionMethod",
     "TenantUsageInvoiceListResponse",
     "TenantUsageInvoiceOut",
+    "TenantUsageInvoiceOutSkipReasonType0",
+    "TenantUsageInvoiceOutStatus",
     "TopUpCheckoutResponse",
     "TopUpRequest",
     "TopUpResponse",
     "TransactionOut",
+    "TransactionOutTransactionType",
     "UnprofitableCustomerRow",
     "UnprofitableOut",
     "UnresolvedQueueRow",
@@ -735,9 +841,9 @@ __all__ = (
     "UsageBatchItemResponseNotApplicableReasonType0",
     "UsageBatchItemResponsePricingMethodType0",
     "UsageBatchItemResponsePricingReceiptSubjectTypeType0",
-    "UsageBatchItemResponsePricingReceiptType0",
     "UsageBatchItemResponsePricingStatusReasonType0",
     "UsageBatchItemResponsePricingStatusType0",
+    "UsageBatchItemResponseStopScopeType0",
     "UsageBatchItemResponseUnresolvedReasonType0",
     "UsageBatchRequest",
     "UsageBatchResponse",
@@ -750,7 +856,6 @@ __all__ = (
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutNotApplicableReasonType0",
     "UsageEventDetailOutPricingMethodType0",
-    "UsageEventDetailOutPricingReceipt",
     "UsageEventDetailOutPricingReceiptSubjectTypeType0",
     "UsageEventDetailOutPricingStatus",
     "UsageEventDetailOutPricingStatusReasonType0",
@@ -765,12 +870,15 @@ __all__ = (
     "UsageEventOutUnresolvedReasonType0",
     "UsageInvoiceListResponse",
     "UsageInvoiceOut",
+    "UsageInvoiceOutSkipReasonType0",
+    "UsageInvoiceOutStatus",
     "UtilisationAndHeadroomResponse",
     "WaivedLossOut",
     "WaivedLossRow",
     "WalletPolicyEpisodeRow",
     "WalletPolicyEpisodeRowControlFamily",
     "WalletTransactionOut",
+    "WalletTransactionOutTransactionType",
     "WebhookConfigCreateRequest",
     "WebhookConfigCreateRequestEventTypesItemType0",
     "WebhookConfigListResponse",

@@ -12,7 +12,7 @@
 import { z } from "zod";
 
 import { formatMicros, formatPercent } from "@/lib/format";
-import { rewardTypeLabel } from "@/lib/labels";
+import { rewardTypeLabel } from "./referral-vocabulary";
 
 import type {
   ProgramCreateRequest,

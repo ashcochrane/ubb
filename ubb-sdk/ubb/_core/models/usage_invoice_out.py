@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.usage_invoice_out_skip_reason_type_0 import UsageInvoiceOutSkipReasonType0
+from ..models.usage_invoice_out_status import UsageInvoiceOutStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -27,22 +29,23 @@ class UsageInvoiceOut:
             currency (str):
             period_end (str):
             period_start (str):
-            status (str):
+            skip_reason (None | UsageInvoiceOutSkipReasonType0): Why this invoice was skipped rather than pushed; null
+                unless status is 'skipped'.
+            status (UsageInvoiceOutStatus):
             total_billed_micros (int):
             last_attempt_error (None | str | Unset):
             push_attempts (int | None | Unset):
-            skip_reason (str | Unset):  Default: ''.
             stripe_invoice_id (str | Unset):  Default: ''.
      """
 
     currency: str
     period_end: str
     period_start: str
-    status: str
+    skip_reason: None | UsageInvoiceOutSkipReasonType0
+    status: UsageInvoiceOutStatus
     total_billed_micros: int
     last_attempt_error: None | str | Unset = UNSET
     push_attempts: int | None | Unset = UNSET
-    skip_reason: str | Unset = ''
     stripe_invoice_id: str | Unset = ''
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -57,7 +60,13 @@ class UsageInvoiceOut:
 
         period_start = self.period_start
 
-        status = self.status
+        skip_reason: None | str
+        if isinstance(self.skip_reason, UsageInvoiceOutSkipReasonType0):
+            skip_reason = self.skip_reason.value
+        else:
+            skip_reason = self.skip_reason
+
+        status = self.status.value
 
         total_billed_micros = self.total_billed_micros
 
@@ -73,8 +82,6 @@ class UsageInvoiceOut:
         else:
             push_attempts = self.push_attempts
 
-        skip_reason = self.skip_reason
-
         stripe_invoice_id = self.stripe_invoice_id
 
 
@@ -84,6 +91,7 @@ class UsageInvoiceOut:
             "currency": currency,
             "period_end": period_end,
             "period_start": period_start,
+            "skip_reason": skip_reason,
             "status": status,
             "total_billed_micros": total_billed_micros,
         })
@@ -91,8 +99,6 @@ class UsageInvoiceOut:
             field_dict["last_attempt_error"] = last_attempt_error
         if push_attempts is not UNSET:
             field_dict["push_attempts"] = push_attempts
-        if skip_reason is not UNSET:
-            field_dict["skip_reason"] = skip_reason
         if stripe_invoice_id is not UNSET:
             field_dict["stripe_invoice_id"] = stripe_invoice_id
 
@@ -109,7 +115,28 @@ class UsageInvoiceOut:
 
         period_start = d.pop("period_start")
 
-        status = d.pop("status")
+        def _parse_skip_reason(data: object) -> None | UsageInvoiceOutSkipReasonType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                skip_reason_type_0 = UsageInvoiceOutSkipReasonType0(data)
+
+
+
+                return skip_reason_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | UsageInvoiceOutSkipReasonType0, data)
+
+        skip_reason = _parse_skip_reason(d.pop("skip_reason"))
+
+
+        status = UsageInvoiceOutStatus(d.pop("status"))
+
+
+
 
         total_billed_micros = d.pop("total_billed_micros")
 
@@ -133,19 +160,17 @@ class UsageInvoiceOut:
         push_attempts = _parse_push_attempts(d.pop("push_attempts", UNSET))
 
 
-        skip_reason = d.pop("skip_reason", UNSET)
-
         stripe_invoice_id = d.pop("stripe_invoice_id", UNSET)
 
         usage_invoice_out = cls(
             currency=currency,
             period_end=period_end,
             period_start=period_start,
+            skip_reason=skip_reason,
             status=status,
             total_billed_micros=total_billed_micros,
             last_attempt_error=last_attempt_error,
             push_attempts=push_attempts,
-            skip_reason=skip_reason,
             stripe_invoice_id=stripe_invoice_id,
         )
 

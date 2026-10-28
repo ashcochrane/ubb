@@ -19,7 +19,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
-import { humanize } from "@/lib/labels";
+import { referralStatusLabel } from "../lib/referral-vocabulary";
 import { toastSuccess } from "@/lib/mutations";
 
 import { useAttributeReferral } from "../api/queries";
@@ -71,7 +71,7 @@ export function AttributeReferralDialog({
   const submit = form.handleSubmit((values) =>
     mutation.mutate(toAttributeRequest(values), {
       onSuccess: (result) => {
-        toastSuccess("Referral attributed", `Status: ${humanize(result.status)}`);
+        toastSuccess("Referral attributed", `Status: ${referralStatusLabel(result.status)}`);
         onOpenChange(false);
       },
     }),

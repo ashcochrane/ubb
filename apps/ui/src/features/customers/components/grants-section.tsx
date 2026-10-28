@@ -46,7 +46,7 @@ import {
 import { useHasRole } from "@/hooks/use-current-role";
 import { useIsPostpaid, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
-import { grantKindLabel, grantSourceLabel, grantStatusLabel } from "@/lib/labels";
+import { grantKindLabel, grantSourceLabel, grantStatusLabel } from "../lib/grants";
 
 import { useCreateGrant, useGrantsList, useVoidGrant } from "../api/queries";
 import type { GrantOut } from "../api/types";

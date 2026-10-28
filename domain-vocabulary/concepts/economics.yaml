@@ -1300,6 +1300,34 @@ grouping_field_value:
     - surface: openapi
       path: openapi/v1.json
 
+grouping_field_value_status:
+  kind: closed
+  # DECLARED IN R10-W4 (#550). The economic query computed the three in
+  # `apps/metering/queries.py` and published them as a bare list of strings,
+  # so no gate saw a closed set reach the wire. The wire key was already this
+  # concept's name, and ADR-0006 offers no better one: the field says, per
+  # grouping axis, what happened to the value.
+  summary: >-
+    What an economic row says about its value on each grouping axis, one
+    entry per axis: recorded, where the value beside it is the axis's value;
+    not_recorded, where these events could have carried one and did not; or
+    not_applicable, where this kind of row never carries one (a Task Charge
+    names no supplier and no Event Type). Both absences leave the axis
+    without a value, and they read differently on purpose: only the first
+    has a remedy.
+  values:
+    - recorded
+    - not_recorded
+    - not_applicable
+  label_key_prefix: grouping_field_value_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/queries.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/grouping-field-value-status.ts
+
 grouping_field_scope:
   kind: closed
   # DECLARED BEFORE THE CODE BUILDER CONSUMES IT (#575, bank row a21). The

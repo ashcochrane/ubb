@@ -5,24 +5,37 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import BaseModel
+from core.vocabulary import (
+    REFERRAL_PROGRAM_STATUS_ACTIVE,
+    REFERRAL_PROGRAM_STATUS_DEACTIVATED,
+    REFERRAL_PROGRAM_STATUS_PAUSED,
+    REFERRAL_STATUS_ACTIVE,
+    REFERRAL_STATUS_EXPIRED,
+    REFERRAL_STATUS_REVOKED,
+    REWARD_TYPE_FLAT_FEE,
+    REWARD_TYPE_PROFIT_SHARE,
+    REWARD_TYPE_REVENUE_SHARE,
+)
 
 
+# The registry's closed `reward_type`, `referral_program_status` and
+# `referral_status` (R10-W4), by reference.
 REWARD_TYPE_CHOICES = [
-    ("flat_fee", "Flat Fee"),
-    ("revenue_share", "Revenue Share"),
-    ("profit_share", "Profit Share"),
+    (REWARD_TYPE_FLAT_FEE, "Flat Fee"),
+    (REWARD_TYPE_REVENUE_SHARE, "Revenue Share"),
+    (REWARD_TYPE_PROFIT_SHARE, "Profit Share"),
 ]
 
 PROGRAM_STATUS_CHOICES = [
-    ("active", "Active"),
-    ("paused", "Paused"),
-    ("deactivated", "Deactivated"),
+    (REFERRAL_PROGRAM_STATUS_ACTIVE, "Active"),
+    (REFERRAL_PROGRAM_STATUS_PAUSED, "Paused"),
+    (REFERRAL_PROGRAM_STATUS_DEACTIVATED, "Deactivated"),
 ]
 
 REFERRAL_STATUS_CHOICES = [
-    ("active", "Active"),
-    ("expired", "Expired"),
-    ("revoked", "Revoked"),
+    (REFERRAL_STATUS_ACTIVE, "Active"),
+    (REFERRAL_STATUS_EXPIRED, "Expired"),
+    (REFERRAL_STATUS_REVOKED, "Revoked"),
 ]
 
 

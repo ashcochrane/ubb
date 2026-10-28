@@ -1,0 +1,66 @@
+# Team vocabulary: who may act for a tenant, and where their membership stands.
+#
+# DECLARED IN R10-W4 (slice 8), from the sets the membership models already
+# held. Each was a hand-written label map in the console's legacy adapter with
+# a humanising fallback (`gates/migration-ledger.yaml`, G6), which ADR-0008
+# §4.3 calls a defect; declaring the concept is what gives each value a stable
+# label key, and the console now words it from the catalogue.
+
+role:
+  kind: closed
+  summary: >-
+    A tenant principal's authority — admin, write or read. Carried by both a
+    Member and a tenant API key, and compared as a floor (admin ≥ write ≥
+    read) by every route that binds one. No owner tier and no fourth role
+    (#62). Closed: a principal holding any other value meets no floor.
+  # Declared lowest authority first, which is the rank a floor compares by
+  # and the order a picker offers them in; the backend's rank and the
+  # console's are both read off this one order.
+  values:
+    - read
+    - write
+    - admin
+  label_key_prefix: role
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/membership/roles.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/role.ts
+
+member_status:
+  kind: closed
+  summary: >-
+    Where a team member's seat stands: pending until the invitee's first
+    verified login activates it, active after. Removing a member deletes the
+    seat rather than moving it to a third state.
+  values:
+    - pending
+    - active
+  label_key_prefix: member_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/membership/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/lib/team.ts
+
+invitation_status:
+  kind: closed
+  summary: >-
+    Where an invitation by email stands: pending until the invitee activates
+    the seat it created (accepted) or an admin cancels it first (revoked).
+  values:
+    - pending
+    - accepted
+    - revoked
+  label_key_prefix: invitation_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/membership/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/lib/team.ts

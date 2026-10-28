@@ -38,6 +38,34 @@ Three things are deliberately absent:
           ...
 """
 
+# --- actor_kind --------------------------------------------------------------
+#
+# open — UBB records the values it knows; consumers accept future and external
+# ones. Checking is asymmetric — a registry-known value missing from a
+# UBB-owned consumer is a defect, a runtime value the registry has never seen
+# is legal.
+#
+# Who performed an audited act or a recorded publish: a team member, an API
+# key, a UBB operator (recorded as staff, never as which staffer), an end
+# customer through the widget, or the system where no principal resolved.
+#
+# Declared in concepts/governance.yaml.
+
+ACTOR_KIND_MEMBER = 'member'
+ACTOR_KIND_API_KEY = 'api_key'
+ACTOR_KIND_OPERATOR = 'operator'
+ACTOR_KIND_END_CUSTOMER = 'end_customer'
+ACTOR_KIND_SYSTEM = 'system'
+
+ACTOR_KIND_KNOWN_VALUES = frozenset({
+    ACTOR_KIND_MEMBER,
+    ACTOR_KIND_API_KEY,
+    ACTOR_KIND_OPERATOR,
+    ACTOR_KIND_END_CUSTOMER,
+    ACTOR_KIND_SYSTEM,
+})
+
+
 # --- affordability_reason ----------------------------------------------------
 #
 # open — UBB records the values it knows; consumers accept future and external
@@ -195,14 +223,6 @@ AUDIT_ACTION_TOP_UP_REQUESTED = 'top_up.requested'
 AUDIT_ACTION_USAGE_REFUNDED = 'usage.refunded'
 AUDIT_ACTION_GRANT_CREATED = 'grant.created'
 AUDIT_ACTION_GRANT_VOIDED = 'grant.voided'
-AUDIT_ACTION_PRICING_BOOK_CREATED = 'pricing_book.created'
-AUDIT_ACTION_PRICING_BOOK_ASSIGNED = 'pricing_book.assigned'
-AUDIT_ACTION_PRICING_BOOK_PUBLISHED = 'pricing_book.published'
-AUDIT_ACTION_COST_RATE_ADDED = 'cost_rate.added'
-AUDIT_ACTION_COST_RATE_DELETED = 'cost_rate.deleted'
-AUDIT_ACTION_PRICING_RULE_ADDED = 'pricing_rule.added'
-AUDIT_ACTION_PRICING_RULE_DELETED = 'pricing_rule.deleted'
-AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_SET = 'customer_pricing_override.set'
 AUDIT_ACTION_TENANT_DEFAULT_MARKUP_DECLARED = 'tenant_default_markup.declared'
 AUDIT_ACTION_TENANT_DEFAULT_MARKUP_WITHDRAWN = 'tenant_default_markup.withdrawn'
 AUDIT_ACTION_PRICING_BOOK_PUBLISH_DECLARED = 'pricing_book_publish.declared'
@@ -275,14 +295,6 @@ AUDIT_ACTION_VALUES = frozenset({
     AUDIT_ACTION_USAGE_REFUNDED,
     AUDIT_ACTION_GRANT_CREATED,
     AUDIT_ACTION_GRANT_VOIDED,
-    AUDIT_ACTION_PRICING_BOOK_CREATED,
-    AUDIT_ACTION_PRICING_BOOK_ASSIGNED,
-    AUDIT_ACTION_PRICING_BOOK_PUBLISHED,
-    AUDIT_ACTION_COST_RATE_ADDED,
-    AUDIT_ACTION_COST_RATE_DELETED,
-    AUDIT_ACTION_PRICING_RULE_ADDED,
-    AUDIT_ACTION_PRICING_RULE_DELETED,
-    AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_SET,
     AUDIT_ACTION_TENANT_DEFAULT_MARKUP_DECLARED,
     AUDIT_ACTION_TENANT_DEFAULT_MARKUP_WITHDRAWN,
     AUDIT_ACTION_PRICING_BOOK_PUBLISH_DECLARED,
@@ -332,6 +344,117 @@ AUDIT_ACTION_VALUES = frozenset({
     AUDIT_ACTION_SYSTEM_PREPRODUCTION_MODEL_CUTOVER,
 })
 
+AUDIT_ACTION_WITHHELD_VALUES = frozenset({
+    AUDIT_ACTION_SYSTEM_PREPRODUCTION_MODEL_CUTOVER,
+})
+
+
+# --- audit_resource_type -----------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Which kind of record an audited action changed, beside its id, so a
+# governance reader can find every act on one record. Exactly the resource
+# types UBB writes: one per record the tenant's governance surface can change.
+# The noun is the record's, which is why an action and its resource type need
+# not share a word (a Pricing Book's publish is recorded on the publish
+# record).
+#
+# Declared in concepts/governance.yaml.
+
+AUDIT_RESOURCE_TYPE_API_KEY = 'api_key'
+AUDIT_RESOURCE_TYPE_SANDBOX = 'sandbox'
+AUDIT_RESOURCE_TYPE_TENANT = 'tenant'
+AUDIT_RESOURCE_TYPE_CONNECT = 'connect'
+AUDIT_RESOURCE_TYPE_WALLET = 'wallet'
+AUDIT_RESOURCE_TYPE_AUTO_TOP_UP = 'auto_top_up'
+AUDIT_RESOURCE_TYPE_GRANT = 'grant'
+AUDIT_RESOURCE_TYPE_CUSTOMER_SPEND_POOL = 'customer_spend_pool'
+AUDIT_RESOURCE_TYPE_BILLING_PROFILE = 'billing_profile'
+AUDIT_RESOURCE_TYPE_POSTPAID_CONFIG = 'postpaid_config'
+AUDIT_RESOURCE_TYPE_PLAN = 'plan'
+AUDIT_RESOURCE_TYPE_CUSTOMER = 'customer'
+AUDIT_RESOURCE_TYPE_SUBSCRIPTION = 'subscription'
+AUDIT_RESOURCE_TYPE_MARGIN_THRESHOLD = 'margin_threshold'
+AUDIT_RESOURCE_TYPE_TENANT_SUPPLIED_REVENUE = 'tenant_supplied_revenue'
+AUDIT_RESOURCE_TYPE_TENANT_DEFAULT_MARKUP = 'tenant_default_markup'
+AUDIT_RESOURCE_TYPE_PRICING_BOOK = 'pricing_book'
+AUDIT_RESOURCE_TYPE_COST_BOOK = 'cost_book'
+AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH = 'pricing_book_publish'
+AUDIT_RESOURCE_TYPE_RESOLUTION_RUN = 'resolution_run'
+AUDIT_RESOURCE_TYPE_GROUPING_FIELD_REGISTRY = 'grouping_field_registry'
+AUDIT_RESOURCE_TYPE_TASK_TYPE_REGISTRY = 'task_type_registry'
+AUDIT_RESOURCE_TYPE_PROVIDER = 'provider'
+AUDIT_RESOURCE_TYPE_EVENT_CATEGORY = 'event_category'
+AUDIT_RESOURCE_TYPE_EVENT_TYPE = 'event_type'
+AUDIT_RESOURCE_TYPE_MEASUREMENT = 'measurement'
+AUDIT_RESOURCE_TYPE_REPORTED_COST_MAPPING = 'reported_cost_mapping'
+AUDIT_RESOURCE_TYPE_INVITATION = 'invitation'
+AUDIT_RESOURCE_TYPE_MEMBER = 'member'
+AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM = 'referral_program'
+AUDIT_RESOURCE_TYPE_REFERRER = 'referrer'
+AUDIT_RESOURCE_TYPE_REFERRAL = 'referral'
+AUDIT_RESOURCE_TYPE_WEBHOOK_CONFIG = 'webhook_config'
+
+AUDIT_RESOURCE_TYPE_VALUES = frozenset({
+    AUDIT_RESOURCE_TYPE_API_KEY,
+    AUDIT_RESOURCE_TYPE_SANDBOX,
+    AUDIT_RESOURCE_TYPE_TENANT,
+    AUDIT_RESOURCE_TYPE_CONNECT,
+    AUDIT_RESOURCE_TYPE_WALLET,
+    AUDIT_RESOURCE_TYPE_AUTO_TOP_UP,
+    AUDIT_RESOURCE_TYPE_GRANT,
+    AUDIT_RESOURCE_TYPE_CUSTOMER_SPEND_POOL,
+    AUDIT_RESOURCE_TYPE_BILLING_PROFILE,
+    AUDIT_RESOURCE_TYPE_POSTPAID_CONFIG,
+    AUDIT_RESOURCE_TYPE_PLAN,
+    AUDIT_RESOURCE_TYPE_CUSTOMER,
+    AUDIT_RESOURCE_TYPE_SUBSCRIPTION,
+    AUDIT_RESOURCE_TYPE_MARGIN_THRESHOLD,
+    AUDIT_RESOURCE_TYPE_TENANT_SUPPLIED_REVENUE,
+    AUDIT_RESOURCE_TYPE_TENANT_DEFAULT_MARKUP,
+    AUDIT_RESOURCE_TYPE_PRICING_BOOK,
+    AUDIT_RESOURCE_TYPE_COST_BOOK,
+    AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH,
+    AUDIT_RESOURCE_TYPE_RESOLUTION_RUN,
+    AUDIT_RESOURCE_TYPE_GROUPING_FIELD_REGISTRY,
+    AUDIT_RESOURCE_TYPE_TASK_TYPE_REGISTRY,
+    AUDIT_RESOURCE_TYPE_PROVIDER,
+    AUDIT_RESOURCE_TYPE_EVENT_CATEGORY,
+    AUDIT_RESOURCE_TYPE_EVENT_TYPE,
+    AUDIT_RESOURCE_TYPE_MEASUREMENT,
+    AUDIT_RESOURCE_TYPE_REPORTED_COST_MAPPING,
+    AUDIT_RESOURCE_TYPE_INVITATION,
+    AUDIT_RESOURCE_TYPE_MEMBER,
+    AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM,
+    AUDIT_RESOURCE_TYPE_REFERRER,
+    AUDIT_RESOURCE_TYPE_REFERRAL,
+    AUDIT_RESOURCE_TYPE_WEBHOOK_CONFIG,
+})
+
+
+# --- billing_period_status ---------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where one calendar month of a tenant's usage on UBB's own books stands: open
+# while it takes usage, closed once, then invoicing and invoiced as the
+# platform fee is billed.
+#
+# Declared in concepts/billing.yaml.
+
+BILLING_PERIOD_STATUS_OPEN = 'open'
+BILLING_PERIOD_STATUS_CLOSED = 'closed'
+BILLING_PERIOD_STATUS_INVOICING = 'invoicing'
+BILLING_PERIOD_STATUS_INVOICED = 'invoiced'
+
+BILLING_PERIOD_STATUS_VALUES = frozenset({
+    BILLING_PERIOD_STATUS_OPEN,
+    BILLING_PERIOD_STATUS_CLOSED,
+    BILLING_PERIOD_STATUS_INVOICING,
+    BILLING_PERIOD_STATUS_INVOICED,
+})
+
 
 # --- binding_class -----------------------------------------------------------
 #
@@ -356,6 +479,27 @@ BINDING_CLASS_VALUES = frozenset({
     BINDING_CLASS_PLATFORM_KNOWN,
     BINDING_CLASS_RUNTIME_BOUND,
     BINDING_CLASS_SECRET_REFERENCE,
+})
+
+
+# --- calculation_method ------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# How one reward-ledger entry's amount was derived (ADR-0006 §3: a method says
+# how an amount is derived): from the referred customer's actual supplier cost,
+# from an estimated cost where the actual one was not known, or as a flat fee.
+#
+# Declared in concepts/referrals.yaml.
+
+CALCULATION_METHOD_ACTUAL_COST = 'actual_cost'
+CALCULATION_METHOD_ESTIMATED_COST = 'estimated_cost'
+CALCULATION_METHOD_FLAT_FEE = 'flat_fee'
+
+CALCULATION_METHOD_VALUES = frozenset({
+    CALCULATION_METHOD_ACTUAL_COST,
+    CALCULATION_METHOD_ESTIMATED_COST,
+    CALCULATION_METHOD_FLAT_FEE,
 })
 
 
@@ -691,6 +835,27 @@ DIAGNOSTIC_SEVERITY_VALUES = frozenset({
 })
 
 
+# --- enforcement_mode --------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# The tenant's one switch for real-time spend control: off, where no signal is
+# raised and no counter is kept, or enforcing, where the whole signal suite and
+# its state changes run. A mode in ADR-0006 §3's sense — which operating regime
+# applies — and a different concept from a customer spend pool's own enforce
+# mode.
+#
+# Declared in concepts/spend-controls.yaml.
+
+ENFORCEMENT_MODE_OFF = 'off'
+ENFORCEMENT_MODE_ENFORCING = 'enforcing'
+
+ENFORCEMENT_MODE_VALUES = frozenset({
+    ENFORCEMENT_MODE_OFF,
+    ENFORCEMENT_MODE_ENFORCING,
+})
+
+
 # --- event_type_key ----------------------------------------------------------
 #
 # tenant_defined — The tenant owns the values. UBB defines the field and its
@@ -726,6 +891,69 @@ DIAGNOSTIC_SEVERITY_VALUES = frozenset({
 # No constants: this kind declares no values by construction. The section is
 # here so that fact is visible, rather than looking like a concept the
 # generator lost.
+
+
+# --- grant_kind --------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Whether a credit grant (a lot on the wallet) is paid — money from a top-up,
+# withdrawable — or promo, never withdrawable and consumed first.
+#
+# Declared in concepts/billing.yaml.
+
+GRANT_KIND_PAID = 'paid'
+GRANT_KIND_PROMO = 'promo'
+
+GRANT_KIND_VALUES = frozenset({
+    GRANT_KIND_PAID,
+    GRANT_KIND_PROMO,
+})
+
+
+# --- grant_source ------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where a credit grant came from: a checkout top-up, an automatic top-up, a
+# grant made through the API, or anything else.
+#
+# Declared in concepts/billing.yaml.
+
+GRANT_SOURCE_CHECKOUT = 'checkout'
+GRANT_SOURCE_AUTO_TOP_UP = 'auto_top_up'
+GRANT_SOURCE_API = 'api'
+GRANT_SOURCE_OTHER = 'other'
+
+GRANT_SOURCE_VALUES = frozenset({
+    GRANT_SOURCE_CHECKOUT,
+    GRANT_SOURCE_AUTO_TOP_UP,
+    GRANT_SOURCE_API,
+    GRANT_SOURCE_OTHER,
+})
+
+
+# --- grant_status ------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where a credit grant stands: active while it has a remaining balance,
+# depleted once drawn to nothing, expired once its expiry passed, voided when
+# withdrawn by hand or clawed back.
+#
+# Declared in concepts/billing.yaml.
+
+GRANT_STATUS_ACTIVE = 'active'
+GRANT_STATUS_DEPLETED = 'depleted'
+GRANT_STATUS_EXPIRED = 'expired'
+GRANT_STATUS_VOIDED = 'voided'
+
+GRANT_STATUS_VALUES = frozenset({
+    GRANT_STATUS_ACTIVE,
+    GRANT_STATUS_DEPLETED,
+    GRANT_STATUS_EXPIRED,
+    GRANT_STATUS_VOIDED,
+})
 
 
 # --- grouping_field_scope ----------------------------------------------------
@@ -769,6 +997,30 @@ GROUPING_FIELD_SCOPE_VALUES = frozenset({
 # No constants: this kind declares no values by construction. The section is
 # here so that fact is visible, rather than looking like a concept the
 # generator lost.
+
+
+# --- grouping_field_value_status ---------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What an economic row says about its value on each grouping axis, one entry
+# per axis: recorded, where the value beside it is the axis's value;
+# not_recorded, where these events could have carried one and did not; or
+# not_applicable, where this kind of row never carries one (a Task Charge names
+# no supplier and no Event Type). Both absences leave the axis without a value,
+# and they read differently on purpose: only the first has a remedy.
+#
+# Declared in concepts/economics.yaml.
+
+GROUPING_FIELD_VALUE_STATUS_RECORDED = 'recorded'
+GROUPING_FIELD_VALUE_STATUS_NOT_RECORDED = 'not_recorded'
+GROUPING_FIELD_VALUE_STATUS_NOT_APPLICABLE = 'not_applicable'
+
+GROUPING_FIELD_VALUE_STATUS_VALUES = frozenset({
+    GROUPING_FIELD_VALUE_STATUS_RECORDED,
+    GROUPING_FIELD_VALUE_STATUS_NOT_RECORDED,
+    GROUPING_FIELD_VALUE_STATUS_NOT_APPLICABLE,
+})
 
 
 # --- idempotency_key ---------------------------------------------------------
@@ -819,6 +1071,26 @@ INTEGRATION_READINESS_VALUES = frozenset({
     INTEGRATION_READINESS_SCAFFOLD,
     INTEGRATION_READINESS_BLOCKED,
     INTEGRATION_READINESS_COMPLETE,
+})
+
+
+# --- invitation_status -------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where an invitation by email stands: pending until the invitee activates the
+# seat it created (accepted) or an admin cancels it first (revoked).
+#
+# Declared in concepts/team.yaml.
+
+INVITATION_STATUS_PENDING = 'pending'
+INVITATION_STATUS_ACCEPTED = 'accepted'
+INVITATION_STATUS_REVOKED = 'revoked'
+
+INVITATION_STATUS_VALUES = frozenset({
+    INVITATION_STATUS_PENDING,
+    INVITATION_STATUS_ACCEPTED,
+    INVITATION_STATUS_REVOKED,
 })
 
 
@@ -976,6 +1248,25 @@ MEASUREMENTS_STATUS_VALUES = frozenset({
     MEASUREMENTS_STATUS_AVAILABLE,
     MEASUREMENTS_STATUS_PRUNED,
     MEASUREMENTS_STATUS_NOT_APPLICABLE,
+})
+
+
+# --- member_status -----------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where a team member's seat stands: pending until the invitee's first verified
+# login activates it, active after. Removing a member deletes the seat rather
+# than moving it to a third state.
+#
+# Declared in concepts/team.yaml.
+
+MEMBER_STATUS_PENDING = 'pending'
+MEMBER_STATUS_ACTIVE = 'active'
+
+MEMBER_STATUS_VALUES = frozenset({
+    MEMBER_STATUS_PENDING,
+    MEMBER_STATUS_ACTIVE,
 })
 
 
@@ -1376,6 +1667,47 @@ RECOGNITION_METHOD_VALUES = frozenset({
 })
 
 
+# --- referral_program_status -------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where a tenant's referral programme stands: active, paused or deactivated. A
+# different record from a referral, so a different concept even where a word
+# coincides.
+#
+# Declared in concepts/referrals.yaml.
+
+REFERRAL_PROGRAM_STATUS_ACTIVE = 'active'
+REFERRAL_PROGRAM_STATUS_PAUSED = 'paused'
+REFERRAL_PROGRAM_STATUS_DEACTIVATED = 'deactivated'
+
+REFERRAL_PROGRAM_STATUS_VALUES = frozenset({
+    REFERRAL_PROGRAM_STATUS_ACTIVE,
+    REFERRAL_PROGRAM_STATUS_PAUSED,
+    REFERRAL_PROGRAM_STATUS_DEACTIVATED,
+})
+
+
+# --- referral_status ---------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where one referral stands: active while its reward window is open, expired
+# once it closes, revoked when the tenant withdraws it.
+#
+# Declared in concepts/referrals.yaml.
+
+REFERRAL_STATUS_ACTIVE = 'active'
+REFERRAL_STATUS_EXPIRED = 'expired'
+REFERRAL_STATUS_REVOKED = 'revoked'
+
+REFERRAL_STATUS_VALUES = frozenset({
+    REFERRAL_STATUS_ACTIVE,
+    REFERRAL_STATUS_EXPIRED,
+    REFERRAL_STATUS_REVOKED,
+})
+
+
 # --- reserved_grouping_axis --------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
@@ -1450,6 +1782,80 @@ REVENUE_BASIS_RECOGNISED = 'recognised'
 REVENUE_BASIS_VALUES = frozenset({
     REVENUE_BASIS_RECORDED,
     REVENUE_BASIS_RECOGNISED,
+})
+
+
+# --- reward_type -------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Which reward scheme a referral programme runs: a flat fee per referral, a
+# share of the referred customer's revenue, or a share of the profit on it.
+# Snapshotted onto each referral when it is attributed, so a later change to
+# the programme does not rewrite what an earlier referral earns.
+#
+# Declared in concepts/referrals.yaml.
+
+REWARD_TYPE_FLAT_FEE = 'flat_fee'
+REWARD_TYPE_REVENUE_SHARE = 'revenue_share'
+REWARD_TYPE_PROFIT_SHARE = 'profit_share'
+
+REWARD_TYPE_VALUES = frozenset({
+    REWARD_TYPE_FLAT_FEE,
+    REWARD_TYPE_REVENUE_SHARE,
+    REWARD_TYPE_PROFIT_SHARE,
+})
+
+
+# --- role --------------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# A tenant principal's authority — admin, write or read. Carried by both a
+# Member and a tenant API key, and compared as a floor (admin ≥ write ≥ read)
+# by every route that binds one. No owner tier and no fourth role (#62).
+# Closed: a principal holding any other value meets no floor.
+#
+# Declared in concepts/team.yaml.
+
+ROLE_READ = 'read'
+ROLE_WRITE = 'write'
+ROLE_ADMIN = 'admin'
+
+ROLE_VALUES = frozenset({
+    ROLE_READ,
+    ROLE_WRITE,
+    ROLE_ADMIN,
+})
+
+
+# --- skip_reason -------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Why a usage invoice was skipped rather than pushed. Two are terminal truths
+# about the period — nothing was recorded (no_usage), or what was recorded
+# priced at exactly nothing (nothing_to_bill) — one says a newer seat
+# superseded it, and three are recoverable: the customer has no Stripe customer
+# yet, the tenant's account cannot take charges yet, or the payment rail is
+# closed. Present only on a skipped invoice; null on every other one.
+#
+# Declared in concepts/billing.yaml.
+
+SKIP_REASON_NO_USAGE = 'no_usage'
+SKIP_REASON_NOTHING_TO_BILL = 'nothing_to_bill'
+SKIP_REASON_SEAT_SUPERSEDED = 'seat_superseded'
+SKIP_REASON_NO_STRIPE_CUSTOMER = 'no_stripe_customer'
+SKIP_REASON_NOT_CHARGE_READY = 'not_charge_ready'
+SKIP_REASON_PAYMENT_RAIL_CLOSED = 'payment_rail_closed'
+
+SKIP_REASON_VALUES = frozenset({
+    SKIP_REASON_NO_USAGE,
+    SKIP_REASON_NOTHING_TO_BILL,
+    SKIP_REASON_SEAT_SUPERSEDED,
+    SKIP_REASON_NO_STRIPE_CUSTOMER,
+    SKIP_REASON_NOT_CHARGE_READY,
+    SKIP_REASON_PAYMENT_RAIL_CLOSED,
 })
 
 
@@ -1569,6 +1975,28 @@ STOP_BEHAVIOR_VALUES = frozenset({
 })
 
 
+# --- stop_scope --------------------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What a stop applies to: the Task the work runs under, the Subtask itself, or
+# the whole customer. Read off the stopped row's altitude, never off which
+# control fired (slice 6 §7), so a parent's ceiling crossing is the Task's
+# scope and a contained unit's own crossing is the Subtask's.
+#
+# Declared in concepts/spend-controls.yaml.
+
+STOP_SCOPE_TASK = 'task'
+STOP_SCOPE_SUBTASK = 'subtask'
+STOP_SCOPE_CUSTOMER = 'customer'
+
+STOP_SCOPE_VALUES = frozenset({
+    STOP_SCOPE_TASK,
+    STOP_SCOPE_SUBTASK,
+    STOP_SCOPE_CUSTOMER,
+})
+
+
 # --- task_outcome ------------------------------------------------------------
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
@@ -1657,6 +2085,31 @@ TASK_TYPE_KIND_SUBTASK = 'subtask'
 TASK_TYPE_KIND_VALUES = frozenset({
     TASK_TYPE_KIND_TASK,
     TASK_TYPE_KIND_SUBTASK,
+})
+
+
+# --- tenant_invoice_status ---------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where UBB's own platform-fee invoice to a tenant stands: draft, finalized,
+# paid, void or uncollectible. A different record from a customer's usage
+# invoice, so a different concept.
+#
+# Declared in concepts/billing.yaml.
+
+TENANT_INVOICE_STATUS_DRAFT = 'draft'
+TENANT_INVOICE_STATUS_FINALIZED = 'finalized'
+TENANT_INVOICE_STATUS_PAID = 'paid'
+TENANT_INVOICE_STATUS_VOID = 'void'
+TENANT_INVOICE_STATUS_UNCOLLECTIBLE = 'uncollectible'
+
+TENANT_INVOICE_STATUS_VALUES = frozenset({
+    TENANT_INVOICE_STATUS_DRAFT,
+    TENANT_INVOICE_STATUS_FINALIZED,
+    TENANT_INVOICE_STATUS_PAID,
+    TENANT_INVOICE_STATUS_VOID,
+    TENANT_INVOICE_STATUS_UNCOLLECTIBLE,
 })
 
 
@@ -1829,6 +2282,74 @@ USAGE_EVENT_KIND_TASK_CHARGE = 'task_charge'
 USAGE_EVENT_KIND_VALUES = frozenset({
     USAGE_EVENT_KIND_METERED_USAGE,
     USAGE_EVENT_KIND_TASK_CHARGE,
+})
+
+
+# --- usage_invoice_status ----------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where a postpaid customer's monthly usage invoice stands in its push to
+# Stripe: pending, pushing, pushed; skipped when there is nothing it may or
+# need push (the skip reason says which); failed while retries remain, and
+# failed permanently once they are exhausted.
+#
+# Declared in concepts/billing.yaml.
+
+USAGE_INVOICE_STATUS_PENDING = 'pending'
+USAGE_INVOICE_STATUS_PUSHING = 'pushing'
+USAGE_INVOICE_STATUS_PUSHED = 'pushed'
+USAGE_INVOICE_STATUS_SKIPPED = 'skipped'
+USAGE_INVOICE_STATUS_FAILED = 'failed'
+USAGE_INVOICE_STATUS_FAILED_PERMANENT = 'failed_permanent'
+
+USAGE_INVOICE_STATUS_VALUES = frozenset({
+    USAGE_INVOICE_STATUS_PENDING,
+    USAGE_INVOICE_STATUS_PUSHING,
+    USAGE_INVOICE_STATUS_PUSHED,
+    USAGE_INVOICE_STATUS_SKIPPED,
+    USAGE_INVOICE_STATUS_FAILED,
+    USAGE_INVOICE_STATUS_FAILED_PERMANENT,
+})
+
+
+# --- wallet_transaction_type -------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What one movement on a customer's wallet ledger was: money in (a top-up, a
+# credit grant, an adjustment), money out (a usage deduction, a debit, a
+# withdrawal, a grant's expiry or void), or money returned or reclaimed (a
+# refund, a Stripe refund, a dispute deduction). Closed: every movement is
+# written by UBB's wallet operations, and the ledger column holds exactly
+# these.
+#
+# Declared in concepts/billing.yaml.
+
+WALLET_TRANSACTION_TYPE_TOP_UP = 'top_up'
+WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION = 'usage_deduction'
+WALLET_TRANSACTION_TYPE_WITHDRAWAL = 'withdrawal'
+WALLET_TRANSACTION_TYPE_REFUND = 'refund'
+WALLET_TRANSACTION_TYPE_ADJUSTMENT = 'adjustment'
+WALLET_TRANSACTION_TYPE_DISPUTE_DEDUCTION = 'dispute_deduction'
+WALLET_TRANSACTION_TYPE_STRIPE_REFUND = 'stripe_refund'
+WALLET_TRANSACTION_TYPE_DEBIT = 'debit'
+WALLET_TRANSACTION_TYPE_GRANT = 'grant'
+WALLET_TRANSACTION_TYPE_GRANT_EXPIRY = 'grant_expiry'
+WALLET_TRANSACTION_TYPE_GRANT_VOID = 'grant_void'
+
+WALLET_TRANSACTION_TYPE_VALUES = frozenset({
+    WALLET_TRANSACTION_TYPE_TOP_UP,
+    WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION,
+    WALLET_TRANSACTION_TYPE_WITHDRAWAL,
+    WALLET_TRANSACTION_TYPE_REFUND,
+    WALLET_TRANSACTION_TYPE_ADJUSTMENT,
+    WALLET_TRANSACTION_TYPE_DISPUTE_DEDUCTION,
+    WALLET_TRANSACTION_TYPE_STRIPE_REFUND,
+    WALLET_TRANSACTION_TYPE_DEBIT,
+    WALLET_TRANSACTION_TYPE_GRANT,
+    WALLET_TRANSACTION_TYPE_GRANT_EXPIRY,
+    WALLET_TRANSACTION_TYPE_GRANT_VOID,
 })
 
 

@@ -105,6 +105,7 @@ OPTED_IN = (
     "0017-a-generated-shell-file-is-sourced-and-a-stop-is-a-status.md",
     "0018-a-blueprint-is-verified-in-a-tenant-that-is-never-committed.md",
     "0023-ubb-v1-is-usd-only.md",
+    "0024-every-domain-value-set-has-one-authority-and-the-receipt-is-published-typed.md",
 )
 
 
@@ -351,6 +352,7 @@ DEPARTING = (
     "0014-spend-control-is-four-families-and-the-ceiling-is-a-kernel-concept.md",
     "0022-an-event-naming-an-event-type-nobody-published-is-recorded-and-held.md",
     "0023-ubb-v1-is-usd-only.md",
+    "0024-every-domain-value-set-has-one-authority-and-the-receipt-is-published-typed.md",
 )
 
 

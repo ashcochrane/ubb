@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { resetReferralsMockState } from "../api/mock-data";
+import { buildInitialState, resetReferralsMockState } from "../api/mock-data";
+import { referralsApi } from "../api/provider";
 import { ProgramSection } from "./program-section";
 import { ReferralsPage } from "./referrals-page";
 
@@ -85,5 +86,24 @@ describe("ProgramSection empty state", () => {
     ).toBeInTheDocument();
     // The polymorphic reward input defaults to the share flavour.
     expect(screen.getByLabelText("Reward percentage")).toBeInTheDocument();
+  });
+});
+
+// R10-W4: a programme's status is the registry's `referral_program_status`.
+// The hand-written map lacked `paused`, which therefore reached the screen only
+// through the humaniser; the programme is stubbed HERE, not read from the mock.
+describe("ProgramSection status", () => {
+  it("words a paused programme from the catalogue", async () => {
+    const { program } = buildInitialState();
+    if (program === null) throw new Error("the fixture declares a programme");
+    vi.spyOn(referralsApi, "getProgram").mockResolvedValue({
+      ...program,
+      status: "paused",
+    });
+
+    renderWithClient(<ProgramSection />);
+
+    expect(await screen.findByText("Paused", undefined, FIND_OPTS)).toBeInTheDocument();
+    vi.restoreAllMocks();
   });
 });

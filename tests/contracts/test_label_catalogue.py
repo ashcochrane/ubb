@@ -75,8 +75,17 @@ GATES_DIR = REPO_ROOT / "gates"
 #: count alone would let one file be converted while another was added, and the
 #: net zero would read as "nothing happened".
 ADAPTER_IMPORTERS = (
-    "apps/ui/src/components/shared/nav-shell.tsx",
-    "apps/ui/src/features/billing/components/usage-invoices-card.tsx",
+    # ⚠ TWENTY-ONE IMPORTERS LEFT IN R10-W4 (slice 8), every one a CONVERSION:
+    # the files remain and no longer reach the adapter. The registry declared
+    # each value set the slice-8 maps worded, and each now renders through its
+    # generated label keys — a role, a member's or an invitation's status, the
+    # wallet's transaction types, a grant's kind, status and source, the two
+    # invoices' statuses and a usage invoice's skip reason, the billing
+    # period's status, a stop's scope, the audit feed's action, resource type
+    # and actor kind, the enforcement mode, and the referral feature's four.
+    # The comments below that say a file STAYS for one of those words describe
+    # the tree before R10-W4; their files' lines are gone. What remains is the
+    # two Stripe maps (permanent exceptions) and the by-reference value lists.
     # The customer's pool section LEFT IN #468 as a conversion and a rename:
     # its one word — how the pool is enforced — came from
     # `budgetEnforceModeLabel`, deleted with its ledger entry; the section is
@@ -94,10 +103,7 @@ ADAPTER_IMPORTERS = (
     # Usage tab now hosts Stops and breaches (the spend-controls feature's
     # component, injected by the route), which binds its family words in its
     # own `lib/` and renders a stop word through the open-set helper.
-    "apps/ui/src/features/customers/components/grants-section.tsx",
     "apps/ui/src/features/customers/components/subscription-tab.tsx",
-    "apps/ui/src/features/customers/components/transactions-section.tsx",
-    "apps/ui/src/features/customers/components/usage-invoices-section.tsx",
     # ⚠ FOUR IMPORTERS LEFT IN #506, ALL FOUR ON THE GROUPING VOCABULARY, and
     # every one of them a conversion rather than a deletion. The breakdown card
     # and the timeseries card took their axis words from `dimensionLabel`,
@@ -117,8 +123,6 @@ ADAPTER_IMPORTERS = (
     # stop-scope concept, so there is nothing to convert it to — which makes it
     # the same one importer on the same one export under another name, not a
     # second. The count is unchanged, and stays what it says.
-    "apps/ui/src/features/developers/components/acknowledgement-card.tsx",
-    "apps/ui/src/features/events/components/event-filters.tsx",
     # `ledger-table.tsx` LEFT IN #466 as a conversion: its one word — why an
     # event was stopped — came from `stopReasonLabel`, deleted with its ledger
     # entry; the stopped indicator now renders the word through the open-set
@@ -128,7 +132,6 @@ ADAPTER_IMPORTERS = (
     # `acknowledgement-card.tsx`) stay: each took its stop word off the same map
     # and now renders it the same way, but each still takes the stop SCOPE from
     # `stopScopeLabel`, which is slice 8's.
-    "apps/ui/src/features/events/components/stop-context-timeline.tsx",
     # `task-section.tsx` LEFT IN #424: its one word — a unit of work's
     # lifecycle state — came from `taskStatusLabel`, deleted with its ledger
     # entry; the panel now binds `@/lib/task-status`, the same binding the
@@ -148,20 +151,9 @@ ADAPTER_IMPORTERS = (
     # ledger entry; the table now binds `labelMap(RATE_STRUCTURE_LABEL_KEYS)` in
     # `features/pricing/lib/rates.ts`. The file did not stop existing, so this
     # is a conversion rather than #367's deletion.
-    "apps/ui/src/features/referrals/components/attribute-referral-dialog.tsx",
-    "apps/ui/src/features/referrals/components/ledger-dialog.tsx",
-    "apps/ui/src/features/referrals/components/program-form.tsx",
-    "apps/ui/src/features/referrals/components/program-section.tsx",
-    "apps/ui/src/features/referrals/components/referrals-table.tsx",
-    "apps/ui/src/features/referrals/lib/program-form.ts",
     "apps/ui/src/features/settings/api/mock.ts",
-    "apps/ui/src/features/settings/components/audit-log-page.tsx",
     "apps/ui/src/features/settings/components/billing-mode-card.tsx",
-    "apps/ui/src/features/settings/components/invitations-section.tsx",
-    "apps/ui/src/features/settings/components/members-section.tsx",
     "apps/ui/src/features/settings/components/products-card.tsx",
-    "apps/ui/src/features/settings/components/tenant-billing-page.tsx",
-    "apps/ui/src/features/settings/lib/settings.ts",
     # ⚠ ADDED IN #466 AS THE EXPLICIT, REVIEWED ACT THIS RATCHET'S MESSAGE
     # ALLOWS FOR. The Spend controls tab shows the workspace's enforcement
     # posture, and spec §18 rules that its label "is slice 8's ledger entry
@@ -170,7 +162,6 @@ ADAPTER_IMPORTERS = (
     # that value set, so there is no label key to bind and no catalogue word
     # to render instead. One importer joins for one word somebody already
     # owes; the entry, the map and this line all leave with slice 8.
-    "apps/ui/src/features/spend-controls/components/spend-controls-page.tsx",
     "apps/ui/src/features/webhooks/api/mock.ts",
     # `deliveries-table.tsx`, `webhook-config-table.tsx` and `event-groups.ts`
     # LEFT IN #464: their one word — an event's name — came from
@@ -179,7 +170,6 @@ ADAPTER_IMPORTERS = (
     # groups derive from `@/lib/vocabulary` directly. Conversions, not
     # deletions: the files still exist, they just no longer reach the adapter.
     "apps/ui/src/features/webhooks/lib/schemas.test.ts",
-    "apps/ui/src/hooks/use-current-role.ts",
 )
 
 #: The module specifier of any `import ... from "x"` — what a file actually
@@ -420,12 +410,12 @@ def test_every_adapter_export_is_classified(legacy):
     assert not scanned.unclassified, (
         f"unclassified exports of {ADAPTER}: {list(scanned.unclassified)}")
     assert set(DECLARED_NON_LABEL_EXPORTS) == {
-        HUMANISER, "roleRank",
+        HUMANISER,
         "AFFORDABILITY_REASONS", "BILLING_MODES", "CEILING_STATUSES",
         "CONTROL_FAMILIES", "COSTING_METHODS",
         "COSTING_STATUSES", "PRICING_METHODS", "PRICING_MODES",
         "PRICING_STATUSES", "PRODUCTS", "RATE_STRUCTURES", "REASON_CODES",
-        "ROLES", "SPEND_POOL_ENFORCE_MODES", "TASK_STATUSES", "TRIGGER_SOURCES",
+        "SPEND_POOL_ENFORCE_MODES", "TASK_STATUSES", "TRIGGER_SOURCES",
         "USAGE_EVENT_KINDS",
         "ANALYTICS_GROUPING_KINDS", "ANALYTICS_ROLLUPS", "WEBHOOK_EVENT_TYPES",
         # #508: the two revenue concepts the supplied-record panels render.
@@ -439,7 +429,7 @@ def test_every_adapter_export_is_classified(legacy):
         # consumer since the registry was seeded; the renderer that holds them
         # is the payment, and these references are what the census reads.
         "ANALYTICS_MEASURES", "MEASURE_STATUSES",
-        "BillingMode", "Product", "Role",
+        "BillingMode", "Product",
     }, ("the declared non-label exports have changed. That is allowed, and it "
         "is a reviewable diff on purpose: each name here is a claim that the "
         "export carries no user-facing wording")
@@ -560,6 +550,26 @@ PAID_HUMANISING_DEBTS = {
     # asserts is an absence from nowhere.
     "g6-humanises-revenue-panels":
         "apps/ui/src/features/customers/components/overview-tab.tsx::humanize",
+    # R10-W4 (slice 8): the last seven, each a conversion. The registry
+    # declared the value set each humanised — a usage invoice's skip reason
+    # (twice), a referral's status (twice), a reward-ledger entry's calculation
+    # method, an audited record's resource type — and the audit action that
+    # `settings.ts` re-exported through its noun-and-verb humaniser now takes
+    # the catalogue's words in `features/settings/lib/audit-vocabulary.ts`.
+    "g6-humanises-usage-invoices-card":
+        "apps/ui/src/features/billing/components/usage-invoices-card.tsx::humanize",
+    "g6-humanises-usage-invoices-section":
+        "apps/ui/src/features/customers/components/usage-invoices-section.tsx::humanize",
+    "g6-humanises-attribute-referral-dialog":
+        "apps/ui/src/features/referrals/components/attribute-referral-dialog.tsx::humanize",
+    "g6-humanises-ledger-dialog":
+        "apps/ui/src/features/referrals/components/ledger-dialog.tsx::humanize",
+    "g6-humanises-referrals-table":
+        "apps/ui/src/features/referrals/components/referrals-table.tsx::humanize",
+    "g6-humanises-audit-log-page":
+        "apps/ui/src/features/settings/components/audit-log-page.tsx::humanize",
+    "g6-humanises-settings":
+        "apps/ui/src/features/settings/lib/settings.ts::humanize",
 }
 
 #: How many files imported the humaniser when #210 installed this gate. Not a

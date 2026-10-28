@@ -28,7 +28,8 @@ from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
-    PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
+    PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
+)
 
 #: The migration that split the container, and therefore the one operation that
 #: still names the word this slice retired.
@@ -148,7 +149,19 @@ def _rule_in(book, *, provider, event_type, task_type, subtask_type,
         tenant=book.tenant, provider=provider, event_type=event_type,
         task_type=task_type, subtask_type=subtask_type, customer=customer,
         book_version_from=book.version,
-        **{book.REFERENCE_COLUMN: book}, **fields)
+        **{book.REFERENCE_COLUMN: book}, **_a_selling_rule_states_its_method(
+            book, fields))
+
+
+def _a_selling_rule_states_its_method(book, fields):
+    """A rule in a Pricing Book STATES its method (R10-W4, ruling 4;
+    `ck_rate_a_selling_rule_states_its_method`), so a fixture that names none
+    gets what a publish writes for a body that names none:
+    `direct_event_price`. A cost book's rate names none, and this adds none.
+    A test of the invariant itself writes the row directly, not through here."""
+    if isinstance(book, PricingBook) and "pricing_method" not in fields:
+        return {**fields, "pricing_method": PRICING_METHOD_DIRECT_EVENT_PRICE}
+    return fields
 
 
 def rate_in_default_book(tenant, *, provider="", event_type="",
@@ -197,7 +210,8 @@ def an_override_rule(tenant, customer, **fields):
     _the_quantity_it_prices(tenant, fields)
     return Rate.objects.create(
         tenant=tenant, customer=customer, pricing_book=book,
-        book_version_from=book.version, **fields)
+        book_version_from=book.version,
+        **_a_selling_rule_states_its_method(book, fields))
 
 
 def rate_in_a_plans_book(tenant, customer, *, plan_key="std", **fields):

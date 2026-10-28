@@ -33,6 +33,7 @@ from datetime import timedelta
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Case, F, IntegerField, Sum, When
 from django.utils import timezone
+from core.vocabulary import WALLET_TRANSACTION_TYPE_GRANT_EXPIRY
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ class GrantLedger:
                 with transaction.atomic():  # savepoint: I2 exactly-once backstop
                     WalletTransaction.objects.create(
                         wallet=wallet,
-                        transaction_type="GRANT_EXPIRY",
+                        transaction_type=WALLET_TRANSACTION_TYPE_GRANT_EXPIRY,
                         amount_micros=-debit,
                         balance_after_micros=new_balance,
                         description=f"Credit grant expired ({grant.kind})",

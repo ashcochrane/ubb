@@ -285,7 +285,7 @@ describe("a grouped chart whose revenue cannot be placed", () => {
     const row = (group: string, cost: number, revenue: number) => ({
       bucket_start: "2026-07-01T00:00:00Z",
       grouping_field_value: [group],
-      grouping_field_value_status: ["recorded"],
+      grouping_field_value_status: ["recorded" as const],
       measures: revenueUnavailableAtThisGrain({
         cost: completeTotal(cost),
         revenue: completePriceTotal(revenue),

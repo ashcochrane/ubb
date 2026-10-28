@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { movementReasonField } from "@/lib/movement-reason";
 import {
+  GRANT_KIND_VALUES,
   RECOGNITION_METHOD_VALUES,
   SPEND_POOL_ENFORCE_MODE_VALUES,
 } from "@/lib/vocabulary";
@@ -99,7 +100,7 @@ export type AdjustForm = z.infer<ReturnType<typeof adjustSchema>>;
 export const grantSchema = z
   .object({
     amount: moneyAmount,
-    kind: z.string().min(1, "Choose a kind"),
+    kind: z.enum(GRANT_KIND_VALUES, { message: "Choose a kind" }),
     expiry_mode: z.enum(["none", "at", "days"]),
     expires_at: z.string().trim(),
     expires_in_days: z.string().trim(),

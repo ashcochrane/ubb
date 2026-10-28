@@ -19,6 +19,7 @@
 import type { MeteringSchemas, MarginSchemas, TenantSchemas } from "@/api/types";
 import type { UbbAxis } from "@/lib/grouping-axis";
 import {
+  axisStatusOn,
   axisValueOn,
   caveatsOf,
   CUSTOMER_REVENUE,
@@ -37,6 +38,7 @@ import {
   type PlottedFigures,
 } from "@/lib/economic-query";
 import type { DateRange } from "@/lib/date-range";
+import type { GroupingFieldValueStatus } from "@/lib/vocabulary";
 
 /** A fully resolved inclusive date window (YYYY-MM-DD, UTC). */
 export type Window = Required<DateRange>;
@@ -128,6 +130,8 @@ export interface RevenueCostSeries extends AnswerCaveats {
 export interface BreakdownRow {
   /** The value of the axis this row is grouped by, or null when unset. */
   group_value: string | null;
+  /** Why the value is what it is — and, where it is null, which absence (#550). */
+  group_value_status: GroupingFieldValueStatus | null;
   cost: MeasureFigure | null;
   revenue: MeasureFigure | null;
 }
@@ -207,16 +211,16 @@ export function toRevenueCostSeries(answer: Economics): RevenueCostSeries {
  * ⚠ **A NULL VALUE IS A ROW LIKE ANY OTHER AND MUST NOT BE DROPPED.** The
  * report this replaced bucketed every absence under one `(unattributed)`
  * string; the row now carries `null` with a status saying whether the value was
- * never recorded or whether the question does not apply to those rows. The bar
- * chart renders the absence as a heading either way, and what the two statuses
- * mean is still unrendered — a residual this console carries, not a state of a
- * MEASURE.
+ * never recorded or whether the question does not apply to those rows, and the
+ * status travels with the row so the bar is headed by the catalogue's word for
+ * which of the two it is (#550).
  */
 export function toBreakdown(answer: Economics): Breakdown {
   return {
     ...caveatsOf(answer),
     rows: answer.rows.map((row) => ({
       group_value: axisValueOn(row),
+      group_value_status: axisStatusOn(row),
       cost: figureOn(row, SUPPLIER_COGS),
       revenue: figureOn(row, CUSTOMER_REVENUE),
     })),

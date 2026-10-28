@@ -19,6 +19,13 @@ from django.db import models
 from apps.platform.membership.roles import READ, ROLE_CHOICES
 from apps.platform.tenants.models import Tenant
 from core.models import BaseModel
+from core.vocabulary import (
+    INVITATION_STATUS_ACCEPTED,
+    INVITATION_STATUS_PENDING,
+    INVITATION_STATUS_REVOKED,
+    MEMBER_STATUS_ACTIVE,
+    MEMBER_STATUS_PENDING,
+)
 
 
 def normalize_email(value):
@@ -28,19 +35,20 @@ def normalize_email(value):
     return (value or "").strip().lower()
 
 
-# Member.status
-PENDING = "pending"
-ACTIVE = "active"
+# Member.status — the registry's closed `member_status` (R10-W4), by reference.
+PENDING = MEMBER_STATUS_PENDING
+ACTIVE = MEMBER_STATUS_ACTIVE
 MEMBER_STATUS_CHOICES = [
     (PENDING, "Pending"),
     (ACTIVE, "Active"),
 ]
 
 # Invitation.status. ACCEPTED is set when the linked Member activates; REVOKED
-# is an Admin cancelling a still-pending invite.
-INV_PENDING = "pending"
-INV_ACCEPTED = "accepted"
-INV_REVOKED = "revoked"
+# is an Admin cancelling a still-pending invite. The registry's closed
+# `invitation_status` (R10-W4), by reference.
+INV_PENDING = INVITATION_STATUS_PENDING
+INV_ACCEPTED = INVITATION_STATUS_ACCEPTED
+INV_REVOKED = INVITATION_STATUS_REVOKED
 INVITATION_STATUS_CHOICES = [
     (INV_PENDING, "Pending"),
     (INV_ACCEPTED, "Accepted"),

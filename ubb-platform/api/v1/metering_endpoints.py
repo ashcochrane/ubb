@@ -51,8 +51,29 @@ from api.v1.schemas import (
     GroupingOptionsOut, EconomicsOut,
 )
 from core.vocabulary import (
-    ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
-    REVENUE_BASIS_VALUES)
+    ANALYTICS_MEASURE_CUSTOMER_REVENUE,
+    ANALYTICS_MEASURE_GROSS_MARGIN,
+    AUDIT_ACTION_COST_BOOK_DECLARED,
+    AUDIT_ACTION_COST_BOOK_WITHDRAWN,
+    AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_DECLARED,
+    AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_WITHDRAWN,
+    AUDIT_ACTION_GROUPING_FIELD_DECLARED,
+    AUDIT_ACTION_PRICING_BOOK_DECLARED,
+    AUDIT_ACTION_PRICING_BOOK_PUBLISH_DECLARED,
+    AUDIT_ACTION_PRICING_BOOK_PUBLISH_DISCARDED,
+    AUDIT_ACTION_PRICING_BOOK_PUBLISH_PUBLISHED,
+    AUDIT_ACTION_PRICING_BOOK_WITHDRAWN,
+    AUDIT_ACTION_RESOLUTION_RUN_EXECUTED,
+    AUDIT_ACTION_TENANT_DEFAULT_MARKUP_DECLARED,
+    AUDIT_ACTION_TENANT_DEFAULT_MARKUP_WITHDRAWN,
+    AUDIT_RESOURCE_TYPE_COST_BOOK,
+    AUDIT_RESOURCE_TYPE_GROUPING_FIELD_REGISTRY,
+    AUDIT_RESOURCE_TYPE_PRICING_BOOK,
+    AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH,
+    AUDIT_RESOURCE_TYPE_RESOLUTION_RUN,
+    AUDIT_RESOURCE_TYPE_TENANT_DEFAULT_MARKUP,
+    REVENUE_BASIS_VALUES,
+)
 from apps.metering.pricing.models import (
     CHANGE_ADD, CHANGE_RETIRE, LINE_RATE,
     CostBook, PricingBook, PricingBookPublish, Rate,
@@ -519,7 +540,8 @@ def _rejected(code, detail):
     return {"accepted": False, "code": code, "detail": detail,
             "stop": False, "stop_reason": None, "stop_scope": None,
             "trigger_source": None, "stop_bound_micros": None,
-            "stop_measured_micros": None, "pricing_status_reason": None}
+            "stop_measured_micros": None, "pricing_status_reason": None,
+            "pricing_receipt": None}
 
 
 def replay_or_record(tenant, customer, item):
@@ -813,7 +835,7 @@ def get_usage_event(request, event_id: UUID):
         # Derived, never stored (ADR-0006 §4) — computed here, at the
         # serialiser, which is the only place §E5 permits it to exist.
         "measurements_status": measurements_status_for(e),
-        "pricing_receipt": e.pricing_receipt or {},
+        "pricing_receipt": e.pricing_receipt,
         "metadata": e.metadata,
         "task_id": str(e.task_id) if e.task_id else None,
         "effective_at": e.effective_at.isoformat(),
@@ -902,7 +924,7 @@ def get_tenant_default_markup(request):
 
 @metering_router.put("/pricing/default-markup", response=TenantDefaultMarkupOut)
 @role_floor(ADMIN)
-@records_audit("tenant_default_markup.declared")
+@records_audit(AUDIT_ACTION_TENANT_DEFAULT_MARKUP_DECLARED)
 def declare_tenant_default_markup(request, payload: TenantDefaultMarkupIn):
     """Declare the tenant's default markup rung, or re-declare it.
 
@@ -922,9 +944,9 @@ def declare_tenant_default_markup(request, payload: TenantDefaultMarkupIn):
             defaults={"markup_micro_percent": payload.markup_micro_percent},
         )
         audit_record(
-            action="tenant_default_markup.declared",
+            action=AUDIT_ACTION_TENANT_DEFAULT_MARKUP_DECLARED,
             tenant_id=request.auth.tenant.id,
-            resource_type="tenant_default_markup",
+            resource_type=AUDIT_RESOURCE_TYPE_TENANT_DEFAULT_MARKUP,
             resource_id=rung.id,
             metadata={"markup_micro_percent": rung.markup_micro_percent},
         )
@@ -933,7 +955,7 @@ def declare_tenant_default_markup(request, payload: TenantDefaultMarkupIn):
 
 @metering_router.delete("/pricing/default-markup", response=StatusResponse)
 @role_floor(ADMIN)
-@records_audit("tenant_default_markup.withdrawn")
+@records_audit(AUDIT_ACTION_TENANT_DEFAULT_MARKUP_WITHDRAWN)
 def withdraw_tenant_default_markup(request):
     """Withdraw the rung, leaving the tenant with none.
 
@@ -956,9 +978,9 @@ def withdraw_tenant_default_markup(request):
         rung_id = rung.id
         rung.delete()  # instance delete — the model layer invalidates the cache
         audit_record(
-            action="tenant_default_markup.withdrawn",
+            action=AUDIT_ACTION_TENANT_DEFAULT_MARKUP_WITHDRAWN,
             tenant_id=request.auth.tenant.id,
-            resource_type="tenant_default_markup",
+            resource_type=AUDIT_RESOURCE_TYPE_TENANT_DEFAULT_MARKUP,
             resource_id=rung_id,
         )
     return {"status": "withdrawn"}
@@ -1206,7 +1228,7 @@ def list_pricing_books(request, cursor: str = None, limit: int = 50):
                       response={200: PricingBookOut, 409: ProblemOut,
                                 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("pricing_book.declared")
+@records_audit(AUDIT_ACTION_PRICING_BOOK_DECLARED)
 def declare_pricing_book(request, payload: PricingBookIn):
     """Declare a Pricing Book: a catalogue of what this tenant charges.
 
@@ -1225,9 +1247,9 @@ def declare_pricing_book(request, payload: PricingBookIn):
                 tenant=request.auth.tenant, key=payload.key,
                 name=payload.name, is_default=payload.is_default)
             audit_record(
-                action="pricing_book.declared",
+                action=AUDIT_ACTION_PRICING_BOOK_DECLARED,
                 tenant_id=request.auth.tenant.id,
-                resource_type="pricing_book",
+                resource_type=AUDIT_RESOURCE_TYPE_PRICING_BOOK,
                 resource_id=book.id,
                 metadata={
                     "key": book.key,
@@ -1245,7 +1267,7 @@ def declare_pricing_book(request, payload: PricingBookIn):
                         response={200: StatusResponse, 404: ProblemOut,
                                   409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("pricing_book.withdrawn")
+@records_audit(AUDIT_ACTION_PRICING_BOOK_WITHDRAWN)
 def withdraw_pricing_book(request, book_id: UUID):
     """Withdraw a Pricing Book the tenant no longer prices from.
 
@@ -1268,9 +1290,9 @@ def withdraw_pricing_book(request, book_id: UUID):
         with transaction.atomic():
             book.delete()
             audit_record(
-                action="pricing_book.withdrawn",
+                action=AUDIT_ACTION_PRICING_BOOK_WITHDRAWN,
                 tenant_id=request.auth.tenant.id,
-                resource_type="pricing_book",
+                resource_type=AUDIT_RESOURCE_TYPE_PRICING_BOOK,
                 resource_id=book.id,
                 metadata={"key": book.key, "name": book.name},
             )
@@ -1299,7 +1321,7 @@ def list_cost_books(request, cursor: str = None, limit: int = 50):
                       response={200: CostBookOut, 409: ProblemOut,
                                 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("cost_book.declared")
+@records_audit(AUDIT_ACTION_COST_BOOK_DECLARED)
 def declare_cost_book(request, payload: CostBookIn):
     """Declare a cost book: a record of what one supplier charges this tenant.
 
@@ -1321,9 +1343,9 @@ def declare_cost_book(request, payload: CostBookIn):
                 key=payload.key, name=payload.name, currency=currency,
                 is_default=payload.is_default)
             audit_record(
-                action="cost_book.declared",
+                action=AUDIT_ACTION_COST_BOOK_DECLARED,
                 tenant_id=request.auth.tenant.id,
-                resource_type="cost_book",
+                resource_type=AUDIT_RESOURCE_TYPE_COST_BOOK,
                 resource_id=book.id,
                 metadata={
                     "provider_key": book.provider_key,
@@ -1343,7 +1365,7 @@ def declare_cost_book(request, payload: CostBookIn):
                         response={200: StatusResponse, 404: ProblemOut,
                                   409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("cost_book.withdrawn")
+@records_audit(AUDIT_ACTION_COST_BOOK_WITHDRAWN)
 def withdraw_cost_book(request, book_id: UUID):
     """Withdraw a cost book the tenant no longer records costs from.
 
@@ -1359,9 +1381,9 @@ def withdraw_cost_book(request, book_id: UUID):
         with transaction.atomic():
             book.delete()
             audit_record(
-                action="cost_book.withdrawn",
+                action=AUDIT_ACTION_COST_BOOK_WITHDRAWN,
                 tenant_id=request.auth.tenant.id,
-                resource_type="cost_book",
+                resource_type=AUDIT_RESOURCE_TYPE_COST_BOOK,
                 resource_id=book.id,
                 metadata={"key": book.key, "name": book.name,
                           "provider_key": book.provider_key,
@@ -1519,7 +1541,7 @@ def _publish_response(request, record):
                       response={200: BookPublishOut, 404: ProblemOut,
                                 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("pricing_book_publish.declared")
+@records_audit(AUDIT_ACTION_PRICING_BOOK_PUBLISH_DECLARED)
 def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
     """Declare a change to a book: the intended changes, and nothing written.
 
@@ -1590,9 +1612,9 @@ def declare_book_publish(request, book_id: UUID, payload: BookPublishIn):
             record = BookService.declare(book, changes,
                                          effective_at=payload.effective_at)
             audit_record(
-                action="pricing_book_publish.declared",
+                action=AUDIT_ACTION_PRICING_BOOK_PUBLISH_DECLARED,
                 tenant_id=request.auth.tenant.id,
-                resource_type="pricing_book_publish",
+                resource_type=AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH,
                 resource_id=record.id,
                 metadata={"book_id": str(book.id),
                           "effective_at": record.effective_at.isoformat(),
@@ -1640,7 +1662,7 @@ def get_book_publish(request, book_id: UUID, publish_id: UUID):
     "/pricing/books/{book_id}/publishes/{publish_id}/publish",
     response={200: BookPublishOut, 404: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("pricing_book_publish.published")
+@records_audit(AUDIT_ACTION_PRICING_BOOK_PUBLISH_PUBLISHED)
 def publish_book_publish(request, book_id: UUID, publish_id: UUID):
     """Publish a declared change: close each superseded rule, open its
     replacement, from one value.
@@ -1661,9 +1683,9 @@ def publish_book_publish(request, book_id: UUID, publish_id: UUID):
         with transaction.atomic():
             BookService.publish_declared(record, actor=get_current_actor())
             audit_record(
-                action="pricing_book_publish.published",
+                action=AUDIT_ACTION_PRICING_BOOK_PUBLISH_PUBLISHED,
                 tenant_id=request.auth.tenant.id,
-                resource_type="pricing_book_publish",
+                resource_type=AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH,
                 resource_id=record.id,
                 metadata={"book_id": str(book_id),
                           "effective_at": record.effective_at.isoformat(),
@@ -1683,7 +1705,7 @@ def publish_book_publish(request, book_id: UUID, publish_id: UUID):
     "/pricing/books/{book_id}/publishes/{publish_id}",
     response={200: StatusResponse, 404: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("pricing_book_publish.discarded")
+@records_audit(AUDIT_ACTION_PRICING_BOOK_PUBLISH_DISCARDED)
 def discard_book_publish(request, book_id: UUID, publish_id: UUID):
     """Discard a draft, leaving the book exactly as it stood.
 
@@ -1701,9 +1723,9 @@ def discard_book_publish(request, book_id: UUID, publish_id: UUID):
             record_id = record.id
             BookService.discard(record)
             audit_record(
-                action="pricing_book_publish.discarded",
+                action=AUDIT_ACTION_PRICING_BOOK_PUBLISH_DISCARDED,
                 tenant_id=request.auth.tenant.id,
-                resource_type="pricing_book_publish",
+                resource_type=AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH,
                 resource_id=record_id,
                 metadata={"book_id": str(book_id)},
             )
@@ -1732,7 +1754,7 @@ def discard_book_publish(request, book_id: UUID, publish_id: UUID):
                       response={200: BookPublishOut, 404: ProblemOut,
                                 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("customer_pricing_override.declared")
+@records_audit(AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_DECLARED)
 def declare_customer_override(request, customer_id: UUID,
                               payload: CustomerOverrideIn):
     """Declare one customer's own pricing rule, as a draft.
@@ -1788,9 +1810,9 @@ def declare_customer_override(request, customer_id: UUID,
             record = BookService.declare(book, [change],
                                          effective_at=payload.effective_at)
             audit_record(
-                action="customer_pricing_override.declared",
+                action=AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_DECLARED,
                 tenant_id=request.auth.tenant.id,
-                resource_type="pricing_book_publish",
+                resource_type=AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH,
                 resource_id=record.id,
                 metadata={"customer_id": str(customer.id),
                           "book_id": str(book.id),
@@ -1806,7 +1828,7 @@ def declare_customer_override(request, customer_id: UUID,
                         response={200: BookPublishOut, 404: ProblemOut,
                                   422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("customer_pricing_override.withdrawn")
+@records_audit(AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_WITHDRAWN)
 def withdraw_customer_override(request, customer_id: UUID, override_id: UUID,
                                effective_at: datetime = None):
     """Withdraw one of a customer's own rules: they go back to inheriting.
@@ -1842,9 +1864,9 @@ def withdraw_customer_override(request, customer_id: UUID, override_id: UUID,
             record = BookService.declare(override.pricing_book, [change],
                                          effective_at=effective_at)
             audit_record(
-                action="customer_pricing_override.withdrawn",
+                action=AUDIT_ACTION_CUSTOMER_PRICING_OVERRIDE_WITHDRAWN,
                 tenant_id=request.auth.tenant.id,
-                resource_type="pricing_book_publish",
+                resource_type=AUDIT_RESOURCE_TYPE_PRICING_BOOK_PUBLISH,
                 resource_id=record.id,
                 metadata={"customer_id": str(customer_id),
                           "book_id": str(override.pricing_book_id),
@@ -1922,7 +1944,7 @@ def get_inherited_rule(request, customer_id: UUID, measurement_key: str,
                       response={200: ResolutionRunOut, 404: ProblemOut,
                                 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("resolution_run.executed")
+@records_audit(AUDIT_ACTION_RESOLUTION_RUN_EXECUTED)
 def execute_resolution_run(request, payload: ResolutionRunIn):
     """Complete what was never resolved: prices and supplier costs UBB could
     not work out at the time.
@@ -1990,9 +2012,9 @@ def execute_resolution_run(request, payload: ResolutionRunIn):
         run = resolution_run.execute(tenant=request.auth.tenant,
                                      selector=selector)
         audit_record(
-            action="resolution_run.executed",
+            action=AUDIT_ACTION_RESOLUTION_RUN_EXECUTED,
             tenant_id=request.auth.tenant.id,
-            resource_type="resolution_run",
+            resource_type=AUDIT_RESOURCE_TYPE_RESOLUTION_RUN,
             resource_id=run.id,
             metadata={"selector": run.selector,
                       "postings_examined": run.postings_examined,
@@ -2175,7 +2197,7 @@ def get_waived_loss(request, selected_from: datetime = None,
 @metering_router.put("/grouping-fields",
                      response={200: DimensionRegistryOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("grouping_field.declared")
+@records_audit(AUDIT_ACTION_GROUPING_FIELD_DECLARED)
 def declare_grouping_fields(request, payload: DimensionRegistryIn):
     """Declare this tenant's slicing axes — the ONE vocabulary used by both
     analytics grouping and rate selection (design D1). Idempotent: re-PUTting
@@ -2192,9 +2214,9 @@ def declare_grouping_fields(request, payload: DimensionRegistryIn):
                 DimensionService.declare(tenant, key=d.key, slot=d.slot, scope=d.scope,
                                          max_cardinality=d.max_cardinality)
             audit_record(
-                action="grouping_field.declared",
+                action=AUDIT_ACTION_GROUPING_FIELD_DECLARED,
                 tenant_id=tenant.id,
-                resource_type="dimension_registry",
+                resource_type=AUDIT_RESOURCE_TYPE_GROUPING_FIELD_REGISTRY,
                 resource_id=tenant.id,
                 # THE AUDIT RECORD NAMES WHAT THE RESPONSE NAMES. `metadata`
                 # is an open object on a tenant-readable feed, so this key

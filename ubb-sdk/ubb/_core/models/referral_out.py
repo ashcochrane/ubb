@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.referral_out_reward_type import ReferralOutRewardType
+from ..models.referral_out_status import ReferralOutStatus
 from typing import cast
 
 
@@ -28,9 +30,9 @@ class ReferralOut:
             referral_code_used (str):
             referred_customer_id (str):
             referred_external_id (str):
-            reward_type (str):
+            reward_type (ReferralOutRewardType):
             reward_window_ends_at (None | str):
-            status (str):
+            status (ReferralOutStatus):
             total_earned_micros (int):
             total_referred_spend_micros (int):
      """
@@ -40,9 +42,9 @@ class ReferralOut:
     referral_code_used: str
     referred_customer_id: str
     referred_external_id: str
-    reward_type: str
+    reward_type: ReferralOutRewardType
     reward_window_ends_at: None | str
-    status: str
+    status: ReferralOutStatus
     total_earned_micros: int
     total_referred_spend_micros: int
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -62,12 +64,12 @@ class ReferralOut:
 
         referred_external_id = self.referred_external_id
 
-        reward_type = self.reward_type
+        reward_type = self.reward_type.value
 
         reward_window_ends_at: None | str
         reward_window_ends_at = self.reward_window_ends_at
 
-        status = self.status
+        status = self.status.value
 
         total_earned_micros = self.total_earned_micros
 
@@ -106,7 +108,10 @@ class ReferralOut:
 
         referred_external_id = d.pop("referred_external_id")
 
-        reward_type = d.pop("reward_type")
+        reward_type = ReferralOutRewardType(d.pop("reward_type"))
+
+
+
 
         def _parse_reward_window_ends_at(data: object) -> None | str:
             if data is None:
@@ -116,7 +121,10 @@ class ReferralOut:
         reward_window_ends_at = _parse_reward_window_ends_at(d.pop("reward_window_ends_at"))
 
 
-        status = d.pop("status")
+        status = ReferralOutStatus(d.pop("status"))
+
+
+
 
         total_earned_micros = d.pop("total_earned_micros")
 

@@ -5,6 +5,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.platform.events.tasks import RETRY_HORIZON as OUTBOX_RETRY_HORIZON
+from core.vocabulary import WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION
 
 logger = logging.getLogger(__name__)
 
@@ -151,7 +152,7 @@ def reconcile_usage_drawdowns():
                 owner_id = cust.resolve_billing_owner().id if cust else ev["customer_id"]
             ow = Wallet.objects.filter(customer_id=owner_id).first()
             if ow and WalletTransaction.objects.filter(
-                    wallet=ow, usage_event_id=ev["id"], transaction_type="USAGE_DEDUCTION").exists():
+                    wallet=ow, usage_event_id=ev["id"], transaction_type=WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION).exists():
                 continue  # already debited (column anti-join, cutover-safe)
             # The repair twin IS the live drawdown (#109): one module path,
             # the repair flag suppressing the signal tail (I12: no

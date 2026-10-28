@@ -2,21 +2,34 @@ from django.db import models
 
 from core.currency_policy import usd_only_check
 from core.models import BaseModel
+from core.vocabulary import (
+    BILLING_PERIOD_STATUS_CLOSED,
+    BILLING_PERIOD_STATUS_INVOICED,
+    BILLING_PERIOD_STATUS_INVOICING,
+    BILLING_PERIOD_STATUS_OPEN,
+    TENANT_INVOICE_STATUS_DRAFT,
+    TENANT_INVOICE_STATUS_FINALIZED,
+    TENANT_INVOICE_STATUS_PAID,
+    TENANT_INVOICE_STATUS_UNCOLLECTIBLE,
+    TENANT_INVOICE_STATUS_VOID,
+)
 
 
+# The registry's closed `billing_period_status` and `tenant_invoice_status`
+# (R10-W4), by reference.
 TENANT_BILLING_PERIOD_STATUS_CHOICES = [
-    ("open", "Open"),
-    ("closed", "Closed"),
-    ("invoicing", "Invoicing"),
-    ("invoiced", "Invoiced"),
+    (BILLING_PERIOD_STATUS_OPEN, "Open"),
+    (BILLING_PERIOD_STATUS_CLOSED, "Closed"),
+    (BILLING_PERIOD_STATUS_INVOICING, "Invoicing"),
+    (BILLING_PERIOD_STATUS_INVOICED, "Invoiced"),
 ]
 
 TENANT_INVOICE_STATUS_CHOICES = [
-    ("draft", "Draft"),
-    ("finalized", "Finalized"),
-    ("paid", "Paid"),
-    ("void", "Void"),
-    ("uncollectible", "Uncollectible"),
+    (TENANT_INVOICE_STATUS_DRAFT, "Draft"),
+    (TENANT_INVOICE_STATUS_FINALIZED, "Finalized"),
+    (TENANT_INVOICE_STATUS_PAID, "Paid"),
+    (TENANT_INVOICE_STATUS_VOID, "Void"),
+    (TENANT_INVOICE_STATUS_UNCOLLECTIBLE, "Uncollectible"),
 ]
 
 

@@ -36,6 +36,7 @@ import {
   SUPPLIER_COGS,
   type MeasureFigure,
 } from "@/lib/economic-query";
+import { axisHeading } from "@/lib/grouping-field-value-status";
 
 import type { BreakdownRow, CustomerEconomicsRow } from "../api/types";
 
@@ -92,10 +93,10 @@ export interface BreakdownBar {
  *
  * ⚠ **A NULL AXIS VALUE IS A REAL ROW.** The report this replaced bucketed
  * every absence under one `(unattributed)` string; the answer now carries
- * `null` with a status beside it saying which absence it is. The bar keeps the
- * familiar heading; telling the two absences apart on the page is unowned — the
- * status is an open string with no registry concept to word it, and coining one
- * is a registry act rather than a rendering one.
+ * `null` with a status beside it saying which absence it is, and since #550
+ * the registry declares that status, so the bar is headed by its catalogue
+ * word — "Not recorded" and "Does not apply" read differently, because only
+ * the first has a remedy.
  */
 export function topWithOther(rows: BreakdownRow[], limit = 8): BreakdownBar[] {
   const measure = drawableMeasure(rows);
@@ -105,7 +106,7 @@ export function topWithOther(rows: BreakdownRow[], limit = 8): BreakdownBar[] {
     descendingWithAbsencesLast((row: BreakdownRow) => statedValue(plottedOf(row))),
   );
   const top = sorted.slice(0, limit).map((row) => ({
-    name: row.group_value || "(unattributed)",
+    name: axisHeading(row.group_value, row.group_value_status),
     plotted: plottedOf(row),
     revenue: row.revenue,
     cost: row.cost,

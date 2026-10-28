@@ -3,6 +3,7 @@ import logging
 from django.db import IntegrityError, transaction
 
 from apps.billing.topups.models import AutoTopUpConfig, TopUpAttempt
+from core.vocabulary import GRANT_SOURCE_AUTO_TOP_UP
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ class AutoTopUpService:
             result = wallet_ops.credit_top_up(
                 customer_id=attempt.billing_owner_id, tenant=attempt.customer.tenant,
                 amount_micros=amount_micros, idempotency_key=key,
-                source="auto_topup", source_reference=str(attempt.id),
+                source=GRANT_SOURCE_AUTO_TOP_UP, source_reference=str(attempt.id),
                 description="Auto top-up", reference_id=str(attempt.id))
             if result.outcome != "applied":
                 return False

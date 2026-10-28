@@ -14,15 +14,21 @@ from ..types import UNSET, Unset
 
 
 
-T = TypeVar("T", bound="RecordUsageResponsePricingReceiptType0")
+T = TypeVar("T", bound="PricingReceiptProvenanceMarkup")
 
 
 
 @_attrs_define
-class RecordUsageResponsePricingReceiptType0:
-    """ 
+class PricingReceiptProvenanceMarkup:
+    """ The rung the margin came from and the record that declared it.
+
+        Attributes:
+            record_id (str):
+            rung (str):
      """
 
+    record_id: str
+    rung: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -30,9 +36,17 @@ class RecordUsageResponsePricingReceiptType0:
 
 
     def to_dict(self) -> dict[str, Any]:
-        
+        record_id = self.record_id
+
+        rung = self.rung
+
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
+        field_dict.update({
+            "record_id": record_id,
+            "rung": rung,
+        })
 
         return field_dict
 
@@ -41,12 +55,18 @@ class RecordUsageResponsePricingReceiptType0:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        record_usage_response_pricing_receipt_type_0 = cls(
+        record_id = d.pop("record_id")
+
+        rung = d.pop("rung")
+
+        pricing_receipt_provenance_markup = cls(
+            record_id=record_id,
+            rung=rung,
         )
 
 
-        record_usage_response_pricing_receipt_type_0.additional_properties = d
-        return record_usage_response_pricing_receipt_type_0
+        pricing_receipt_provenance_markup.additional_properties = d
+        return pricing_receipt_provenance_markup
 
     @property
     def additional_keys(self) -> list[str]:

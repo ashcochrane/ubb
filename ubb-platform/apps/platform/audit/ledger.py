@@ -9,7 +9,11 @@ queue, no doorbell, nothing to deliver.
 """
 import logging
 
-from apps.platform.audit.actions import is_registered_action
+from apps.platform.audit.actions import (
+    is_declared_resource_type,
+    is_registered_action,
+    is_withheld_action,
+)
 from apps.platform.audit.actors import SYSTEM, get_current_actor
 from apps.platform.audit.models import AuditRecord
 from core.logging import get_correlation_id
@@ -23,17 +27,31 @@ def record(*, action, tenant_id, resource_type, resource_id="",
 
     ``action`` must be a registered name (``apps.platform.audit.actions``) — an
     unregistered name is a programming error and raises, keeping the contractual
-    registry from drifting from what the ledger writes. ``actor`` defaults to the
+    registry from drifting from what the ledger writes. A WITHHELD name — declared
+    in the registry and never recordable — raises too, by name, and so does a
+    ``resource_type`` the registry's ``audit_resource_type`` does not declare
+    (R10-W4, rulings 5 and 6). ``actor`` defaults to the
     principal captured at the auth seam this request; an entry with no resolvable
     actor is still written — never lose the fact that a change happened — under the
     reserved ``system`` kind, and logged so the gap is visible.
 
     Returns the created ``AuditRecord``.
     """
+    if is_withheld_action(action):
+        raise ValueError(
+            f"audit action {action!r} is withheld: the registry declares it and "
+            f"no row may ever hold it (domain-vocabulary/concepts/governance.yaml, "
+            f"`withheld_values`)"
+        )
     if not is_registered_action(action):
         raise ValueError(
-            f"unregistered audit action {action!r} — add it to "
-            f"apps.platform.audit.actions.AUDIT_ACTIONS (additive-only)"
+            f"unregistered audit action {action!r} — add it to `audit_action` in "
+            f"domain-vocabulary/concepts/governance.yaml (additive-only)"
+        )
+    if not is_declared_resource_type(resource_type):
+        raise ValueError(
+            f"undeclared audit resource type {resource_type!r} — add it to "
+            f"`audit_resource_type` in domain-vocabulary/concepts/governance.yaml"
         )
 
     actor = actor if actor is not None else get_current_actor()

@@ -202,7 +202,7 @@ class SandboxResetTest(RailActivated, TestCase):
 
         wallet = Wallet.objects.create(customer=biz, balance_micros=5_000_000)
         WalletTransaction.objects.create(
-            wallet=wallet, transaction_type="TOP_UP", amount_micros=5_000_000,
+            wallet=wallet, transaction_type="top_up", amount_micros=5_000_000,
             balance_after_micros=5_000_000, idempotency_key=f"{ext_prefix}seed")
         settled = Posting.objects.create(
             tenant=tenant, customer=seat,

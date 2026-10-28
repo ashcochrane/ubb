@@ -41,6 +41,7 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN,
     PRICING_STATUS_KNOWN,
     SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+    STOP_SCOPE_CUSTOMER,
     TASK_STATUS_EXPIRED,
     TASK_STATUS_KILLED,
     WEBHOOK_EVENT_TYPE_AUTO_TOP_UP_REQUIRES_ACTION,
@@ -176,6 +177,17 @@ ControlFamily = Annotated[
 #: refuses the other shape).
 CeilingBasis = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "ceiling_basis"})]
+
+#: R10-W4 (slice 8): three closed concepts the payloads below carry, declared
+#: from their backends' own sets. Spelled here again rather than imported,
+#: because a product may not import the composition layer (`api/v1/schemas.py`
+#: has the same aliases).
+GrantKind = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "grant_kind"})]
+Role = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "role"})]
+StopScope = Annotated[
+    str, Field(json_schema_extra={"x-ubb-concept": "stop_scope"})]
 
 #: A FIGURE THAT DOES NOT APPLY IS NULL, NEVER ZERO (#610, ADR-0013 §5). The
 #: two figures below rode the stop payloads as `0` where nothing applied — an
@@ -572,7 +584,9 @@ class CreditGrantExpiring(EventSchema):
     tenant_id: str
     customer_id: str
     grant_id: str
-    kind: str = ""
+    #: Required since R10-W4: every producer passes the lot's kind, and a closed
+    #: set has no honest empty default.
+    kind: GrantKind
     remaining_micros: int = 0
     expires_at: str = ""
 
@@ -618,7 +632,8 @@ class CreditGrantExpired(EventSchema):
     tenant_id: str
     customer_id: str
     grant_id: str
-    kind: str = ""
+    #: Required since R10-W4, on `CreditGrantExpiring`'s footing.
+    kind: GrantKind
     expired_micros: int = 0
     balance_micros: int = 0
 
@@ -876,7 +891,7 @@ class CustomerStopped(EventSchema):
     reason_code: ReasonCode
     control_family: ControlFamily
     control_id: str
-    scope: str = "customer"
+    scope: StopScope = STOP_SCOPE_CUSTOMER
     episode_seq: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint — an ordinary
     # event of this same type carrying the CURRENT state and episode, minted
@@ -920,7 +935,7 @@ class CustomerStopCleared(EventSchema):
     #: Required, like the suspension's (#610): every producer says which —
     #: a balance, or null where the customer holds none.
     balance_micros: WalletBalanceOnAStop
-    scope: str = "customer"
+    scope: StopScope = STOP_SCOPE_CUSTOMER
     episode_seq: int = 0
     # Delivery spec §B (#43): True only on a patrol re-mint (see
     # CustomerStopped.re_announcement).
@@ -995,8 +1010,10 @@ class InvitationCreated(EventSchema):
     tenant_id: str
     invitation_id: str
     member_id: str
+    #: Required since R10-W4: every producer passes the invitee's role, and a
+    #: closed set has no honest empty default.
+    role: Role
     email: str = ""
-    role: str = ""
 
 
 @dataclass(frozen=True)
@@ -1016,6 +1033,7 @@ class MemberActivated(EventSchema):
     EVENT_TYPE = WEBHOOK_EVENT_TYPE_MEMBER_ACTIVATED
     tenant_id: str
     member_id: str
+    #: Required since R10-W4, on `InvitationCreated`'s footing.
+    role: Role
     email: str = ""
-    role: str = ""
     clerk_user_id: str = ""

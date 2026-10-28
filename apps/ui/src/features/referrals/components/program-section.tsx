@@ -24,7 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros, formatPercent } from "@/lib/format";
-import { referralProgramStatusLabel } from "@/lib/labels";
+import { referralProgramStatusLabel } from "../lib/referral-vocabulary";
 import { toastSuccess } from "@/lib/mutations";
 
 import {

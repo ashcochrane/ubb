@@ -13,6 +13,7 @@ from ubb.metering import MeteringClient
 from ubb.billing import BillingClient
 from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.record_usage_response import RecordUsageResponse
+from tests._receipt import A_RECEIPT
 
 
 class TestProductClientCreation(unittest.TestCase):
@@ -103,7 +104,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_1", "new_balance_micros": 8_500_000,
-                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
                 "billed_cost_micros": 1_500_000,
             }
@@ -132,7 +133,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_2", "new_balance_micros": 10_000_000,
-                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
                 "billed_cost_micros": 1_500_000,
             }
@@ -153,7 +154,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_3", "new_balance_micros": 10_000_000,
-                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
                 "billed_cost_micros": 0,
             }
@@ -173,7 +174,7 @@ class TestOrchestratedRecordUsage(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_4", "new_balance_micros": 10_000_000,
-                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             }
         )

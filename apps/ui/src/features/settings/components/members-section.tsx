@@ -32,7 +32,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useHasRole } from "@/hooks/use-current-role";
-import { ROLES, memberStatusLabel, roleLabel } from "@/lib/labels";
+import { ROLES, roleLabel } from "@/lib/role";
+import type { Role } from "@/lib/vocabulary";
+
+import { memberStatusLabel } from "../lib/team";
 import { formatShortDate } from "@/lib/format";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 
@@ -47,7 +50,7 @@ export function MembersSection() {
   const [mutatingId, setMutatingId] = React.useState<string | null>(null);
   const [removeTarget, setRemoveTarget] = React.useState<Member | null>(null);
 
-  const changeRole = (member: Member, role: string) => {
+  const changeRole = (member: Member, role: Role) => {
     if (role === member.role) return;
     setMutatingId(member.id);
     roleMutation.mutate(
@@ -130,7 +133,7 @@ export function MembersSection() {
                         >
                           <Select
                             value={member.role}
-                            onValueChange={(role: string | null) => {
+                            onValueChange={(role: Role | null) => {
                               if (role !== null) changeRole(member, role);
                             }}
                           >

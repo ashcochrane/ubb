@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.economic_row_out_grouping_field_value_status_item import EconomicRowOutGroupingFieldValueStatusItem
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -34,17 +35,17 @@ class EconomicRowOut:
 
         Attributes:
             grouping_field_value (list[None | str]):
-            grouping_field_value_status (list[str]): Why this row has no value on the axis in the same position, where it
-                has none: 'recorded' means the value beside it is the axis's value, 'not_recorded' means these events could have
-                carried one and did not, and 'not_applicable' means this kind of row never carries one — a charge raised for a
-                delivered piece of work names no supplier and no event type. The two absences are different facts and only one
-                of them has a remedy.
+            grouping_field_value_status (list[EconomicRowOutGroupingFieldValueStatusItem]): Why this row has no value on the
+                axis in the same position, where it has none: 'recorded' means the value beside it is the axis's value,
+                'not_recorded' means these events could have carried one and did not, and 'not_applicable' means this kind of
+                row never carries one — a charge raised for a delivered piece of work names no supplier and no event type. The
+                two absences are different facts and only one of them has a remedy.
             measures (list[EconomicMeasureOut]):
             bucket_start (None | str | Unset):
      """
 
     grouping_field_value: list[None | str]
-    grouping_field_value_status: list[str]
+    grouping_field_value_status: list[EconomicRowOutGroupingFieldValueStatusItem]
     measures: list[EconomicMeasureOut]
     bucket_start: None | str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -63,7 +64,10 @@ class EconomicRowOut:
 
 
 
-        grouping_field_value_status = self.grouping_field_value_status
+        grouping_field_value_status = []
+        for grouping_field_value_status_item_data in self.grouping_field_value_status:
+            grouping_field_value_status_item = grouping_field_value_status_item_data.value
+            grouping_field_value_status.append(grouping_field_value_status_item)
 
 
 
@@ -112,7 +116,14 @@ class EconomicRowOut:
             grouping_field_value.append(grouping_field_value_item)
 
 
-        grouping_field_value_status = cast(list[str], d.pop("grouping_field_value_status"))
+        grouping_field_value_status = []
+        _grouping_field_value_status = d.pop("grouping_field_value_status")
+        for grouping_field_value_status_item_data in (_grouping_field_value_status):
+            grouping_field_value_status_item = EconomicRowOutGroupingFieldValueStatusItem(grouping_field_value_status_item_data)
+
+
+
+            grouping_field_value_status.append(grouping_field_value_status_item)
 
 
         measures = []

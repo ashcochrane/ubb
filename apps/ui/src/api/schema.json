@@ -366,8 +366,14 @@
             "type": "string"
           },
           "status": {
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "referral_status"
           }
         },
         "required": [
@@ -479,8 +485,80 @@
       "AuditRecordOut": {
         "properties": {
           "action": {
+            "enum": [
+              "api_key.created",
+              "api_key.rotated",
+              "api_key.revoked",
+              "invitation.created",
+              "invitation.revoked",
+              "member.role_changed",
+              "member.removed",
+              "tenant.config_changed",
+              "sandbox.created",
+              "sandbox.reset",
+              "connect.started",
+              "billing_profile.set",
+              "auto_top_up.configured",
+              "postpaid_config.set",
+              "customer_spend_pool.set",
+              "margin_threshold.set",
+              "wallet.credited",
+              "wallet.debited",
+              "wallet.withdrawn",
+              "top_up.requested",
+              "usage.refunded",
+              "grant.created",
+              "grant.voided",
+              "tenant_default_markup.declared",
+              "tenant_default_markup.withdrawn",
+              "pricing_book_publish.declared",
+              "pricing_book_publish.published",
+              "pricing_book_publish.discarded",
+              "pricing_book.declared",
+              "pricing_book.withdrawn",
+              "cost_book.declared",
+              "cost_book.withdrawn",
+              "customer_pricing_override.declared",
+              "customer_pricing_override.withdrawn",
+              "resolution_run.executed",
+              "event_type.declared",
+              "measurement.declared",
+              "grouping_field.declared",
+              "task_type.declared",
+              "tenant_supplied_revenue.recorded",
+              "event_type.published",
+              "measurement.withdrawn",
+              "reported_cost_mapping.declared",
+              "reported_cost_mapping.withdrawn",
+              "provider.declared",
+              "provider.retired",
+              "event_category.declared",
+              "event_category.withdrawn",
+              "customer.created",
+              "plan.created",
+              "plan.updated",
+              "plan.archived",
+              "plan.assigned",
+              "subscription.created",
+              "subscription.canceled",
+              "subscription.paused",
+              "subscription.resumed",
+              "subscription.seats_changed",
+              "referral_program.created",
+              "referral_program.updated",
+              "referral_program.deactivated",
+              "referral_program.reactivated",
+              "referrer.registered",
+              "referral.attributed",
+              "referral.revoked",
+              "webhook_config.created",
+              "webhook_config.updated",
+              "webhook_config.deleted",
+              "webhook_config.secret_rotated"
+            ],
             "title": "Action",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "audit_action"
           },
           "actor_display": {
             "title": "Actor Display",
@@ -492,7 +570,15 @@
           },
           "actor_kind": {
             "title": "Actor Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "actor_kind",
+            "x-ubb-known-values": [
+              "member",
+              "api_key",
+              "operator",
+              "end_customer",
+              "system"
+            ]
           },
           "correlation_id": {
             "title": "Correlation Id",
@@ -516,8 +602,44 @@
             "type": "string"
           },
           "resource_type": {
+            "enum": [
+              "api_key",
+              "sandbox",
+              "tenant",
+              "connect",
+              "wallet",
+              "auto_top_up",
+              "grant",
+              "customer_spend_pool",
+              "billing_profile",
+              "postpaid_config",
+              "plan",
+              "customer",
+              "subscription",
+              "margin_threshold",
+              "tenant_supplied_revenue",
+              "tenant_default_markup",
+              "pricing_book",
+              "cost_book",
+              "pricing_book_publish",
+              "resolution_run",
+              "grouping_field_registry",
+              "task_type_registry",
+              "provider",
+              "event_category",
+              "event_type",
+              "measurement",
+              "reported_cost_mapping",
+              "invitation",
+              "member",
+              "referral_program",
+              "referrer",
+              "referral",
+              "webhook_config"
+            ],
             "title": "Resource Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "audit_resource_type"
           }
         },
         "required": [
@@ -767,7 +889,15 @@
           },
           "actor_kind": {
             "title": "Actor Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "actor_kind",
+            "x-ubb-known-values": [
+              "member",
+              "api_key",
+              "operator",
+              "end_customer",
+              "system"
+            ]
           },
           "book_id": {
             "title": "Book Id",
@@ -1279,8 +1409,14 @@
             ]
           },
           "stop_scope": {
+            "enum": [
+              "task",
+              "subtask",
+              "customer"
+            ],
             "title": "Stop Scope",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "stop_scope"
           },
           "task_cogs_ceiling_micros": {
             "title": "Task Cogs Ceiling Micros",
@@ -1780,8 +1916,13 @@
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "paid",
+              "promo"
+            ],
             "title": "Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "grant_kind"
           }
         },
         "required": [
@@ -2845,7 +2986,13 @@
           "grouping_field_value_status": {
             "description": "Why this row has no value on the axis in the same position, where it has none: 'recorded' means the value beside it is the axis's value, 'not_recorded' means these events could have carried one and did not, and 'not_applicable' means this kind of row never carries one \u2014 a charge raised for a delivered piece of work names no supplier and no event type. The two absences are different facts and only one of them has a remedy.",
             "items": {
-              "type": "string"
+              "enum": [
+                "recorded",
+                "not_recorded",
+                "not_applicable"
+              ],
+              "type": "string",
+              "x-ubb-concept": "grouping_field_value_status"
             },
             "title": "Grouping Field Value Status",
             "type": "array"
@@ -3311,20 +3458,39 @@
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "paid",
+              "promo"
+            ],
             "title": "Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "grant_kind"
           },
           "remaining_micros": {
             "title": "Remaining Micros",
             "type": "integer"
           },
           "source": {
+            "enum": [
+              "checkout",
+              "auto_top_up",
+              "api",
+              "other"
+            ],
             "title": "Source",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "grant_source"
           },
           "status": {
+            "enum": [
+              "active",
+              "depleted",
+              "expired",
+              "voided"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "grant_status"
           },
           "transaction_id": {
             "anyOf": [
@@ -3386,8 +3552,13 @@
             "type": "string"
           },
           "kind": {
+            "enum": [
+              "paid",
+              "promo"
+            ],
             "title": "Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "grant_kind"
           },
           "remaining_micros": {
             "title": "Remaining Micros",
@@ -4330,8 +4501,14 @@
             "type": "string"
           },
           "role": {
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ],
             "title": "Role",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "role"
           }
         },
         "required": [
@@ -4388,12 +4565,24 @@
             "type": "string"
           },
           "role": {
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ],
             "title": "Role",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "role"
           },
           "status": {
+            "enum": [
+              "pending",
+              "accepted",
+              "revoked"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "invitation_status"
           }
         },
         "required": [
@@ -4594,8 +4783,14 @@
       "LedgerEntryOut": {
         "properties": {
           "calculation_method": {
+            "enum": [
+              "actual_cost",
+              "estimated_cost",
+              "flat_fee"
+            ],
             "title": "Calculation Method",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "calculation_method"
           },
           "created_at": {
             "title": "Created At",
@@ -5118,12 +5313,23 @@
             "type": "string"
           },
           "role": {
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ],
             "title": "Role",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "role"
           },
           "status": {
+            "enum": [
+              "pending",
+              "active"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "member_status"
           }
         },
         "required": [
@@ -5139,8 +5345,14 @@
       "MemberRoleUpdateIn": {
         "properties": {
           "role": {
+            "enum": [
+              "read",
+              "write",
+              "admin"
+            ],
             "title": "Role",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "role"
           }
         },
         "required": [
@@ -6254,6 +6466,543 @@
         "title": "PricingBookOut",
         "type": "object"
       },
+      "PricingReceipt": {
+        "description": "The Pricing Receipt, version 2 \u2014 see `RECEIPT_DESCRIPTION`.",
+        "properties": {
+          "costing": {
+            "$ref": "#/components/schemas/PricingReceiptCosting"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "effective_at": {
+            "title": "Effective At",
+            "type": "string"
+          },
+          "pricing": {
+            "$ref": "#/components/schemas/PricingReceiptPricing"
+          },
+          "pricing_engine_version": {
+            "title": "Pricing Engine Version",
+            "type": "string"
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/PricingReceiptProvenance"
+          },
+          "receipt_schema_version": {
+            "title": "Receipt Schema Version",
+            "type": "integer"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          },
+          "subject_type": {
+            "enum": [
+              "usage_event",
+              "charge"
+            ],
+            "title": "Subject Type",
+            "type": "string",
+            "x-ubb-concept": "pricing_receipt_subject_type"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/PricingReceiptTotals"
+          }
+        },
+        "required": [
+          "receipt_schema_version",
+          "pricing_engine_version",
+          "subject_type",
+          "subject_id",
+          "effective_at",
+          "currency",
+          "costing",
+          "pricing",
+          "totals",
+          "provenance"
+        ],
+        "title": "PricingReceipt",
+        "type": "object"
+      },
+      "PricingReceiptComponent": {
+        "additionalProperties": true,
+        "description": "One priced quantity, with the terms that priced it, BY VALUE \u2014 the\nmeasured detail behind it expires and this record does not\n(`receipts.REQUIRED_COMPONENT_KEYS`, a minimum).",
+        "properties": {
+          "fixed_micros": {
+            "title": "Fixed Micros",
+            "type": "integer"
+          },
+          "measurement_key": {
+            "title": "Measurement Key",
+            "type": "string"
+          },
+          "micros": {
+            "title": "Micros",
+            "type": "integer"
+          },
+          "rate_per_unit_micros": {
+            "title": "Rate Per Unit Micros",
+            "type": "integer"
+          },
+          "rate_structure": {
+            "enum": [
+              "per_unit",
+              "fixed_component"
+            ],
+            "title": "Rate Structure",
+            "type": "string",
+            "x-ubb-concept": "rate_structure"
+          },
+          "unit_quantity": {
+            "title": "Unit Quantity",
+            "type": "integer"
+          },
+          "units": {
+            "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
+            "title": "Units",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measurement_key",
+          "units",
+          "rate_structure",
+          "rate_per_unit_micros",
+          "unit_quantity",
+          "fixed_micros",
+          "micros"
+        ],
+        "title": "PricingReceiptComponent",
+        "type": "object"
+      },
+      "PricingReceiptCosting": {
+        "description": "The supplier side: how the cost was derived (null where no method\nderived it), whether it is settled, and the detail that explains it.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/PricingReceiptCostingDetail"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "calculated",
+                  "reported"
+                ],
+                "type": "string",
+                "x-ubb-concept": "costing_method"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "status": {
+            "enum": [
+              "known",
+              "unresolved",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string",
+            "x-ubb-concept": "costing_status"
+          }
+        },
+        "required": [
+          "method",
+          "status",
+          "detail"
+        ],
+        "title": "PricingReceiptCosting",
+        "type": "object"
+      },
+      "PricingReceiptCostingDetail": {
+        "additionalProperties": true,
+        "description": "Why the supplier cost is what it is. Absent keys stay absent: a Task\nCharge's receipt holds none, because no supplier stands behind a Charge.",
+        "properties": {
+          "components": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PricingReceiptComponent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Components"
+          },
+          "reported_cost_source_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "provider_response",
+                  "caller_supplied",
+                  "derived",
+                  "constant"
+                ],
+                "type": "string",
+                "x-ubb-concept": "source_kind"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reported Cost Source Kind"
+          },
+          "uncosted_measurement_keys": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncosted Measurement Keys"
+          },
+          "uncosted_quantities": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncosted Quantities"
+          },
+          "undeclared_quantities": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "pattern": "^(0|-?(0\\.[0-9]*[1-9]|[1-9][0-9]*(\\.[0-9]*[1-9])?))$",
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Undeclared Quantities"
+          },
+          "unresolved_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "reported_cost_missing",
+                  "cost_rate_missing",
+                  "measurement_not_declared",
+                  "event_type_not_declared"
+                ],
+                "type": "string",
+                "x-ubb-concept": "unresolved_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unresolved Reason"
+          }
+        },
+        "title": "PricingReceiptCostingDetail",
+        "type": "object"
+      },
+      "PricingReceiptMarkupTerms": {
+        "description": "What a margin over cost was, by value: the percentage and the basis it\nwas taken over. Exactly these two (`receipts.REQUIRED_MARKUP_KEYS`).",
+        "properties": {
+          "basis_micros": {
+            "title": "Basis Micros",
+            "type": "integer"
+          },
+          "micro_percent": {
+            "title": "Micro Percent",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "micro_percent",
+          "basis_micros"
+        ],
+        "title": "PricingReceiptMarkupTerms",
+        "type": "object"
+      },
+      "PricingReceiptPricing": {
+        "description": "The customer side, on the cost side's terms.",
+        "properties": {
+          "detail": {
+            "$ref": "#/components/schemas/PricingReceiptPricingDetail"
+          },
+          "method": {
+            "anyOf": [
+              {
+                "enum": [
+                  "margin_over_cost",
+                  "direct_event_price"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_method"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Method"
+          },
+          "status": {
+            "enum": [
+              "known",
+              "waived",
+              "unknown",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string",
+            "x-ubb-concept": "pricing_status"
+          }
+        },
+        "required": [
+          "method",
+          "status",
+          "detail"
+        ],
+        "title": "PricingReceiptPricing",
+        "type": "object"
+      },
+      "PricingReceiptPricingDetail": {
+        "additionalProperties": true,
+        "description": "Why the customer price is what it is \u2014 the regime the subject was\npriced under, and the reason beside a status that needs one.",
+        "properties": {
+          "components": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PricingReceiptComponent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Components"
+          },
+          "markup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PricingReceiptMarkupTerms"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "not_applicable_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fixed_task_pricing"
+                ],
+                "type": "string",
+                "x-ubb-concept": "not_applicable_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Applicable Reason"
+          },
+          "pricing_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "event_priced",
+                  "fixed"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_mode"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Mode"
+          },
+          "pricing_status_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "negative_price_unsupported",
+                  "event_type_not_declared",
+                  "measurement_not_declared"
+                ],
+                "type": "string",
+                "x-ubb-concept": "pricing_status_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pricing Status Reason"
+          }
+        },
+        "title": "PricingReceiptPricingDetail",
+        "type": "object"
+      },
+      "PricingReceiptProvenance": {
+        "additionalProperties": true,
+        "description": "Cross-reference ids and nothing else (`receipts._validate_provenance`\nrefuses a figure here). Absent keys stay absent: a usage event names the\nrules it read, a Charge names its agreed price line, and a completion names\nthe Resolution Run or the held name that completed it (#363, #568).",
+        "properties": {
+          "agreed_price_line_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agreed Price Line Id"
+          },
+          "book_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Book Version"
+          },
+          "cost_rate_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Rate Ids"
+          },
+          "held_name_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Held Name Id"
+          },
+          "markup": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PricingReceiptProvenanceMarkup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "price_rate_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Rate Ids"
+          },
+          "resolution_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Run Id"
+          }
+        },
+        "title": "PricingReceiptProvenance",
+        "type": "object"
+      },
+      "PricingReceiptProvenanceMarkup": {
+        "description": "The rung the margin came from and the record that declared it.",
+        "properties": {
+          "record_id": {
+            "title": "Record Id",
+            "type": "string"
+          },
+          "rung": {
+            "title": "Rung",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rung",
+          "record_id"
+        ],
+        "title": "PricingReceiptProvenanceMarkup",
+        "type": "object"
+      },
+      "PricingReceiptTotals": {
+        "description": "The amount each section resolved; null where it is not settled.",
+        "properties": {
+          "billed_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Billed Cost Micros"
+          },
+          "provider_cost_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider Cost Micros"
+          }
+        },
+        "required": [
+          "provider_cost_micros",
+          "billed_cost_micros"
+        ],
+        "title": "PricingReceiptTotals",
+        "type": "object"
+      },
       "ProblemOut": {
         "description": "RFC 9457 problem+json, for ``response=`` documentation of error\nstatuses. Extension members (e.g. ``balance_micros``) are open-world and\ndeliberately unmodeled.",
         "properties": {
@@ -6362,7 +7111,8 @@
               "profit_share"
             ],
             "title": "Reward Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "reward_type"
           },
           "reward_value": {
             "exclusiveMinimum": 0,
@@ -6450,8 +7200,14 @@
             "title": "Min Customer Age Hours"
           },
           "reward_type": {
+            "enum": [
+              "flat_fee",
+              "revenue_share",
+              "profit_share"
+            ],
             "title": "Reward Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "reward_type"
           },
           "reward_value": {
             "title": "Reward Value",
@@ -6469,8 +7225,14 @@
             "title": "Reward Window Days"
           },
           "status": {
+            "enum": [
+              "active",
+              "paused",
+              "deactivated"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "referral_program_status"
           },
           "updated_at": {
             "title": "Updated At",
@@ -6554,7 +7316,13 @@
           "reward_type": {
             "anyOf": [
               {
-                "type": "string"
+                "enum": [
+                  "flat_fee",
+                  "revenue_share",
+                  "profit_share"
+                ],
+                "type": "string",
+                "x-ubb-concept": "reward_type"
               },
               {
                 "type": "null"
@@ -7210,17 +7978,8 @@
             "title": "Pricing Method"
           },
           "pricing_receipt": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
-            "title": "Pricing Receipt"
+            "$ref": "#/components/schemas/PricingReceipt",
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount."
           },
           "pricing_receipt_subject_type": {
             "anyOf": [
@@ -7345,7 +8104,13 @@
           "stop_scope": {
             "anyOf": [
               {
-                "type": "string"
+                "enum": [
+                  "task",
+                  "subtask",
+                  "customer"
+                ],
+                "type": "string",
+                "x-ubb-concept": "stop_scope"
               },
               {
                 "type": "null"
@@ -7468,7 +8233,8 @@
           "pricing_status_reason",
           "trigger_source",
           "stop_bound_micros",
-          "stop_measured_micros"
+          "stop_measured_micros",
+          "pricing_receipt"
         ],
         "title": "RecordUsageResponse",
         "type": "object"
@@ -7496,8 +8262,14 @@
             "type": "string"
           },
           "reward_type": {
+            "enum": [
+              "flat_fee",
+              "revenue_share",
+              "profit_share"
+            ],
             "title": "Reward Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "reward_type"
           },
           "reward_window_ends_at": {
             "anyOf": [
@@ -7511,8 +8283,14 @@
             "title": "Reward Window Ends At"
           },
           "status": {
+            "enum": [
+              "active",
+              "expired",
+              "revoked"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "referral_status"
           },
           "total_earned_micros": {
             "title": "Total Earned Micros",
@@ -7849,7 +8627,15 @@
           },
           "actor_kind": {
             "title": "Actor Kind",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "actor_kind",
+            "x-ubb-known-values": [
+              "member",
+              "api_key",
+              "operator",
+              "end_customer",
+              "system"
+            ]
           },
           "costs_settled": {
             "title": "Costs Settled",
@@ -9657,8 +10443,15 @@
             "type": "integer"
           },
           "status": {
+            "enum": [
+              "open",
+              "closed",
+              "invoicing",
+              "invoiced"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "billing_period_status"
           },
           "total_billed_cost_micros": {
             "description": "What the tenant's customers were billed in this period: the sum of `billed_cost_micros` over the period's postings, placed by when UBB received them. It INCLUDES the charge for a unit of work sold at one agreed price, which is revenue, so it can include money that `recorded_events` does not count an event for. The same name and meaning as the stop payload's sum over one unit of work. UBB's platform fee is a percentage of it.",
@@ -9746,7 +10539,12 @@
           "enforcement_mode": {
             "anyOf": [
               {
-                "type": "string"
+                "enum": [
+                  "off",
+                  "enforcing"
+                ],
+                "type": "string",
+                "x-ubb-concept": "enforcement_mode"
               },
               {
                 "type": "null"
@@ -9866,8 +10664,13 @@
           },
           "enforcement_mode": {
             "default": "off",
+            "enum": [
+              "off",
+              "enforcing"
+            ],
             "title": "Enforcement Mode",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "enforcement_mode"
           },
           "is_active": {
             "title": "Is Active",
@@ -10029,8 +10832,16 @@
             "type": "string"
           },
           "status": {
+            "enum": [
+              "draft",
+              "finalized",
+              "paid",
+              "void",
+              "uncollectible"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "tenant_invoice_status"
           },
           "stripe_invoice_id": {
             "title": "Stripe Invoice Id",
@@ -10231,13 +11042,38 @@
             "title": "Push Attempts"
           },
           "skip_reason": {
-            "default": "",
-            "title": "Skip Reason",
-            "type": "string"
+            "anyOf": [
+              {
+                "enum": [
+                  "no_usage",
+                  "nothing_to_bill",
+                  "seat_superseded",
+                  "no_stripe_customer",
+                  "not_charge_ready",
+                  "payment_rail_closed"
+                ],
+                "type": "string",
+                "x-ubb-concept": "skip_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this invoice was skipped rather than pushed; null unless status is 'skipped'.",
+            "title": "Skip Reason"
           },
           "status": {
+            "enum": [
+              "pending",
+              "pushing",
+              "pushed",
+              "skipped",
+              "failed",
+              "failed_permanent"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "usage_invoice_status"
           },
           "stripe_invoice_id": {
             "default": "",
@@ -10254,7 +11090,8 @@
           "external_id",
           "period_start",
           "total_billed_micros",
-          "status"
+          "status",
+          "skip_reason"
         ],
         "title": "TenantUsageInvoiceOut",
         "type": "object"
@@ -10341,8 +11178,22 @@
             "type": "string"
           },
           "transaction_type": {
+            "enum": [
+              "top_up",
+              "usage_deduction",
+              "withdrawal",
+              "refund",
+              "adjustment",
+              "dispute_deduction",
+              "stripe_refund",
+              "debit",
+              "grant",
+              "grant_expiry",
+              "grant_void"
+            ],
             "title": "Transaction Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "wallet_transaction_type"
           }
         },
         "required": [
@@ -10792,15 +11643,13 @@
           "pricing_receipt": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/PricingReceipt"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
-            "title": "Pricing Receipt"
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount."
           },
           "pricing_receipt_subject_type": {
             "anyOf": [
@@ -10932,7 +11781,13 @@
           "stop_scope": {
             "anyOf": [
               {
-                "type": "string"
+                "enum": [
+                  "task",
+                  "subtask",
+                  "customer"
+                ],
+                "type": "string",
+                "x-ubb-concept": "stop_scope"
               },
               {
                 "type": "null"
@@ -11059,6 +11914,7 @@
           "trigger_source",
           "stop_bound_micros",
           "stop_measured_micros",
+          "pricing_receipt",
           "accepted"
         ],
         "title": "UsageBatchItemResponse",
@@ -11246,11 +12102,8 @@
             "title": "Pricing Method"
           },
           "pricing_receipt": {
-            "additionalProperties": true,
-            "default": {},
-            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.",
-            "title": "Pricing Receipt",
-            "type": "object"
+            "$ref": "#/components/schemas/PricingReceipt",
+            "description": "The Pricing Receipt: the authoritative record of the ECONOMIC RESOLUTION behind this event's amounts \u2014 what UBB resolved, how, and as of when. It is not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only tenant has a receipt for every event it records. The record carries its own shape version (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount."
           },
           "pricing_receipt_subject_type": {
             "anyOf": [
@@ -11364,6 +12217,7 @@
           "pricing_status",
           "pricing_status_reason",
           "measurements_status",
+          "pricing_receipt",
           "effective_at",
           "created_at"
         ],
@@ -11606,13 +12460,38 @@
             "title": "Push Attempts"
           },
           "skip_reason": {
-            "default": "",
-            "title": "Skip Reason",
-            "type": "string"
+            "anyOf": [
+              {
+                "enum": [
+                  "no_usage",
+                  "nothing_to_bill",
+                  "seat_superseded",
+                  "no_stripe_customer",
+                  "not_charge_ready",
+                  "payment_rail_closed"
+                ],
+                "type": "string",
+                "x-ubb-concept": "skip_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this invoice was skipped rather than pushed; null unless status is 'skipped'.",
+            "title": "Skip Reason"
           },
           "status": {
+            "enum": [
+              "pending",
+              "pushing",
+              "pushed",
+              "skipped",
+              "failed",
+              "failed_permanent"
+            ],
             "title": "Status",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "usage_invoice_status"
           },
           "stripe_invoice_id": {
             "default": "",
@@ -11629,7 +12508,8 @@
           "period_end",
           "total_billed_micros",
           "currency",
-          "status"
+          "status",
+          "skip_reason"
         ],
         "title": "UsageInvoiceOut",
         "type": "object"
@@ -11940,8 +12820,22 @@
             "type": "string"
           },
           "transaction_type": {
+            "enum": [
+              "top_up",
+              "usage_deduction",
+              "withdrawal",
+              "refund",
+              "adjustment",
+              "dispute_deduction",
+              "stripe_refund",
+              "debit",
+              "grant",
+              "grant_expiry",
+              "grant_void"
+            ],
             "title": "Transaction Type",
-            "type": "string"
+            "type": "string",
+            "x-ubb-concept": "wallet_transaction_type"
           }
         },
         "required": [
@@ -21520,9 +22414,13 @@
                         "type": "string"
                       },
                       "kind": {
-                        "default": "",
+                        "enum": [
+                          "paid",
+                          "promo"
+                        ],
                         "title": "Kind",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "grant_kind"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -21532,7 +22430,8 @@
                     "required": [
                       "tenant_id",
                       "customer_id",
-                      "grant_id"
+                      "grant_id",
+                      "kind"
                     ],
                     "title": "CreditGrantExpired",
                     "type": "object"
@@ -21633,9 +22532,13 @@
                         "type": "string"
                       },
                       "kind": {
-                        "default": "",
+                        "enum": [
+                          "paid",
+                          "promo"
+                        ],
                         "title": "Kind",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "grant_kind"
                       },
                       "remaining_micros": {
                         "default": 0,
@@ -21650,7 +22553,8 @@
                     "required": [
                       "tenant_id",
                       "customer_id",
-                      "grant_id"
+                      "grant_id",
+                      "kind"
                     ],
                     "title": "CreditGrantExpiring",
                     "type": "object"
@@ -21893,8 +22797,14 @@
                       },
                       "scope": {
                         "default": "customer",
+                        "enum": [
+                          "task",
+                          "subtask",
+                          "customer"
+                        ],
                         "title": "Scope",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "stop_scope"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -22040,8 +22950,14 @@
                       },
                       "scope": {
                         "default": "customer",
+                        "enum": [
+                          "task",
+                          "subtask",
+                          "customer"
+                        ],
                         "title": "Scope",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "stop_scope"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -22517,9 +23433,14 @@
                         "type": "string"
                       },
                       "role": {
-                        "default": "",
+                        "enum": [
+                          "read",
+                          "write",
+                          "admin"
+                        ],
                         "title": "Role",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "role"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -22529,7 +23450,8 @@
                     "required": [
                       "tenant_id",
                       "invitation_id",
-                      "member_id"
+                      "member_id",
+                      "role"
                     ],
                     "title": "InvitationCreated",
                     "type": "object"
@@ -22736,9 +23658,14 @@
                         "type": "string"
                       },
                       "role": {
-                        "default": "",
+                        "enum": [
+                          "read",
+                          "write",
+                          "admin"
+                        ],
                         "title": "Role",
-                        "type": "string"
+                        "type": "string",
+                        "x-ubb-concept": "role"
                       },
                       "tenant_id": {
                         "title": "Tenant Id",
@@ -22747,7 +23674,8 @@
                     },
                     "required": [
                       "tenant_id",
-                      "member_id"
+                      "member_id",
+                      "role"
                     ],
                     "title": "MemberActivated",
                     "type": "object"

@@ -42,13 +42,14 @@ from ubb.exceptions import (
     UBBAPIError, UBBError, UBBStopRequested, UBBValidationError,
 )
 from ubb._core.models.record_usage_response import RecordUsageResponse
+from tests._receipt import A_RECEIPT
 
 
 def _stopped_ack(**overrides) -> dict:
     """A 200 body whose verdict says stop, customer scope unless overridden."""
     body = {
         "event_id": "e1", "suspended": False,
-        "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+        "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
         "stop": True, "stop_reason": REASON_CODE_HARD_FLOOR, "stop_scope": "customer",
         # The three are required keys (the owner's review of #612): a hard
         # floor names its mechanism, a zero floor and the balance below it.
@@ -62,7 +63,7 @@ def _stopped_ack(**overrides) -> dict:
 def _ok_ack(**overrides) -> dict:
     body = {
         "event_id": "e1", "suspended": False,
-        "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "stop": False,
+        "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "stop": False,
         "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
     }
     body.update(overrides)
@@ -427,7 +428,7 @@ class ABatchReportNeverRaisesTest(_ClientCase):
     @staticmethod
     def _accepted(event_id: str, **verdict) -> dict:
         item = {"accepted": True, "event_id": event_id, "suspended": False,
-                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                 "stop": False, "stop_reason": None, "stop_scope": None,
                 "trigger_source": None, "stop_bound_micros": None,
                 "stop_measured_micros": None}
@@ -441,7 +442,7 @@ class ABatchReportNeverRaisesTest(_ClientCase):
         `_rejected`) — and nothing applied, bounded or measured a stop."""
         return {"accepted": False, "code": code, "detail": "refused",
                 "stop": False, "stop_reason": None, "stop_scope": None,
-                "pricing_status_reason": None, "trigger_source": None, "stop_bound_micros": None,
+                "pricing_status_reason": None, "pricing_receipt": None, "trigger_source": None, "stop_bound_micros": None,
                 "stop_measured_micros": None}
 
     @patch("ubb.metering.httpx.Client.post")

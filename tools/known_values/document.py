@@ -141,7 +141,10 @@ def decide(concept, census):
         advertised=advertised,
         backend_serves=None if extent is None
         else f"{extent[0]} of {extent[1]} values",
-        values=tuple(concept.declared_values) if advertised else None,
+        # Only what can occur: a value the registry withholds (`schema.yaml`,
+        # `withheld_values`) stays declared and is never advertised, because a
+        # closed public concept states only values a field can carry.
+        values=tuple(concept.occurring_values) if advertised else None,
     )
 
 

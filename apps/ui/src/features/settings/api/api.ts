@@ -4,6 +4,7 @@
 import { connectApi, marginApi, rootApi, tenantApi } from "@/api/client";
 import type { CursorPage } from "@/api/pagination";
 import { unwrap } from "@/api/problem";
+import type { Role } from "@/lib/vocabulary";
 
 import {
   toConnectStartResult,
@@ -81,7 +82,7 @@ export async function listMembers(
 
 export async function updateMemberRole(
   memberId: string,
-  role: string,
+  role: Role,
 ): Promise<Member> {
   return unwrap(
     await tenantApi.PATCH("/members/{member_id}", {
@@ -109,7 +110,7 @@ export async function listInvitations(
 
 export async function createInvitation(input: {
   email: string;
-  role: string;
+  role: Role;
 }): Promise<Invitation> {
   return unwrap(await tenantApi.POST("/invitations", { body: input }));
 }

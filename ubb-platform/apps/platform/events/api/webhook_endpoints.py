@@ -18,6 +18,13 @@ from apps.platform.events.webhook_models import (
     WebhookDeliveryAttempt,
 )
 from apps.platform.events.catalog import is_valid_event_selector
+from core.vocabulary import (
+    AUDIT_ACTION_WEBHOOK_CONFIG_CREATED,
+    AUDIT_ACTION_WEBHOOK_CONFIG_DELETED,
+    AUDIT_ACTION_WEBHOOK_CONFIG_SECRET_ROTATED,
+    AUDIT_ACTION_WEBHOOK_CONFIG_UPDATED,
+    AUDIT_RESOURCE_TYPE_WEBHOOK_CONFIG,
+)
 
 # Rotation overlap window bounds (hours): long enough that a receiver has time
 # to cut over, capped so a stale retiring secret can't linger indefinitely.
@@ -167,7 +174,7 @@ def _url_already_configured(tenant, url):
     response={201: WebhookConfigResponse, 409: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
-@records_audit("webhook_config.created")
+@records_audit(AUDIT_ACTION_WEBHOOK_CONFIG_CREATED)
 def create_webhook_config(request, payload: WebhookConfigCreateRequest):
     try:
         validate_webhook_url(payload.url)
@@ -191,8 +198,8 @@ def create_webhook_config(request, payload: WebhookConfigCreateRequest):
             )
             # Curated metadata only — never the signing secret.
             audit_record(
-                action="webhook_config.created", tenant_id=tenant.id,
-                resource_type="webhook_config", resource_id=config.id,
+                action=AUDIT_ACTION_WEBHOOK_CONFIG_CREATED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_WEBHOOK_CONFIG, resource_id=config.id,
                 metadata={"url": config.url,
                           "event_types": config.event_types,
                           "is_active": config.is_active})
@@ -223,7 +230,7 @@ def list_webhook_configs(request, cursor: str = None, limit: int = 50):
 
 @webhook_router.delete("/configs/{config_id}", response=StatusResponse)
 @role_floor(ADMIN)
-@records_audit("webhook_config.deleted")
+@records_audit(AUDIT_ACTION_WEBHOOK_CONFIG_DELETED)
 def delete_webhook_config(request, config_id: UUIDIdentifier):
     config = get_object_or_404(
         TenantWebhookConfig,
@@ -237,8 +244,8 @@ def delete_webhook_config(request, config_id: UUIDIdentifier):
     with transaction.atomic():  # delete + audit land together (ADR-004)
         config.delete()
         audit_record(
-            action="webhook_config.deleted", tenant_id=request.auth.tenant.id,
-            resource_type="webhook_config", resource_id=deleted_id,
+            action=AUDIT_ACTION_WEBHOOK_CONFIG_DELETED, tenant_id=request.auth.tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_WEBHOOK_CONFIG, resource_id=deleted_id,
             metadata={"config_id": str(config_id), "url": deleted_url})
     return {"status": "deleted"}
 
@@ -248,7 +255,7 @@ def delete_webhook_config(request, config_id: UUIDIdentifier):
     response={200: WebhookConfigResponse, 404: ProblemOut, 409: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
-@records_audit("webhook_config.updated")
+@records_audit(AUDIT_ACTION_WEBHOOK_CONFIG_UPDATED)
 def update_webhook_config(request, config_id: UUIDIdentifier, payload: WebhookConfigUpdateRequest):
     """Edit url / event_types / pause-resume in place — no delete-and-recreate.
 
@@ -285,8 +292,8 @@ def update_webhook_config(request, config_id: UUIDIdentifier, payload: WebhookCo
         with transaction.atomic():
             config.save(update_fields=[*changes, "updated_at"])
             audit_record(
-                action="webhook_config.updated", tenant_id=tenant.id,
-                resource_type="webhook_config", resource_id=config.id,
+                action=AUDIT_ACTION_WEBHOOK_CONFIG_UPDATED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_WEBHOOK_CONFIG, resource_id=config.id,
                 metadata={"updated_fields": sorted(changes),
                           "url": config.url,
                           "event_types": config.event_types,
@@ -302,7 +309,7 @@ def update_webhook_config(request, config_id: UUIDIdentifier, payload: WebhookCo
     response={200: WebhookConfigResponse, 404: ProblemOut, 422: ProblemOut},
 )
 @role_floor(ADMIN)
-@records_audit("webhook_config.secret_rotated")
+@records_audit(AUDIT_ACTION_WEBHOOK_CONFIG_SECRET_ROTATED)
 def rotate_webhook_secret(request, config_id: UUIDIdentifier, payload: WebhookSecretRotateRequest):
     """Two-secret overlap rotation: the current secret keeps signing a second
     `v1=` candidate for `overlap_hours` while the new one takes over, so a
@@ -323,8 +330,8 @@ def rotate_webhook_secret(request, config_id: UUIDIdentifier, payload: WebhookSe
         # Curated metadata only — the secret material NEVER reaches the ledger
         # (ADR-004 §4); just that a rotation happened and when it closes.
         audit_record(
-            action="webhook_config.secret_rotated", tenant_id=tenant.id,
-            resource_type="webhook_config", resource_id=config.id,
+            action=AUDIT_ACTION_WEBHOOK_CONFIG_SECRET_ROTATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_WEBHOOK_CONFIG, resource_id=config.id,
             metadata={"overlap_hours": payload.overlap_hours,
                       "retiring_secret_expires_at":
                           config.retiring_secret_expires_at.isoformat()})

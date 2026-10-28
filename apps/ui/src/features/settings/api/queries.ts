@@ -5,6 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useCursorList } from "@/api/pagination";
+import type { Role } from "@/lib/vocabulary";
 
 import { settingsApi } from "./provider";
 import type {
@@ -102,7 +103,7 @@ export function useMembers() {
 export function useUpdateMemberRole() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { memberId: string; role: string }) =>
+    mutationFn: (input: { memberId: string; role: Role }) =>
       settingsApi.updateMemberRole(input.memberId, input.role),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["tenant"] });
@@ -132,7 +133,7 @@ export function useInvitations(options?: { enabled?: boolean }) {
 export function useCreateInvitation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: { email: string; role: string }) =>
+    mutationFn: (input: { email: string; role: Role }) =>
       settingsApi.createInvitation(input),
     onSuccess: () => {
       // An invitation also creates a pending member — refresh both lists.

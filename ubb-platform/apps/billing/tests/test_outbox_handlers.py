@@ -71,7 +71,7 @@ class TestBillingOutboxHandler:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         txn = WalletTransaction.objects.get(wallet=wallet)
-        assert txn.transaction_type == "USAGE_DEDUCTION"
+        assert txn.transaction_type == "usage_deduction"
         assert txn.amount_micros == -3_000_000
         assert txn.balance_after_micros == 7_000_000
         assert txn.reference_id == event_id
@@ -398,7 +398,7 @@ class TestBillingOutboxHandler:
         bw.refresh_from_db()
         assert bw.balance_micros == 8_000_000  # the BUSINESS pool was debited
         assert not Wallet.objects.filter(customer=seat).exists()  # seat has no wallet
-        assert WalletTransaction.objects.filter(wallet=bw, transaction_type="USAGE_DEDUCTION").count() == 1
+        assert WalletTransaction.objects.filter(wallet=bw, transaction_type="usage_deduction").count() == 1
 
 
 class TestBillingHandlerEmitsWalletBalanceLow:

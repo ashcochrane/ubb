@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.attribute_response_status import AttributeResponseStatus
 
 
 
@@ -25,13 +26,13 @@ class AttributeResponse:
             referral_id (str):
             referred_customer_id (str):
             referrer_id (str):
-            status (str):
+            status (AttributeResponseStatus):
      """
 
     referral_id: str
     referred_customer_id: str
     referrer_id: str
-    status: str
+    status: AttributeResponseStatus
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -45,7 +46,7 @@ class AttributeResponse:
 
         referrer_id = self.referrer_id
 
-        status = self.status
+        status = self.status.value
 
 
         field_dict: dict[str, Any] = {}
@@ -70,7 +71,10 @@ class AttributeResponse:
 
         referrer_id = d.pop("referrer_id")
 
-        status = d.pop("status")
+        status = AttributeResponseStatus(d.pop("status"))
+
+
+
 
         attribute_response = cls(
             referral_id=referral_id,

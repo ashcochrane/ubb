@@ -1,0 +1,84 @@
+# Referral vocabulary: a tenant's referral programmes, the referrals made
+# under them, and how each reward was worked out.
+#
+# DECLARED IN R10-W4 (slice 8), from the sets the referral models already
+# held. Each was a hand-written label map in the console's legacy adapter or a
+# value the console humanised (`gates/migration-ledger.yaml`, G6), which
+# ADR-0008 §4.3 calls a defect.
+
+reward_type:
+  kind: closed
+  summary: >-
+    Which reward scheme a referral programme runs: a flat fee per referral, a
+    share of the referred customer's revenue, or a share of the profit on it.
+    Snapshotted onto each referral when it is attributed, so a later change
+    to the programme does not rewrite what an earlier referral earns.
+  values:
+    - flat_fee
+    - revenue_share
+    - profit_share
+  label_key_prefix: reward_type
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/referrals/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/referrals/lib/referral-vocabulary.ts
+
+referral_program_status:
+  kind: closed
+  summary: >-
+    Where a tenant's referral programme stands: active, paused or
+    deactivated. A different record from a referral, so a different concept
+    even where a word coincides.
+  values:
+    - active
+    - paused
+    - deactivated
+  label_key_prefix: referral_program_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/referrals/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/referrals/lib/referral-vocabulary.ts
+
+referral_status:
+  kind: closed
+  summary: >-
+    Where one referral stands: active while its reward window is open,
+    expired once it closes, revoked when the tenant withdraws it.
+  values:
+    - active
+    - expired
+    - revoked
+  label_key_prefix: referral_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/referrals/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/referrals/lib/referral-vocabulary.ts
+
+calculation_method:
+  kind: closed
+  summary: >-
+    How one reward-ledger entry's amount was derived (ADR-0006 §3: a method
+    says how an amount is derived): from the referred customer's actual
+    supplier cost, from an estimated cost where the actual one was not
+    known, or as a flat fee.
+  values:
+    - actual_cost
+    - estimated_cost
+    - flat_fee
+  label_key_prefix: calculation_method
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/referrals/rewards/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/referrals/lib/referral-vocabulary.ts

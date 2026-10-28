@@ -6,13 +6,14 @@ from typing import Optional
 from api.v1.pagination import Paginated, empty_page, page
 from api.v1.topups import start_top_up
 from apps.platform.audit.marker import records_audit
-from api.v1.schemas import whole_minor_units
+from api.v1.schemas import GrantKind, WalletTransactionType, whole_minor_units
 from core.auth import ProductAccess
 from core.money import DEFAULT_CURRENCY, minor_units
 from core.problems import ProblemOut
 from core.widget_auth import WidgetJWTAuth
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from apps.billing.invoicing.models import Invoice
+from core.vocabulary import AUDIT_ACTION_TOP_UP_REQUESTED
 
 me_router = Router(auth=WidgetJWTAuth())
 
@@ -49,7 +50,7 @@ class MeBalanceResponse(Schema):
 
 class GrantSummaryOut(Schema):
     id: str
-    kind: str
+    kind: GrantKind
     remaining_micros: int
     expires_at: Optional[str] = None
 
@@ -91,7 +92,7 @@ class TopUpResponse(Schema):
 
 class TransactionOut(Schema):
     id: str
-    transaction_type: str
+    transaction_type: WalletTransactionType
     amount_micros: int
     balance_after_micros: int
     description: str
@@ -289,7 +290,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
 
 
 @me_router.post("/top-up", response={200: TopUpResponse, 409: ProblemOut})
-@records_audit("top_up.requested")
+@records_audit(AUDIT_ACTION_TOP_UP_REQUESTED)
 def create_top_up(request, payload: TopUpRequest):
     """Widget twin of the tenant top-up. Replay-safe: idempotency_key is
     required and unique per customer — a retried call re-uses the original
