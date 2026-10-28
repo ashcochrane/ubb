@@ -37,7 +37,7 @@ class MarginFlaggingTest(TestCase):
         # margin% = 50k/1000k = 5% < 10% -> unprofitable
         CustomerCostAccumulator.objects.create(
             tenant=self.tenant, customer=self.customer, period_start=self.ps, period_end=self.pe,
-            total_provider_cost_micros=950_000, total_billed_cost_micros=1_000_000, event_count=1)
+            total_provider_cost_micros=950_000, total_billed_cost_micros=1_000_000, posting_count=1)
         econ = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
         MarginService.evaluate_and_emit(econ)
         econ.refresh_from_db()
@@ -60,7 +60,7 @@ class MarginFlaggingTest(TestCase):
         # current month with >25% provider-cost rise
         CustomerCostAccumulator.objects.create(
             tenant=self.tenant, customer=self.customer, period_start=self.ps, period_end=self.pe,
-            total_provider_cost_micros=200_000, total_billed_cost_micros=1_000_000, event_count=1)
+            total_provider_cost_micros=200_000, total_billed_cost_micros=1_000_000, posting_count=1)
         econ = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
         MarginService.evaluate_and_emit(econ)
         assert OutboxEvent.objects.filter(

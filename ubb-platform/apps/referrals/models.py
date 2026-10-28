@@ -5,24 +5,44 @@ from django.db import models
 from django.utils import timezone
 
 from core.models import BaseModel
+from core.vocabulary import (
+    REFERRAL_PROGRAM_STATUS_ACTIVE,
+    REFERRAL_PROGRAM_STATUS_DEACTIVATED,
+    REFERRAL_PROGRAM_STATUS_PAUSED,
+    REFERRAL_PROGRAM_STATUS_WITHHELD_VALUES,
+    REFERRAL_STATUS_ACTIVE,
+    REFERRAL_STATUS_EXPIRED,
+    REFERRAL_STATUS_REVOKED,
+    REWARD_TYPE_FLAT_FEE,
+    REWARD_TYPE_PROFIT_SHARE,
+    REWARD_TYPE_REVENUE_SHARE,
+)
 
 
+# The registry's closed `reward_type`, `referral_program_status` and
+# `referral_status` (R10-W4), by reference.
 REWARD_TYPE_CHOICES = [
-    ("flat_fee", "Flat Fee"),
-    ("revenue_share", "Revenue Share"),
-    ("profit_share", "Profit Share"),
+    (REWARD_TYPE_FLAT_FEE, "Flat Fee"),
+    (REWARD_TYPE_REVENUE_SHARE, "Revenue Share"),
+    (REWARD_TYPE_PROFIT_SHARE, "Profit Share"),
 ]
 
+# The states a programme can reach TODAY. `paused` is declared but WITHHELD
+# (the owner's review of #620): nothing writes it (the registry entry records
+# the proof), so it is neither offered here nor advertised on the contract. A
+# pause route un-withholds it in the same commit.
 PROGRAM_STATUS_CHOICES = [
-    ("active", "Active"),
-    ("paused", "Paused"),
-    ("deactivated", "Deactivated"),
+    (value, label) for value, label in (
+        (REFERRAL_PROGRAM_STATUS_ACTIVE, "Active"),
+        (REFERRAL_PROGRAM_STATUS_PAUSED, "Paused"),
+        (REFERRAL_PROGRAM_STATUS_DEACTIVATED, "Deactivated"),
+    ) if value not in REFERRAL_PROGRAM_STATUS_WITHHELD_VALUES
 ]
 
 REFERRAL_STATUS_CHOICES = [
-    ("active", "Active"),
-    ("expired", "Expired"),
-    ("revoked", "Revoked"),
+    (REFERRAL_STATUS_ACTIVE, "Active"),
+    (REFERRAL_STATUS_EXPIRED, "Expired"),
+    (REFERRAL_STATUS_REVOKED, "Revoked"),
 ]
 
 
@@ -74,7 +94,8 @@ class ReferralProgram(BaseModel):
         help_text="Minimum age of referred customer account in hours. Null = no minimum.",
     )
     status = models.CharField(
-        max_length=15, choices=PROGRAM_STATUS_CHOICES, default="active"
+        max_length=15, choices=PROGRAM_STATUS_CHOICES,
+        default=REFERRAL_PROGRAM_STATUS_ACTIVE
     )
 
     class Meta:
@@ -128,7 +149,8 @@ class Referral(BaseModel):
     attributed_at = models.DateTimeField(default=timezone.now)
     reward_window_ends_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(
-        max_length=10, choices=REFERRAL_STATUS_CHOICES, default="active"
+        max_length=10, choices=REFERRAL_STATUS_CHOICES,
+        default=REFERRAL_STATUS_ACTIVE
     )
 
     # Snapshotted reward config from program at creation time

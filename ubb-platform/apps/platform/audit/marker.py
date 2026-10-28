@@ -42,7 +42,8 @@ def records_audit(*actions):
     if unknown:
         raise ValueError(
             f"unregistered audit action(s) {unknown!r} — add them to "
-            f"apps.platform.audit.actions.AUDIT_ACTIONS (additive-only)"
+            f"`audit_action` in domain-vocabulary/concepts/governance.yaml "
+            f"(additive-only)"
         )
 
     def decorator(view_func):

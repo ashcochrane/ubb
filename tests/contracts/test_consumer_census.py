@@ -41,6 +41,7 @@ from _helpers import CONSUMER_PATH, REPO_ROOT, concept, write_registry
 from tools.consumers import errors as codes
 from tools.consumers import take_census
 from tools.consumers.census import SURFACES, serving_surfaces
+from tools.consumers.declarations import typescript_enumerations
 from tools.gates import load_programme
 from tools.vocabulary import load_registry
 from tools.vocabulary.generate import BACKEND_CONSTANTS, CONSOLE_VOCABULARY
@@ -484,23 +485,30 @@ def test_no_finding_is_derived_from_a_consumers_own_enumerations(census):
         assert all(item.line > 0 for item in found), path
 
 
-def test_the_console_keeps_its_own_value_arrays_and_the_sdk_keeps_none(census):
-    """The two surfaces disagree in a way that changes what paying costs.
+def test_neither_the_console_nor_the_sdk_keeps_a_value_array_of_its_own(census):
+    """Both surfaces now hold every value set by reference.
 
-    `labels.ts` keeps `as const` arrays, so its debt is replacing a list. The
-    SDK's hand-written surface declares no `Literal[...]` at all and types
-    these fields as bare strings, so its debt is adding an import to a file
-    with nothing to delete. Pinned because it is the fact the seeding rests on,
-    and because a walker that silently stopped finding TypeScript arrays would
-    otherwise look exactly like a console that had been converted.
+    ⚠ INVERTED IN R10-W4, AT ITS OWN ADDRESS. Until then the console's half
+    required an enumeration: `labels.ts` kept `as const` arrays, so its debt
+    was replacing a list, while the SDK's hand-written surface declared no
+    `Literal[...]` at all and typed these fields as bare strings. W4 replaced
+    the last one — `ROLES`, which `lib/role.ts` now binds to the generated
+    `ROLE_VALUES` — so the console is converted, and keeping the old assertion
+    would demand the debt back. The claim that is now load-bearing is the
+    emptiness, on both surfaces.
+
+    The walker going blind would look exactly like a converted console, and
+    that is the other half of the same reason this test exists:
+    `test_the_typescript_walker_still_sees_what_the_console_used_to_keep`
+    fires it at the spelling it last found, so a green here is a fact about
+    the console rather than about the walker.
     """
-    console = [path for path in census.enumerations
-               if path.startswith("apps/ui/")]
+    console = {path: found for path, found in census.enumerations.items()
+               if path.startswith("apps/ui/")}
     assert console, "the console declares a consumer somewhere"
-    assert any(census.enumerations[path] for path in console), (
-        "the console's declared consumer keeps no enumeration of its own — "
-        "either it has been converted, or the TypeScript walker stopped "
-        "seeing `as const` arrays")
+    assert not any(console.values()), (
+        f"a declared console consumer keeps an enumeration of its own again: "
+        f"{ {p: f for p, f in console.items() if f} }")
 
     sdk = {path: found for path, found in census.enumerations.items()
            if path.startswith("ubb-sdk/")}
@@ -508,6 +516,21 @@ def test_the_console_keeps_its_own_value_arrays_and_the_sdk_keeps_none(census):
     assert not any(sdk.values()), (
         f"the SDK's hand-written surface has grown an enumeration of its own: "
         f"{ {p: f for p, f in sdk.items() if f} }")
+
+
+def test_the_typescript_walker_still_sees_what_the_console_used_to_keep():
+    """The positive control the inverted assertion above is measured against.
+
+    The first spelling is the one the walker last found in the real console
+    (`labels.ts` at R10-W3); the second is the union the same walker reads.
+    Both must be found, or "no enumeration" above proves nothing.
+    """
+    found = typescript_enumerations(
+        'export const ROLES = ["read", "write", "admin"] as const;\n'
+        'export type Role = "read" | "write" | "admin";\n')
+
+    assert [str(item) for item in found] == [
+        "line 1: ROLES (as const)", "line 2: Role (union)"]
 
 
 # ---------------------------------------------------------------------------

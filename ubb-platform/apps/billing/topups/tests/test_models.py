@@ -11,7 +11,7 @@ class TestTopupModelsInBillingApp:
         assert AutoTopUpConfig is not None
         assert TopUpAttempt is not None
 
-    def test_create_auto_topup_config(self):
+    def test_create_auto_top_up_config(self):
         from apps.billing.topups.models import AutoTopUpConfig
 
         tenant = Tenant.objects.create(name="Test", products=["metering", "billing"])

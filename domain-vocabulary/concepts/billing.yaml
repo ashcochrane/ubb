@@ -1,0 +1,216 @@
+# Billing vocabulary: the wallet's ledger, its credit grants, and the invoices
+# and periods UBB keeps for a tenant's customers and for the tenant itself.
+#
+# DECLARED IN R10-W4 (slice 8), from the sets the billing models already held.
+# Each was a hand-written label map in the console's legacy adapter, or a
+# value the console humanised (`gates/migration-ledger.yaml`, G6), which
+# ADR-0008 §4.3 calls a defect. Two are not one: a usage invoice (what UBB
+# pushes to Stripe for a postpaid customer) and a tenant invoice (UBB's own
+# platform fee) are different records with different lifecycles, so their
+# statuses are two concepts even where a word coincides.
+
+wallet_transaction_type:
+  kind: closed
+  summary: >-
+    What one movement on a customer's wallet ledger was: money in (a top-up,
+    a credit grant, an adjustment), money out (a usage deduction, a debit, a
+    withdrawal, a grant's expiry or void), or money returned or reclaimed
+    (a refund, a Stripe refund, a dispute deduction). Closed: every movement
+    is written by UBB's wallet operations, and the ledger column holds
+    exactly these.
+  # LOWERCASE SINCE R10-W4 (ruling 7, 2026-10-27). The ledger spelled them in
+  # UPPER_SNAKE until then, which the registry's token rule refuses; the
+  # stored rows were migrated (`wallets/0014`) and no form other than this one
+  # is accepted afterwards. There is no per-concept token exception.
+  values:
+    - top_up
+    - usage_deduction
+    - withdrawal
+    - refund
+    - adjustment
+    - dispute_deduction
+    - stripe_refund
+    - debit
+    - grant
+    - grant_expiry
+    - grant_void
+  label_key_prefix: wallet_transaction_type
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/wallets/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/customers/lib/wallet.ts
+
+grant_kind:
+  kind: closed
+  summary: >-
+    Whether a credit grant (a lot on the wallet) is paid — money from a
+    top-up, withdrawable — or promo, never withdrawable and consumed first.
+  values:
+    - paid
+    - promo
+  label_key_prefix: grant_kind
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/wallets/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/customers/lib/grants.ts
+
+grant_status:
+  kind: closed
+  summary: >-
+    Where a credit grant stands: active while it has a remaining balance,
+    depleted once drawn to nothing, expired once its expiry passed, voided
+    when withdrawn by hand or clawed back.
+  values:
+    - active
+    - depleted
+    - expired
+    - voided
+  label_key_prefix: grant_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/wallets/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/customers/lib/grants.ts
+
+grant_source:
+  kind: closed
+  summary: >-
+    Where a credit grant came from: a checkout top-up, an automatic top-up,
+    a grant made through the API, or anything else.
+  # `auto_top_up`, NOT the run-together spelling the column held until
+  # R10-W4: one concept, one spelling (ADR-0006 §2). The webhook catalogue,
+  # the audit actions and the audit resource types already say `auto_top_up`;
+  # this value was the last place the short form survived, and the stored
+  # rows moved with the lowercase transaction types (`wallets/0014`).
+  values:
+    - checkout
+    - auto_top_up
+    - api
+    - other
+  # The run-together spelling is retired everywhere living (the owner's review
+  # of #620): one concept, one spelling. No public input accepts a grant's
+  # source, `ck_credit_grant_source_known` refuses the old token at the table,
+  # and every writer of the same concept elsewhere — a top-up attempt's
+  # trigger, the SDK's method, the webhook field, the idempotency prefix, the
+  # handler — moved with it.
+  retired_aliases:
+    - auto_topup
+  label_key_prefix: grant_source
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/wallets/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/customers/lib/grants.ts
+
+usage_invoice_status:
+  kind: closed
+  summary: >-
+    Where a postpaid customer's monthly usage invoice stands in its push to
+    Stripe: pending, pushing, pushed; skipped when there is nothing it may or
+    need push (the skip reason says which); failed while retries remain, and
+    failed permanently once they are exhausted.
+  values:
+    - pending
+    - pushing
+    - pushed
+    - skipped
+    - failed
+    - failed_permanent
+  label_key_prefix: usage_invoice_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/invoicing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/usage-invoice.ts
+
+skip_reason:
+  kind: closed
+  summary: >-
+    Why a usage invoice was skipped rather than pushed. Two are terminal
+    truths about the period — nothing was recorded (no_usage), or what was
+    recorded priced at exactly nothing (nothing_to_bill) — one says a newer
+    seat superseded it, and three are recoverable: the customer has no Stripe
+    customer yet, the tenant's account cannot take charges yet, or the
+    payment rail is closed. Present only on a skipped invoice; null on every
+    other one.
+  values:
+    - no_usage
+    - nothing_to_bill
+    - seat_superseded
+    - no_stripe_customer
+    - not_charge_ready
+    - payment_rail_closed
+  label_key_prefix: skip_reason
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/invoicing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/usage-invoice.ts
+
+tenant_invoice_status:
+  kind: closed
+  summary: >-
+    Where UBB's own platform-fee invoice to a tenant stands: draft, finalized,
+    paid, void or uncollectible. A different record from a customer's usage
+    invoice, so a different concept.
+  values:
+    - draft
+    - finalized
+    - paid
+    - void
+    - uncollectible
+  # WITHHELD (the owner's review of #620, the reachability rule): legitimate
+  # states of a platform-fee invoice, with NO legal production transition that
+  # creates either today. The only writers of the status are the platform-fee
+  # task (`tenant_billing/tasks.py`, which creates `finalized`) and the
+  # `invoice.paid` webhook (`paid`). Stripe's `invoice.voided` and
+  # `invoice.marked_uncollectible` reach `_reconcile_customer_invoice`, which
+  # returns for an event with no connected account — and a platform-fee invoice
+  # lives on UBB's own Stripe account, so it never carries one — and touches
+  # only usage and subscription invoices. A writer that mirrors either state
+  # onto the tenant invoice is what un-withholds it, in the same commit.
+  withheld_values:
+    - void
+    - uncollectible
+  label_key_prefix: tenant_invoice_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/tenant_billing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/lib/tenant-billing.ts
+
+billing_period_status:
+  kind: closed
+  summary: >-
+    Where one calendar month of a tenant's usage on UBB's own books stands:
+    open while it takes usage, closed once, then invoicing and invoiced as
+    the platform fee is billed.
+  values:
+    - open
+    - closed
+    - invoicing
+    - invoiced
+  label_key_prefix: billing_period_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/tenant_billing/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/settings/lib/tenant-billing.ts

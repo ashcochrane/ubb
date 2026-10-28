@@ -183,7 +183,7 @@ export const MOCK_KINDS: readonly KindOfWork[] = [
 function totals(
   assessment: CeilingAssessmentScenario,
   price: PriceTotalScenario,
-  eventCount: number,
+  recordedEvents: number,
 ): Pick<
   RunRow,
   | "task_cogs_ceiling_micros"
@@ -194,13 +194,13 @@ function totals(
   | "ceiling_remaining_micros"
   | "total_billed_cost_micros"
   | "unpriced_event_count"
-  | "event_count"
+  | "recorded_events"
 > {
   return {
     ...assessment,
     total_billed_cost_micros: price.micros,
     unpriced_event_count: price.unpriced_event_count,
-    event_count: eventCount,
+    recorded_events: recordedEvents,
   };
 }
 

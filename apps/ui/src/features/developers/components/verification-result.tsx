@@ -12,7 +12,7 @@
 // The answer carries no credential, and nothing here renders one.
 
 import { Badge } from "@/components/ui/badge";
-import { formatDate, formatEventCount, formatEventMicros } from "@/lib/format";
+import { formatDate, formatCount, formatEventMicros } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { partialTotalNote } from "@/lib/supplier-cost";
 import { taskStatusLabel } from "@/lib/task-status";
@@ -191,7 +191,7 @@ function Closed({ close, currency }: { close: CloseTaskResponse; currency: strin
       </div>
       <div>
         <dt className="text-[11px] text-text-muted">Events</dt>
-        <dd>{formatEventCount(close.event_count)}</dd>
+        <dd>{formatCount(close.recorded_events)}</dd>
       </div>
       <div>
         <dt className="text-[11px] text-text-muted">Total provider cost</dt>

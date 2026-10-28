@@ -151,7 +151,7 @@ class WidgetTransactionsTest(TestCase):
         for i in range(3):
             WalletTransaction.objects.create(
                 wallet=wallet,
-                transaction_type="TOP_UP",
+                transaction_type="top_up",
                 amount_micros=10_000_000,
                 balance_after_micros=100_000_000 + (i + 1) * 10_000_000,
                 description=f"Top up {i}",
@@ -266,7 +266,7 @@ class WidgetGrantsEnvelopeTest(TestCase):
             CreditGrant.objects.create(
                 tenant=self.tenant, wallet=self.wallet, kind="promo",
                 granted_micros=1_000_000, remaining_micros=1_000_000,
-                currency="usd", status="active", source="test")
+                currency="usd", status="active", source="other")
 
         first = self.http_client.get(
             "/api/v1/me/grants?limit=2",

@@ -42,7 +42,12 @@ Timestamps are stored as ISO-8601 strings, ids as strings — the array must
 be JSON-storable and byte-stable on replay reads.
 """
 from apps.platform.work import reasons
-from core.vocabulary import TASK_STATUS_KILLED
+from core.vocabulary import (
+    STOP_SCOPE_CUSTOMER,
+    STOP_SCOPE_SUBTASK,
+    STOP_SCOPE_TASK,
+    TASK_STATUS_KILLED,
+)
 
 # Kill reasons that name a limit episode a late event should point back at —
 # the reason module's own crossing set, one word at either altitude since the
@@ -79,10 +84,10 @@ def _unit_contexts(task, verdicts, now):
     # was, and that is the scope.
     tip = dict(tripped_at=_iso(now), episode_seq=None, arrived_after=False)
     if verdicts.get("crossed_task_limit"):
-        out.append(_entry(limit=reasons.TASK_COGS_CEILING, stop_scope="task",
+        out.append(_entry(limit=reasons.TASK_COGS_CEILING, stop_scope=STOP_SCOPE_TASK,
                           task_id=top_id, subtask_id=sub_id, **tip))
     if verdicts.get("crossed_subtask_limit"):
-        out.append(_entry(limit=reasons.TASK_COGS_CEILING, stop_scope="subtask",
+        out.append(_entry(limit=reasons.TASK_COGS_CEILING, stop_scope=STOP_SCOPE_SUBTASK,
                           task_id=top_id, subtask_id=sub_id, **tip))
 
     # Late arrival on a non-active unit: point back at the episode that
@@ -108,7 +113,7 @@ def _unit_contexts(task, verdicts, now):
                 and parent.status == TASK_STATUS_KILLED else None
             if parent_reason in _EPISODE_KILL_REASONS:
                 out.append(_entry(
-                    limit=parent_reason, stop_scope="task",
+                    limit=parent_reason, stop_scope=STOP_SCOPE_TASK,
                     tripped_at=_iso(parent.completed_at), episode_seq=None,
                     task_id=parent.id, subtask_id=task.id,
                     arrived_after=True))
@@ -143,7 +148,7 @@ def _open_line_entries(ledger_owner_id, tenant, task_id, subtask_id,
     from apps.billing.queries import get_open_customer_stops
     opened = opened_episodes or {}
     return [_entry(
-        limit=state["reason"], stop_scope="customer",
+        limit=state["reason"], stop_scope=STOP_SCOPE_CUSTOMER,
         tripped_at=_iso(state["transitioned_at"]),
         episode_seq=state["episode_seq"],
         task_id=task_id, subtask_id=subtask_id,
@@ -162,7 +167,7 @@ def _customer_contexts(owner, customer, tenant, opened_episodes, task_id,
         # Suspension without an open floor episode — admin/fraud, or a
         # money suspension whose episode already cleared. No durable
         # suspension timestamp exists, so tripped_at is honestly null.
-        out = [_entry(limit=reasons.SUSPENDED, stop_scope="customer",
+        out = [_entry(limit=reasons.SUSPENDED, stop_scope=STOP_SCOPE_CUSTOMER,
                       tripped_at=None, episode_seq=None,
                       task_id=task_id, subtask_id=subtask_id,
                       arrived_after=True)]

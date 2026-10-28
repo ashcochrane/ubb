@@ -572,6 +572,53 @@ def test_a_decision_rule_on_a_tenant_owned_concept_is_rejected(tmp_path):
     assert invalid.codes() == {E.FORBIDDEN_FIELD}
 
 
+def test_a_withheld_value_the_concept_does_not_declare_is_rejected(tmp_path):
+    """`withheld_values` subtracts from a declared set; it cannot add to one.
+    A withheld token the concept never declared would be a value no consumer
+    holds and no reader can find, hiding behind a field that says it is
+    excluded (R10-W4, the cutover action)."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        withheld_values=["gamma"],
+    )}})
+    assert E.WITHHELD_VALUE_UNDECLARED in invalid.codes()
+
+
+def test_withholding_every_value_is_rejected(tmp_path):
+    """A closed concept none of whose values can occur is not a value set at
+    all, and publishing it would advertise an enum no field can carry."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": concept(
+        withheld_values=["alpha", "beta"],
+    )}})
+    assert E.WITHHELD_EVERY_VALUE in invalid.codes()
+
+
+def test_an_open_concept_cannot_withhold_a_value(tmp_path):
+    """An open concept's known values are what UBB has met, not what it
+    promises; there is no published enum for a withheld value to leave."""
+    invalid = rejection(tmp_path, concepts={"economics.yaml": {"thing": {
+        "kind": "open",
+        "summary": "Values UBB has met so far.",
+        "known_values": ["alpha", "beta"],
+        "allow_unknown": True,
+        "label_key_prefix": "synthetic",
+        "withheld_values": ["alpha"],
+        "consumers": [],
+    }}})
+    assert invalid.codes() == {E.FORBIDDEN_FIELD}
+
+
+def test_a_withheld_value_stays_declared_and_leaves_the_occurring_set(tmp_path):
+    """The positive control: still a declared value (so its label key and its
+    retirement stay registry business), and absent from what can occur."""
+    registry = load(tmp_path, concepts={"economics.yaml": {
+        "thing": concept(withheld_values=["beta"]),
+    }})
+    thing = registry.concepts["thing"]
+    assert thing.declared_values == ("alpha", "beta")
+    assert thing.withheld_values == ("beta",)
+    assert thing.occurring_values == ("alpha",)
+
+
 def test_an_unusable_consumers_file_is_blamed_before_the_concepts(tmp_path):
     """One cause, one error — the same rule the schema path already follows."""
     invalid = rejection(

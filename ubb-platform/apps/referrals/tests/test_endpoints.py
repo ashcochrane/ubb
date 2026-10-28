@@ -287,7 +287,7 @@ class TestRewardEndpoints(ReferralsEndpointTestBase):
             referral=self.referral,
             total_earned_micros=500_000,
             total_referred_spend_micros=5_000_000,
-            event_count=10,
+            rewarded_posting_count=10,
         )
 
     def test_get_earnings(self):

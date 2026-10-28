@@ -132,13 +132,13 @@ class WebhookDispatcherTest(TestCase):
         expected_micros = 100 * 10_000  # 1_000_000
         self.assertEqual(wallet.balance_micros, expected_micros)
         self.assertTrue(
-            WalletTransaction.objects.filter(wallet=wallet, transaction_type="TOP_UP").exists()
+            WalletTransaction.objects.filter(wallet=wallet, transaction_type="top_up").exists()
         )
 
     @patch("api.v1.webhooks.stripe.Webhook.construct_event")
-    def test_checkout_completed_skips_expired_auto_topup_attempt(self, mock_construct):
+    def test_checkout_completed_skips_expired_auto_top_up_attempt(self, mock_construct):
         tenant, customer, wallet, attempt = self._create_checkout_fixtures(
-            attempt_status="expired", attempt_trigger="auto_topup",
+            attempt_status="expired", attempt_trigger="auto_top_up",
         )
         mock_event = self._make_checkout_event(tenant, customer, attempt, event_id="evt_expired_auto")
         mock_construct.return_value = mock_event
@@ -238,7 +238,7 @@ class HandleCheckoutCompletedTest(TestCase):
 
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 1_000_000)  # 100 cents * 10_000
-        txn = WalletTransaction.objects.get(wallet=self.wallet, transaction_type="TOP_UP")
+        txn = WalletTransaction.objects.get(wallet=self.wallet, transaction_type="top_up")
         self.assertEqual(txn.amount_micros, 1_000_000)
         # Attempt should still succeed (just without charge_id)
         self.attempt.refresh_from_db()
@@ -263,7 +263,7 @@ class HandleCheckoutCompletedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, first_balance)
         self.assertEqual(
-            WalletTransaction.objects.filter(transaction_type="TOP_UP").count(), 1,
+            WalletTransaction.objects.filter(transaction_type="top_up").count(), 1,
         )
 
 
@@ -467,7 +467,7 @@ class ChargeDisputeClosedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 5_000_000)  # 10M - 5M
         txn = WalletTransaction.objects.get(
-            wallet=self.wallet, transaction_type="DISPUTE_DEDUCTION",
+            wallet=self.wallet, transaction_type="dispute_deduction",
         )
         self.assertEqual(txn.amount_micros, -5_000_000)
         self.assertEqual(txn.idempotency_key, "dispute:dp_test_1")
@@ -486,7 +486,7 @@ class ChargeDisputeClosedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 10_000_000)
         self.assertFalse(WalletTransaction.objects.filter(
-            transaction_type="DISPUTE_DEDUCTION",
+            transaction_type="dispute_deduction",
         ).exists())
 
     def test_idempotent_on_duplicate(self):
@@ -504,7 +504,7 @@ class ChargeDisputeClosedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 5_000_000)  # Only deducted once
         self.assertEqual(
-            WalletTransaction.objects.filter(transaction_type="DISPUTE_DEDUCTION").count(), 1,
+            WalletTransaction.objects.filter(transaction_type="dispute_deduction").count(), 1,
         )
 
     def test_skips_unknown_charge(self):
@@ -535,7 +535,7 @@ class ChargeDisputeClosedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 10_000_000)  # No deduction
         self.assertFalse(WalletTransaction.objects.filter(
-            transaction_type="DISPUTE_DEDUCTION",
+            transaction_type="dispute_deduction",
         ).exists())
 
     def test_dispute_suspends_when_below_min(self):
@@ -617,7 +617,7 @@ class ChargeRefundedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 7_000_000)  # 10M - 3M
         txn = WalletTransaction.objects.get(
-            wallet=self.wallet, transaction_type="STRIPE_REFUND",
+            wallet=self.wallet, transaction_type="stripe_refund",
         )
         self.assertEqual(txn.amount_micros, -3_000_000)
         self.assertEqual(txn.idempotency_key, "stripe_refund:re_single")
@@ -636,7 +636,7 @@ class ChargeRefundedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 7_000_000)
         self.assertEqual(
-            WalletTransaction.objects.filter(transaction_type="STRIPE_REFUND").count(), 1,
+            WalletTransaction.objects.filter(transaction_type="stripe_refund").count(), 1,
         )
 
     def test_skips_unknown_charge(self):
@@ -664,7 +664,7 @@ class ChargeRefundedTest(TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 10_000_000)  # No deduction
         self.assertFalse(WalletTransaction.objects.filter(
-            transaction_type="STRIPE_REFUND",
+            transaction_type="stripe_refund",
         ).exists())
 
     def test_two_partial_refunds_both_debited(self):
@@ -690,7 +690,7 @@ class ChargeRefundedTest(TestCase):
         handle_charge_refunded(event2)
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 8_000_000)  # BUG TODAY: stays 9_000_000
-        self.assertEqual(WalletTransaction.objects.filter(transaction_type="STRIPE_REFUND").count(), 2)
+        self.assertEqual(WalletTransaction.objects.filter(transaction_type="stripe_refund").count(), 2)
         self.assertTrue(WalletTransaction.objects.filter(idempotency_key="stripe_refund:re_2").exists())
 
 

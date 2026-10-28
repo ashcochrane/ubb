@@ -46,7 +46,7 @@ class TestCustomerSpendPoolService:
         from unittest.mock import patch
         c = self._cust(cap_micros=1_000_000)
         with patch("apps.metering.queries.get_customer_cost_totals",
-                   return_value={"provider_cost_micros": 0, "billed_cost_micros": 750_000, "event_count": 1}):
+                   return_value={"provider_cost_micros": 0, "billed_cost_micros": 750_000, "posting_count": 1}):
             cache.clear()
             assert CustomerSpendPoolService.current_spend(c.tenant_id, c.id) == 750_000
 

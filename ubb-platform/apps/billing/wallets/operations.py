@@ -55,6 +55,24 @@ from dataclasses import dataclass
 from django.db import IntegrityError, transaction
 
 from apps.platform.work import reasons
+from core.vocabulary import (
+    GRANT_KIND_PAID,
+    GRANT_SOURCE_API,
+    GRANT_SOURCE_AUTO_TOP_UP,
+    GRANT_SOURCE_CHECKOUT,
+    GRANT_STATUS_ACTIVE,
+    GRANT_STATUS_VOIDED,
+    WALLET_TRANSACTION_TYPE_ADJUSTMENT,
+    WALLET_TRANSACTION_TYPE_DEBIT,
+    WALLET_TRANSACTION_TYPE_DISPUTE_DEDUCTION,
+    WALLET_TRANSACTION_TYPE_GRANT,
+    WALLET_TRANSACTION_TYPE_GRANT_VOID,
+    WALLET_TRANSACTION_TYPE_REFUND,
+    WALLET_TRANSACTION_TYPE_STRIPE_REFUND,
+    WALLET_TRANSACTION_TYPE_TOP_UP,
+    WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION,
+    WALLET_TRANSACTION_TYPE_WITHDRAWAL,
+)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -240,7 +258,7 @@ def debit(*, customer_id, tenant, amount_micros, idempotency_key,
         def settle(wallet, txn):
             GrantLedger.allocate(wallet, txn, amount_micros)  # F4.3: usage order
 
-        return _Move(txn_type="DEBIT", amount_micros=-amount_micros,
+        return _Move(txn_type=WALLET_TRANSACTION_TYPE_DEBIT, amount_micros=-amount_micros,
                      description=audit.description or "External debit",
                      reference_id=audit.reference,
                      movement_reason=audit.movement_reason, actor=audit.actor,
@@ -260,7 +278,7 @@ def credit(*, customer_id, tenant, amount_micros, idempotency_key,
     NO lazy expiry (it never did). Expiring/promo credit is ``mint_grant``.
     """
     def prepare(wallet, owner):
-        return _Move(txn_type="ADJUSTMENT", amount_micros=amount_micros,
+        return _Move(txn_type=WALLET_TRANSACTION_TYPE_ADJUSTMENT, amount_micros=amount_micros,
                      description=audit.description or "Credit",
                      reference_id=audit.reference,
                      movement_reason=audit.movement_reason, actor=audit.actor)
@@ -295,7 +313,7 @@ def withdraw(*, customer_id, tenant, amount_micros, idempotency_key,
                 idempotency_key=idempotency_key,
             ))
 
-        return _Move(txn_type="WITHDRAWAL", amount_micros=-amount_micros,
+        return _Move(txn_type=WALLET_TRANSACTION_TYPE_WITHDRAWAL, amount_micros=-amount_micros,
                      description=audit.description or "Withdrawal",
                      settle=settle, events=events)
 
@@ -335,7 +353,7 @@ def refund_usage(*, customer_id, tenant, usage_event_id, idempotency_key,
             # pinned usage_event_id column and restore its GrantAllocation
             # slices into the still-live lots.
             original = WalletTransaction.objects.filter(
-                wallet=wallet, transaction_type="USAGE_DEDUCTION",
+                wallet=wallet, transaction_type=WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION,
                 usage_event_id=usage_event_id,
             ).first()
             GrantLedger.refund(wallet, original)
@@ -352,7 +370,7 @@ def refund_usage(*, customer_id, tenant, usage_event_id, idempotency_key,
                 idempotency_key=idempotency_key,
             ))
 
-        return _Move(txn_type="REFUND", amount_micros=cost,
+        return _Move(txn_type=WALLET_TRANSACTION_TYPE_REFUND, amount_micros=cost,
                      description=f"Refund: {usage_event_id}",
                      reference_id=str(usage_event_id),
                      settle=settle, events=events)
@@ -398,7 +416,7 @@ def mint_grant(*, customer_id, tenant, kind, amount_micros, expires_at,
         def mint(wallet, txn):
             state["grant"] = GrantLedger.create_grant(
                 wallet, tenant.id, kind=kind, amount_micros=amount_micros,
-                expires_at=expires_at, source="api",
+                expires_at=expires_at, source=GRANT_SOURCE_API,
                 source_reference=idempotency_key, txn=txn)
 
         def result(wallet, txn):
@@ -406,7 +424,7 @@ def mint_grant(*, customer_id, tenant, kind, amount_micros, expires_at,
                             transaction_id=str(txn.id), amount_micros=amount_micros,
                             grant=state["grant"])
 
-        return _Move(txn_type="GRANT", amount_micros=amount_micros,
+        return _Move(txn_type=WALLET_TRANSACTION_TYPE_GRANT, amount_micros=amount_micros,
                      description=audit.description or f"Credit grant ({kind})",
                      reference_id=idempotency_key, mint=mint, result=result)
 
@@ -442,7 +460,7 @@ def void_grant(*, customer_id, tenant, grant_id):
     def prepare(wallet, owner):
         grant = state["grant"]
         grant.refresh_from_db()  # expire_due may have just retired it
-        if grant.status != "active":
+        if grant.status != GRANT_STATUS_ACTIVE:
             return OpResult(outcome="noop", balance_micros=wallet.balance_micros,
                             grant=grant)
         # Clamp like expiry (G3): voiding never drives the balance negative.
@@ -453,7 +471,7 @@ def void_grant(*, customer_id, tenant, grant_id):
             # this lot into voided_micros — voiding must accumulate.
             grant.voided_micros += grant.remaining_micros
             grant.remaining_micros = 0
-            grant.status = "voided"
+            grant.status = GRANT_STATUS_VOIDED
             grant.save(update_fields=[
                 "voided_micros", "remaining_micros", "status", "updated_at"])
 
@@ -462,7 +480,7 @@ def void_grant(*, customer_id, tenant, grant_id):
                             transaction_id=str(txn.id),
                             amount_micros=-debit_micros, grant=grant)
 
-        return _Move(txn_type="GRANT_VOID", amount_micros=-debit_micros,
+        return _Move(txn_type=WALLET_TRANSACTION_TYPE_GRANT_VOID, amount_micros=-debit_micros,
                      description=f"Credit grant voided ({grant.kind})",
                      reference_id=str(grant.id), settle=settle, result=result)
 
@@ -517,7 +535,7 @@ def draw_down_usage(*, customer_id, tenant, usage_event_id, billed_cost_micros,
             GrantLedger.allocate(wallet, txn, billed_cost_micros)
 
         return _Move(
-            txn_type="USAGE_DEDUCTION", amount_micros=-billed_cost_micros,
+            txn_type=WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION, amount_micros=-billed_cost_micros,
             description=(f"Usage (reconciled): {usage_event_id}" if repair
                          else f"Usage: {usage_event_id}"),
             reference_id=str(usage_event_id), usage_event_id=usage_event_id,
@@ -633,7 +651,7 @@ def credit_top_up(*, customer_id, tenant, amount_micros, idempotency_key,
                   source, source_reference, description, reference_id=""):
     """Credit a paid top-up: the TOP_UP ledger row and its PAID CreditGrant
     lot land in one savepoint, so the lot inherits exactly-once from the
-    caller's key (``auto_topup:{pi}`` / ``topup:{session}``) with zero changes
+    caller's key (``auto_top_up:{pi}`` / ``topup:{session}``) with zero changes
     to the convergent callers. Expiry comes from the owner's
     ``CustomerBillingProfile.topup_grant_expiry_days`` (NULL = never expires).
 
@@ -645,11 +663,11 @@ def credit_top_up(*, customer_id, tenant, amount_micros, idempotency_key,
 
         def mint(wallet, txn):
             GrantLedger.create_grant(
-                wallet, tenant.id, kind="paid", amount_micros=amount_micros,
+                wallet, tenant.id, kind=GRANT_KIND_PAID, amount_micros=amount_micros,
                 expires_at=GrantLedger.topup_grant_expires_at(wallet.customer_id),
                 source=source, source_reference=source_reference, txn=txn)
 
-        return _Move(txn_type="TOP_UP", amount_micros=amount_micros,
+        return _Move(txn_type=WALLET_TRANSACTION_TYPE_TOP_UP, amount_micros=amount_micros,
                      description=description, reference_id=reference_id,
                      mint=mint)
 
@@ -670,7 +688,7 @@ def claw_back_dispute(*, customer_id, tenant, amount_micros, dispute_id,
     balance."""
     return _claw_back(
         customer_id=customer_id, tenant=tenant, amount_micros=amount_micros,
-        key=f"dispute:{dispute_id}", txn_type="DISPUTE_DEDUCTION",
+        key=f"dispute:{dispute_id}", txn_type=WALLET_TRANSACTION_TYPE_DISPUTE_DEDUCTION,
         description=f"Dispute lost: {charge_id}", attempt_id=attempt_id)
 
 
@@ -680,7 +698,7 @@ def claw_back_stripe_refund(*, customer_id, tenant, amount_micros, refund_id,
     refunds arrive as separate events), and restore G1 via the cascade."""
     return _claw_back(
         customer_id=customer_id, tenant=tenant, amount_micros=amount_micros,
-        key=f"stripe_refund:{refund_id}", txn_type="STRIPE_REFUND",
+        key=f"stripe_refund:{refund_id}", txn_type=WALLET_TRANSACTION_TYPE_STRIPE_REFUND,
         description=f"Stripe refund: {refund_id}", attempt_id=attempt_id)
 
 
@@ -699,7 +717,7 @@ def _claw_back(*, customer_id, tenant, amount_micros, key, txn_type,
             # deterministic.
             source_grant = CreditGrant.objects.filter(
                 wallet=wallet, source_reference=str(attempt_id),
-                source__in=("checkout", "auto_topup"),
+                source__in=(GRANT_SOURCE_CHECKOUT, GRANT_SOURCE_AUTO_TOP_UP),
             ).order_by("created_at").first()
             GrantLedger.clawback(wallet, txn, amount_micros,
                                  source_grant=source_grant)

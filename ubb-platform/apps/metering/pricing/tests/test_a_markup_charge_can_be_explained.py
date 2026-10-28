@@ -44,6 +44,8 @@ from apps.metering.pricing.receipts import (
     REQUIRED_MARKUP_KEYS,
     SECTION_KEYS,
     TOP_LEVEL_KEYS,
+    ReceiptShapeError,
+    validate_receipt,
 )
 from apps.metering.pricing.services.markup_service import (
     MARKUP_RUNG_TENANT_DEFAULT,
@@ -227,6 +229,22 @@ class TheProvenanceNamesTheRungAndTheRecordTest(_AMarkupPricedEventMixin,
         self.assertEqual(priced.receipt["provenance"]["markup"],
                          {"rung": MARKUP_RUNG_TENANT_DEFAULT,
                           "record_id": str(priced.rung.id)})
+
+    def test_a_rung_outside_the_registrys_set_is_refused_at_the_boundary(self):
+        """The rung is the registry's closed `markup_rung` (the owner's review of
+        #620). The published enum marks the contract and validates nothing, so
+        the one construction boundary is what refuses a writer naming a rung
+        the registry does not hold — the retired override and plan rungs
+        among them."""
+        receipt = self._priced_by_the_markup_rung().receipt
+        validate_receipt(receipt)
+        for rung in ("plan", "customer_override"):
+            with self.subTest(rung=rung):
+                altered = {**receipt, "provenance": {
+                    **receipt["provenance"],
+                    "markup": {**receipt["provenance"]["markup"], "rung": rung}}}
+                with self.assertRaisesRegex(ReceiptShapeError, "rung"):
+                    validate_receipt(altered)
 
     def test_the_recorded_percentage_survives_an_edit_to_that_record(self):
         """The reason the receipt holds VALUES and keeps pointers apart.

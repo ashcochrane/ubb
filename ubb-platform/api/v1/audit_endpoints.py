@@ -17,6 +17,7 @@ one ``UBB operator`` name; widget-initiated top-ups appear with actor kind
 from ninja import Router, Schema
 
 from api.v1.pagination import Paginated, page
+from api.v1.schemas import ActorKind, AuditAction, AuditResourceType
 from apps.platform.audit.models import AuditRecord
 from core.auth import ApiKeyAuth, READ, role_floor
 
@@ -26,11 +27,13 @@ audit_router = Router(auth=ApiKeyAuth())
 class AuditRecordOut(Schema):
     id: str
     created_at: str
-    action: str
-    actor_kind: str
+    # The registry's `audit_action`, less the one action it withholds: the
+    # published enum states only what a row can hold (R10-W4, ruling 5).
+    action: AuditAction
+    actor_kind: ActorKind
     actor_id: str
     actor_display: str
-    resource_type: str
+    resource_type: AuditResourceType
     resource_id: str
     correlation_id: str
     metadata: dict

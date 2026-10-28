@@ -60,7 +60,7 @@ operations:
     path: /api/v1/billing/customers/{customer_id}/auto-top-up
     disposition: wrapped
     wrapped_by:
-      - ubb-sdk/ubb/billing.py::BillingClient.configure_auto_topup
+      - ubb-sdk/ubb/billing.py::BillingClient.configure_auto_top_up
   - operation_id: api_v1_billing_endpoints_create_grant
     method: POST
     path: /api/v1/billing/customers/{customer_id}/grants

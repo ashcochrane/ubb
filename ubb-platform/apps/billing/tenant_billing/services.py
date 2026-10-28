@@ -10,6 +10,10 @@ from apps.platform.event_types.quarantine import refuse_a_silent_close
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.money import from_minor, to_minor
 from core.time_windows import utc_day_start
+from core.vocabulary import (
+    BILLING_PERIOD_STATUS_CLOSED,
+    BILLING_PERIOD_STATUS_OPEN,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +95,8 @@ class TenantBillingService:
         is the only place that can be sure of it.
 
         ⚠ IT COALESCES RATHER THAN RETURNING EARLY, AND THE DIFFERENCE IS
-        `event_count`. An early return skips the whole `UPDATE`, so an unpriced
-        posting would stop incrementing the event count beside the money — and
+        `recorded_events`. An early return skips the whole `UPDATE`, so an
+        unpriced posting would stop incrementing that count beside the money — and
         a period whose first postings were all unpriced would never be created
         at all. The event HAPPENED; what is absent is its price. So the amount
         contributes nothing and the count still counts, which is also the shape
@@ -107,9 +111,9 @@ class TenantBillingService:
         billed_cost_micros = billed_cost_micros or 0
         events = 1 if counts_as_event else 0
         period = TenantBillingService.get_or_create_current_period(tenant)
-        rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
+        rows = TenantBillingPeriod.objects.filter(id=period.id, status=BILLING_PERIOD_STATUS_OPEN).update(
             total_billed_cost_micros=F("total_billed_cost_micros") + billed_cost_micros,
-            event_count=F("event_count") + events,
+            recorded_events=F("recorded_events") + events,
         )
         if rows == 0:
             # Period was closed between get_or_create and update — get fresh period and retry once
@@ -118,9 +122,9 @@ class TenantBillingService:
                 extra={"data": {"tenant_id": str(tenant.id), "period_id": str(period.id)}},
             )
             period = TenantBillingService.get_or_create_current_period(tenant)
-            rows = TenantBillingPeriod.objects.filter(id=period.id, status="open").update(
+            rows = TenantBillingPeriod.objects.filter(id=period.id, status=BILLING_PERIOD_STATUS_OPEN).update(
                 total_billed_cost_micros=F("total_billed_cost_micros") + billed_cost_micros,
-                event_count=F("event_count") + events,
+                recorded_events=F("recorded_events") + events,
             )
             if rows == 0:
                 logger.error(
@@ -316,7 +320,7 @@ class TenantBillingService:
         # This read is unlocked and can be stale, which is safe in the only
         # direction that matters: a stale "closed" skips a close rather than
         # performing one, and the authority is still the locked check below.
-        if period.status != "open":
+        if period.status != BILLING_PERIOD_STATUS_OPEN:
             return
 
         refuse_a_silent_close(
@@ -334,7 +338,7 @@ class TenantBillingService:
 
         with transaction.atomic():
             period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
-            if period.status != "open":
+            if period.status != BILLING_PERIOD_STATUS_OPEN:
                 return
 
             fee_micros, line_items = TenantBillingService._calculate_fees(
@@ -342,7 +346,7 @@ class TenantBillingService:
             )
             fee_micros = TenantBillingService._bank_fee_carry(period, fee_micros)
 
-            period.status = "closed"
+            period.status = BILLING_PERIOD_STATUS_CLOSED
             period.platform_fee_micros = fee_micros
             period.save(update_fields=["status", "platform_fee_micros", "updated_at"])
 
@@ -416,7 +420,7 @@ class TenantBillingService:
         totals = get_period_totals(period.tenant_id, period.period_start,
                                    period.period_end, basis="arrival")
         recomputed_billed_cost = totals["total_billed_cost_micros"]
-        recomputed_count = totals["event_count"]
+        recomputed_count = totals["recorded_events"]
 
         # Skip if no events found — avoids zeroing out periods where events
         # were recorded via accumulate_usage but aren't queryable here.
@@ -429,11 +433,11 @@ class TenantBillingService:
         # the silent zero this slice exists to delete, one layer up. `None`
         # means UBB did not learn what this period holds, and the caller says so
         # rather than reporting a figure nobody computed.
-        if recomputed_count == 0 and period.event_count > 0:
+        if recomputed_count == 0 and period.recorded_events > 0:
             return None
 
         if (recomputed_billed_cost != period.total_billed_cost_micros
-                or recomputed_count != period.event_count):
+                or recomputed_count != period.recorded_events):
             logger.warning(
                 "Billing period reconciliation drift detected",
                 extra={"data": {
@@ -441,13 +445,13 @@ class TenantBillingService:
                     "tenant": period.tenant.name,
                     "stored_billed_cost": period.total_billed_cost_micros,
                     "recomputed_billed_cost": recomputed_billed_cost,
-                    "stored_count": period.event_count,
+                    "stored_count": period.recorded_events,
                     "recomputed_count": recomputed_count,
                 }},
             )
             TenantBillingPeriod.objects.filter(id=period.id).update(
                 total_billed_cost_micros=recomputed_billed_cost,
-                event_count=recomputed_count,
+                recorded_events=recomputed_count,
             )
 
         return totals

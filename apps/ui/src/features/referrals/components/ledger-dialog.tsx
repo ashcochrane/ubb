@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatMicros, formatShortDate } from "@/lib/format";
-import { humanize } from "@/lib/labels";
+import { calculationMethodLabel } from "../lib/referral-vocabulary";
 
 import { useReferralLedger } from "../api/queries";
 import type { ReferralOut } from "../api/types";
@@ -96,7 +96,7 @@ export function LedgerDialog({
                     <TableCell className="text-right font-medium">
                       {formatMicros(entry.reward_micros, currency)}
                     </TableCell>
-                    <TableCell>{humanize(entry.calculation_method)}</TableCell>
+                    <TableCell>{calculationMethodLabel(entry.calculation_method)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -183,7 +183,7 @@ class TheGuardRunsBeforeTheReconcileTest(TestCase):
         tenant = _tenant()
         period = _period(tenant)
         TenantBillingPeriod.objects.filter(id=period.id).update(
-            total_billed_cost_micros=999_999, event_count=7)
+            total_billed_cost_micros=999_999, recorded_events=7)
         _a_cost_ubb_learned(tenant)
         _a_name_nobody_declared(tenant)
 
@@ -192,7 +192,7 @@ class TheGuardRunsBeforeTheReconcileTest(TestCase):
 
         period.refresh_from_db()
         assert period.total_billed_cost_micros == 999_999
-        assert period.event_count == 7
+        assert period.recorded_events == 7
 
         # The control: with the name decided, the same call DOES reconcile —
         # so the assertion above is about the guard's placement and not about a
@@ -202,7 +202,7 @@ class TheGuardRunsBeforeTheReconcileTest(TestCase):
 
         period.refresh_from_db()
         assert period.total_billed_cost_micros == 1_000_000
-        assert period.event_count == 1
+        assert period.recorded_events == 1
 
     def test_the_guard_is_asked_with_the_periods_own_bounds(self):
         """AC 1's other half: which window, and passed how.
@@ -433,7 +433,7 @@ class ThePeriodClosesOnTimeAndSaysWhatItExcludedTest(TestCase):
         # window, which is the disagreement the branch exists for. Re-read
         # afterwards because reconciliation compares against the instance it is
         # handed, and an `update` leaves that instance saying zero.
-        TenantBillingPeriod.objects.filter(id=period.id).update(event_count=3)
+        TenantBillingPeriod.objects.filter(id=period.id).update(recorded_events=3)
         period.refresh_from_db()
 
         with self.assertLogs("apps.billing.tenant_billing.services",

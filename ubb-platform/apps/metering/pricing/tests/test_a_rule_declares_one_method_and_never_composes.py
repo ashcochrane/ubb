@@ -62,7 +62,8 @@ from apps.metering.pricing.models import (
     Rate,
 )
 from apps.metering.pricing.tests._helpers import (
-    RefusalThroughEveryDoorMixin, rate_in_default_book)
+    RefusalThroughEveryDoorMixin, cost_rate_in_default_book,
+    rate_in_default_book)
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
     PRICING_METHOD_DIRECT_EVENT_PRICE,
@@ -119,14 +120,18 @@ class APricingRuleDeclaresOneOfTwoRatifiedMethodsTest(
                 rule.refresh_from_db()
                 self.assertEqual(getattr(rule, METHOD), method)
 
-    def test_a_rule_may_state_no_method_at_all(self):
-        """Null is admitted, and it is the shape every rule on disk is in.
+    def test_a_rule_that_derives_no_price_states_no_method(self):
+        """Null is admitted by THIS check, on the one rule that carries it.
 
         Null is not a third value and the check says so positively: a membership
         test answers NULL for a NULL column, which a check reads as satisfied,
-        so admitting it is a decision rather than an oversight.
+        so admitting it is a decision rather than an oversight. Since R10-W4
+        (ruling 4) the rule that holds it is a cost book's rate — it prices no
+        customer, so no selling method applies — and a rule in a Pricing Book
+        states one (`ck_rate_a_selling_rule_states_its_method`, pinned in
+        `api/v1/tests/test_a_selling_rule_states_its_method.py`).
         """
-        rule = rate_in_default_book(self.tenant, measurement_key="q_null")
+        rule = cost_rate_in_default_book(self.tenant, measurement_key="q_null")
 
         rule.refresh_from_db()
         self.assertIsNone(getattr(rule, METHOD))
@@ -147,7 +152,8 @@ class APricingRuleDeclaresOneOfTwoRatifiedMethodsTest(
 
         self.assert_every_door_refuses(
             rule, pricing_method=A_METHOD_NOBODY_RATIFIED)
-        self.assertIsNone(getattr(rule, METHOD))
+        self.assertEqual(getattr(rule, METHOD),
+                         PRICING_METHOD_DIRECT_EVENT_PRICE)
 
 
 class ARuleCarriesNoSecondComponentBesideItsMethodTest(
@@ -218,14 +224,16 @@ class ARuleCarriesNoSecondComponentBesideItsMethodTest(
     def test_a_method_cannot_be_declared_over_a_rule_that_already_composes(self):
         """The same defect arriving from the other side, which is the one a
         rule written only over the money columns would have let through: the
-        terms are already there and the method is declared afterwards."""
+        terms are already there and the margin is declared afterwards over
+        the direct price that carried them."""
         rule = rate_in_default_book(
             self.tenant, measurement_key="q_reverse",
             rate_per_unit_micros=1_000, fixed_micros=250)
 
         self.assert_every_door_refuses(
             rule, pricing_method=PRICING_METHOD_MARGIN_OVER_COST)
-        self.assertIsNone(getattr(rule, METHOD))
+        self.assertEqual(getattr(rule, METHOD),
+                         PRICING_METHOD_DIRECT_EVENT_PRICE)
 
     def test_a_margin_rule_with_neither_term_is_admitted(self):
         """The admission that makes the four refusals above mean something."""
@@ -251,13 +259,15 @@ class ARuleCarriesNoSecondComponentBesideItsMethodTest(
         self.assertEqual(rule.rate_per_unit_micros, 1_000)
 
     def test_a_rule_stating_no_method_keeps_every_term_it_has_today(self):
-        """Every rule on disk is in this shape, and none of them may break.
+        """A rule with no method keeps both terms, whatever else it carries.
 
         The check has to be satisfied by a null method whatever else the row
         carries, or the migration that installed it would have been unable to
-        apply against a populated table.
+        apply against a populated table. Since R10-W4 (ruling 4) the rule with
+        no method is a cost book's rate, and a supplier's rate may carry both a
+        per-unit rate and a flat addend.
         """
-        rule = rate_in_default_book(
+        rule = cost_rate_in_default_book(
             self.tenant, measurement_key="q_untouched",
             rate_per_unit_micros=1_000, fixed_micros=250)
 

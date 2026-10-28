@@ -2,8 +2,6 @@
 
 import { z } from "zod";
 
-import { humanize } from "@/lib/labels";
-
 import type {
   MarginThreshold,
   MarginThresholdInput,
@@ -190,21 +188,9 @@ export function valuesToThreshold(values: MarginAlertValues): MarginThresholdInp
 }
 
 // ---------------------------------------------------------------------------
-// Audit helpers.
-
-const AUDIT_NOUN_LABELS: Record<string, string> = {
-  api_key: "API key",
-};
-
-/** "config.updated" → "Config updated"; "api_key.rotated" → "API key rotated". */
-export function auditActionLabel(action: string): string {
-  const dot = action.indexOf(".");
-  if (dot === -1) return humanize(action);
-  const noun = action.slice(0, dot);
-  const verb = action.slice(dot + 1);
-  const nounLabel = AUDIT_NOUN_LABELS[noun] ?? humanize(noun);
-  return `${nounLabel} ${verb.replace(/[._-]+/g, " ").toLowerCase()}`.trim();
-}
+// Audit helpers. An action's and a resource type's words are the catalogue's,
+// bound in `./audit-vocabulary` (R10-W4); the noun-and-verb humaniser that
+// stood here is deleted with its ledger entry.
 
 /** "rc-openai-price-v4" → "rc-opena…" (title/copy carry the full value). */
 export function truncateId(id: string, length = 8): string {

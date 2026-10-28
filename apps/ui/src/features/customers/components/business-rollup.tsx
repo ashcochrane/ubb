@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
-import { formatEventCount, formatMicros } from "@/lib/format";
+import { formatCount, formatMicros } from "@/lib/format";
 import {
   marginOver,
   marginPercentOver,
@@ -75,7 +75,9 @@ export function BusinessRollup({
             <TableHeader>
               <TableRow>
                 <TableHead>Seat</TableHead>
-                <TableHead className="text-right">Events</TableHead>
+                {/* `posting_count`: every posting, a Charge's projection
+                    included — not the recorded-events measure (R10-W4). */}
+                <TableHead className="text-right">Postings</TableHead>
                 <TableHead className="text-right">Revenue</TableHead>
                 <TableHead className="text-right">COGS</TableHead>
                 <TableHead className="text-right">Gross margin</TableHead>
@@ -99,7 +101,7 @@ export function BusinessRollup({
                     </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {formatEventCount(seat.event_count)}
+                    {formatCount(seat.posting_count)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {formatMicros(seat.total_revenue_micros, currency)}
@@ -124,7 +126,7 @@ export function BusinessRollup({
                 <TableCell>Totals</TableCell>
                 <TableCell />
                 <TableCell className="text-right tabular-nums">
-                  {formatEventCount(totals.event_count)}
+                  {formatCount(totals.posting_count)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatMicros(totals.total_revenue_micros, currency)}

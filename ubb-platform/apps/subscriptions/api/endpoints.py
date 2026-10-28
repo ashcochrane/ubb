@@ -137,6 +137,16 @@ from apps.subscriptions.api.webhooks import (
     handle_subscription_updated,
     handle_subscription_deleted,
 )
+from core.vocabulary import (
+    AUDIT_ACTION_PLAN_ASSIGNED,
+    AUDIT_ACTION_SUBSCRIPTION_CANCELED,
+    AUDIT_ACTION_SUBSCRIPTION_CREATED,
+    AUDIT_ACTION_SUBSCRIPTION_PAUSED,
+    AUDIT_ACTION_SUBSCRIPTION_RESUMED,
+    AUDIT_ACTION_SUBSCRIPTION_SEATS_CHANGED,
+    AUDIT_RESOURCE_TYPE_CUSTOMER,
+    AUDIT_RESOURCE_TYPE_SUBSCRIPTION,
+)
 
 # This endpoint handles customer.subscription.* ONLY. ALL invoice.* reconcile
 # (including subscription-invoice status) lives on api/v1 — see api/v1/webhooks.py.
@@ -305,9 +315,9 @@ def _subscriptions_stripe_webhook(request, *, secret, is_test_endpoint):
 # ---------- Lifecycle (moved from platform_router, design doc §6) ----------
 
 _LIFECYCLE_AUDIT_ACTION = {
-    "cancel": "subscription.canceled",
-    "pause": "subscription.paused",
-    "resume": "subscription.resumed",
+    "cancel": AUDIT_ACTION_SUBSCRIPTION_CANCELED,
+    "pause": AUDIT_ACTION_SUBSCRIPTION_PAUSED,
+    "resume": AUDIT_ACTION_SUBSCRIPTION_RESUMED,
 }
 
 
@@ -337,7 +347,7 @@ def _lifecycle_call(request, external_id, verb_kwargs):
 
     audit_record(
         action=_LIFECYCLE_AUDIT_ACTION[verb], tenant_id=tenant.id,
-        resource_type="subscription", resource_id=mirror.stripe_subscription_id,
+        resource_type=AUDIT_RESOURCE_TYPE_SUBSCRIPTION, resource_id=mirror.stripe_subscription_id,
         metadata={"external_id": customer.external_id, "status": mirror.status,
                   "cancel_at_period_end": mirror.cancel_at_period_end,
                   "paused": mirror.paused, "change_event_id": change_event_id})
@@ -353,7 +363,7 @@ def _lifecycle_call(request, external_id, verb_kwargs):
                            response={200: dict, 404: ProblemOut, 409: ProblemOut,
                                      422: ProblemOut})
 @role_floor(WRITE)
-@records_audit("plan.assigned", "subscription.created")
+@records_audit(AUDIT_ACTION_PLAN_ASSIGNED, AUDIT_ACTION_SUBSCRIPTION_CREATED)
 def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     """Assign the customer to the plan and, if the plan has fee axes, start the
     Stripe subscription.
@@ -386,8 +396,8 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     with transaction.atomic():
         PlanService.assign(tenant, customer, plan)
         audit_record(
-            action="plan.assigned", tenant_id=tenant.id,
-            resource_type="customer", resource_id=customer.external_id,
+            action=AUDIT_ACTION_PLAN_ASSIGNED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_CUSTOMER, resource_id=customer.external_id,
             metadata={"external_id": customer.external_id, "plan_key": plan.key})
 
     try:
@@ -405,8 +415,8 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     # Recorded after the orchestrator commits (it owns its transaction + a
     # Stripe call — a DB transaction can't wrap the external call).
     audit_record(
-        action="subscription.created", tenant_id=tenant.id,
-        resource_type="subscription", resource_id=mirror.stripe_subscription_id,
+        action=AUDIT_ACTION_SUBSCRIPTION_CREATED, tenant_id=tenant.id,
+        resource_type=AUDIT_RESOURCE_TYPE_SUBSCRIPTION, resource_id=mirror.stripe_subscription_id,
         metadata={"external_id": customer.external_id, "plan_key": plan.key,
                   "seats": payload.seats, "quantity": mirror.quantity,
                   "amount_micros": mirror.amount_micros})
@@ -421,7 +431,7 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
                            response={200: dict, 404: ProblemOut, 409: ProblemOut,
                                      422: ProblemOut})
 @role_floor(WRITE)
-@records_audit("subscription.seats_changed")
+@records_audit(AUDIT_ACTION_SUBSCRIPTION_SEATS_CHANGED)
 def set_customer_seats(request, external_id: str, payload: SeatsIn):
     from apps.subscriptions.models import CustomerSubscriptionItem
     from apps.subscriptions.orchestration.service import (
@@ -450,8 +460,8 @@ def set_customer_seats(request, external_id: str, payload: SeatsIn):
         raise Problem("validation_error", str(e))
 
     audit_record(
-        action="subscription.seats_changed", tenant_id=tenant.id,
-        resource_type="subscription", resource_id=business.external_id,
+        action=AUDIT_ACTION_SUBSCRIPTION_SEATS_CHANGED, tenant_id=tenant.id,
+        resource_type=AUDIT_RESOURCE_TYPE_SUBSCRIPTION, resource_id=business.external_id,
         metadata={"external_id": business.external_id, "seats": payload.seats,
                   "change_event_id": change_event_id})
     return 200, {"seats": payload.seats}
@@ -460,7 +470,7 @@ def set_customer_seats(request, external_id: str, payload: SeatsIn):
 @subscriptions_router.post("/customers/{external_id}/subscription/cancel",
                            response={200: dict, 404: ProblemOut, 422: ProblemOut})
 @role_floor(WRITE)
-@records_audit("subscription.canceled")
+@records_audit(AUDIT_ACTION_SUBSCRIPTION_CANCELED)
 def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn = None):
     """Cancel the customer's subscription (default: at period end).
 
@@ -475,7 +485,7 @@ def cancel_subscription(request, external_id: str, payload: SubscriptionCancelIn
 @subscriptions_router.post("/customers/{external_id}/subscription/pause",
                            response={200: dict, 404: ProblemOut, 422: ProblemOut})
 @role_floor(WRITE)
-@records_audit("subscription.paused")
+@records_audit(AUDIT_ACTION_SUBSCRIPTION_PAUSED)
 def pause_subscription(request, external_id: str):
     """Pause collection (void) — the subscription stays active but stops billing."""
     _product_check(request)
@@ -486,7 +496,7 @@ def pause_subscription(request, external_id: str):
                            response={200: dict, 404: ProblemOut, 409: ProblemOut,
                                      422: ProblemOut})
 @role_floor(WRITE)
-@records_audit("subscription.resumed")
+@records_audit(AUDIT_ACTION_SUBSCRIPTION_RESUMED)
 def resume_subscription(request, external_id: str):
     """Resume billing: clears a pause AND any pending at-period-end cancel."""
     _product_check(request)

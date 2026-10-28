@@ -35,7 +35,7 @@ class CustomerModelTest(TestCase):
             locked.save(update_fields=["balance_micros", "updated_at"])
             txn = WalletTransaction.objects.create(
                 wallet=locked,
-                transaction_type="USAGE_DEDUCTION",
+                transaction_type="usage_deduction",
                 amount_micros=-amount_micros,
                 balance_after_micros=locked.balance_micros,
                 description="usage",
@@ -44,7 +44,7 @@ class CustomerModelTest(TestCase):
         wallet.refresh_from_db()
         return txn
 
-    def _credit(self, wallet, amount_micros, key, txn_type="TOP_UP"):
+    def _credit(self, wallet, amount_micros, key, txn_type="top_up"):
         """Keyed credit helper — mirrors the real top-up path."""
         from django.db import transaction
         with transaction.atomic():
@@ -69,7 +69,7 @@ class CustomerModelTest(TestCase):
         wallet = Wallet.objects.create(customer=customer, balance_micros=10_000_000)
         txn = self._deduct(wallet, amount_micros=1_500_000, key="deduct:u1:1")
         self.assertEqual(wallet.balance_micros, 8_500_000)
-        self.assertEqual(txn.transaction_type, "USAGE_DEDUCTION")
+        self.assertEqual(txn.transaction_type, "usage_deduction")
 
     def test_wallet_credit(self):
         customer = Customer.objects.create(
@@ -78,7 +78,7 @@ class CustomerModelTest(TestCase):
         wallet = Wallet.objects.create(customer=customer)
         txn = self._credit(wallet, amount_micros=20_000_000, key="topup:u2:1")
         self.assertEqual(wallet.balance_micros, 20_000_000)
-        self.assertEqual(txn.transaction_type, "TOP_UP")
+        self.assertEqual(txn.transaction_type, "top_up")
 
     def test_wallet_deduct_allows_negative(self):
         customer = Customer.objects.create(

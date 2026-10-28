@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.member_role_update_in_role import MemberRoleUpdateInRole
 
 
 
@@ -22,10 +23,10 @@ T = TypeVar("T", bound="MemberRoleUpdateIn")
 class MemberRoleUpdateIn:
     """ 
         Attributes:
-            role (str):
+            role (MemberRoleUpdateInRole):
      """
 
-    role: str
+    role: MemberRoleUpdateInRole
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -33,7 +34,7 @@ class MemberRoleUpdateIn:
 
 
     def to_dict(self) -> dict[str, Any]:
-        role = self.role
+        role = self.role.value
 
 
         field_dict: dict[str, Any] = {}
@@ -49,7 +50,10 @@ class MemberRoleUpdateIn:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        role = d.pop("role")
+        role = MemberRoleUpdateInRole(d.pop("role"))
+
+
+
 
         member_role_update_in = cls(
             role=role,

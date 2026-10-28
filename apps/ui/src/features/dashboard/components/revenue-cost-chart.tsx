@@ -18,7 +18,7 @@ import {
 import {
   formatCalendarDate,
   formatCostMicros,
-  formatEventCount,
+  formatCount,
 } from "@/lib/format";
 
 import type { RevenueCostPoint } from "../api/types";
@@ -31,9 +31,9 @@ function dayLabel(label: string | number | undefined): string {
     : String(label ?? "");
 }
 
-function eventCountLine(row: Record<string, unknown>): string | null {
-  const count = row["event_count"];
-  return typeof count === "number" ? `${formatEventCount(count)} events` : null;
+function recordedEventsLine(row: Record<string, unknown>): string | null {
+  const count = row["recorded_events"];
+  return typeof count === "number" ? `${formatCount(count)} events` : null;
 }
 
 export default function RevenueCostChart({
@@ -83,7 +83,7 @@ export default function RevenueCostChart({
                 series={series}
                 currency={currency}
                 labelFormatter={dayLabel}
-                footer={eventCountLine}
+                footer={recordedEventsLine}
               />
             }
             cursor={{ stroke: "var(--chart-grid)" }}

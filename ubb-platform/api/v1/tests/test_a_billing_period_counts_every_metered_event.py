@@ -1,7 +1,7 @@
 """A billing period counts every metered event, and names the money it sums
 (#563, #516).
 
-**The count (#563, the owner's ruling and §0.4 D).** `event_count` is every
+**The count (#563, the owner's ruling and §0.4 D).** `recorded_events` is every
 real `metered_usage` event recorded in the period, whatever it was priced at —
 unpriced and zero-priced included — and never a synthetic Task Charge. Both
 writers decide it from the canonical `Posting.kind` and from nothing else: the
@@ -108,7 +108,7 @@ class TestThePeriodCountsMeteredEventsByKind(ProjectionTestBase):
         self._the_month()
 
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
-        assert period.event_count == 3
+        assert period.recorded_events == 3
 
     def test_the_money_includes_the_charge_the_count_excludes(self):
         """#516's pin: the column is Σ `billed_cost_micros` over the period's
@@ -122,16 +122,16 @@ class TestThePeriodCountsMeteredEventsByKind(ProjectionTestBase):
     def test_the_reconcile_agrees_and_rewrites_nothing(self, caplog):
         self._the_month()
         period = TenantBillingPeriod.objects.get(tenant=self.tenant)
-        live = (period.event_count, period.total_billed_cost_micros)
+        live = (period.recorded_events, period.total_billed_cost_micros)
 
         with caplog.at_level(logging.WARNING,
                              logger="apps.billing.tenant_billing.services"):
             totals = TenantBillingService.reconcile_period(period)
 
-        assert (totals["event_count"], totals["total_billed_cost_micros"]) == live
+        assert (totals["recorded_events"], totals["total_billed_cost_micros"]) == live
         assert not [r for r in caplog.records if "drift" in r.getMessage()]
         period.refresh_from_db()
-        assert (period.event_count, period.total_billed_cost_micros) == live
+        assert (period.recorded_events, period.total_billed_cost_micros) == live
 
     def test_the_read_contract_counts_the_same_way(self):
         self._the_month()
@@ -140,7 +140,7 @@ class TestThePeriodCountsMeteredEventsByKind(ProjectionTestBase):
         totals = get_period_totals(self.tenant.id, today.replace(day=1),
                                    _first_of_next_month(today), basis="arrival")
 
-        assert (totals["event_count"], totals["total_billed_cost_micros"]) == (
+        assert (totals["recorded_events"], totals["total_billed_cost_micros"]) == (
             3, THE_AGREED_PRICE)
 
 

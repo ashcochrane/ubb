@@ -13,12 +13,13 @@ from unittest.mock import MagicMock, patch
 
 from ubb.exceptions import UBBValidationError
 from ubb.metering import MeteringClient
+from tests._receipt import A_RECEIPT
 
 #: An acknowledgement carrying every required key, so the generated model
 #: parses it: the stop facts (#569) and the price status's reason (#603) are
 #: required and nullable.
 ACK = {"event_id": "evt_1", "suspended": False, "costing_status": "known",
-       "pricing_status": "known", "pricing_status_reason": None,
+       "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
        "trigger_source": None, "stop_bound_micros": None,
        "stop_measured_micros": None}
 

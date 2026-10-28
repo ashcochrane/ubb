@@ -37,6 +37,25 @@ from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from core.vocabulary import (
+    AUDIT_ACTION_AUTO_TOP_UP_CONFIGURED,
+    AUDIT_ACTION_BILLING_PROFILE_SET,
+    AUDIT_ACTION_CUSTOMER_SPEND_POOL_SET,
+    AUDIT_ACTION_GRANT_CREATED,
+    AUDIT_ACTION_GRANT_VOIDED,
+    AUDIT_ACTION_POSTPAID_CONFIG_SET,
+    AUDIT_ACTION_TOP_UP_REQUESTED,
+    AUDIT_ACTION_USAGE_REFUNDED,
+    AUDIT_ACTION_WALLET_CREDITED,
+    AUDIT_ACTION_WALLET_DEBITED,
+    AUDIT_ACTION_WALLET_WITHDRAWN,
+    AUDIT_RESOURCE_TYPE_AUTO_TOP_UP,
+    AUDIT_RESOURCE_TYPE_BILLING_PROFILE,
+    AUDIT_RESOURCE_TYPE_CUSTOMER_SPEND_POOL,
+    AUDIT_RESOURCE_TYPE_GRANT,
+    AUDIT_RESOURCE_TYPE_POSTPAID_CONFIG,
+    AUDIT_RESOURCE_TYPE_WALLET,
+)
 
 billing_router = Router(auth=ApiKeyAuth())
 
@@ -91,7 +110,7 @@ def get_balance(request, customer_id: UUIDIdentifier):
 
 @billing_router.post("/debit", response=DebitCreditResponse)
 @role_floor(ADMIN)
-@records_audit("wallet.debited")
+@records_audit(AUDIT_ACTION_WALLET_DEBITED)
 def debit(request, payload: DebitRequest):
     _product_check(request)
     from apps.billing.wallets import operations as wallet_ops
@@ -121,8 +140,8 @@ def debit(request, payload: DebitRequest):
             # resource_id/customer_id keep the SEAT as the named subject of
             # the action; owner_id records whose wallet actually moved.
             audit_record(
-                action="wallet.debited", tenant_id=request.auth.tenant.id,
-                resource_type="wallet", resource_id=customer.id,
+                action=AUDIT_ACTION_WALLET_DEBITED, tenant_id=request.auth.tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_WALLET, resource_id=customer.id,
                 metadata={"customer_id": payload.customer_id,
                           "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
@@ -145,7 +164,7 @@ def debit(request, payload: DebitRequest):
 
 @billing_router.post("/credit", response=DebitCreditResponse)
 @role_floor(ADMIN)
-@records_audit("wallet.credited")
+@records_audit(AUDIT_ACTION_WALLET_CREDITED)
 def credit(request, payload: CreditRequest):
     """Credit the wallet with LEGACY BASE money (non-expiring, no grant lot).
 
@@ -178,8 +197,8 @@ def credit(request, payload: CreditRequest):
             # resource_id/customer_id keep the SEAT as the named subject of
             # the action; owner_id records whose wallet actually moved.
             audit_record(
-                action="wallet.credited", tenant_id=request.auth.tenant.id,
-                resource_type="wallet", resource_id=customer.id,
+                action=AUDIT_ACTION_WALLET_CREDITED, tenant_id=request.auth.tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_WALLET, resource_id=customer.id,
                 metadata={"customer_id": payload.customer_id,
                           "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
@@ -193,7 +212,7 @@ def credit(request, payload: CreditRequest):
 
 @billing_router.put("/customers/{customer_id}/auto-top-up", response=StatusResponse)
 @role_floor(ADMIN)
-@records_audit("auto_top_up.configured")
+@records_audit(AUDIT_ACTION_AUTO_TOP_UP_CONFIGURED)
 def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: ConfigureAutoTopUpRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -215,8 +234,8 @@ def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: Configu
         # resource_id/customer_id keep the SEAT as the named subject of the
         # action; owner_id records whose config actually took effect.
         audit_record(
-            action="auto_top_up.configured", tenant_id=request.auth.tenant.id,
-            resource_type="auto_top_up", resource_id=customer.id,
+            action=AUDIT_ACTION_AUTO_TOP_UP_CONFIGURED, tenant_id=request.auth.tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_AUTO_TOP_UP, resource_id=customer.id,
             metadata={"customer_id": str(customer.id),
                       "owner_id": str(owner.id),
                       "is_enabled": payload.is_enabled,
@@ -228,7 +247,7 @@ def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: Configu
 @billing_router.post("/customers/{customer_id}/top-up",
                      response={200: TopUpCheckoutResponse, 409: ProblemOut})
 @role_floor(WRITE)
-@records_audit("top_up.requested")
+@records_audit(AUDIT_ACTION_TOP_UP_REQUESTED)
 def create_top_up(request, customer_id: UUIDIdentifier, payload: CreateTopUpRequest):
     """Start a top-up. Replay-safe: idempotency_key is required and unique
     per customer — a retried call re-uses the original attempt and never
@@ -241,7 +260,7 @@ def create_top_up(request, customer_id: UUIDIdentifier, payload: CreateTopUpRequ
 
 @billing_router.post("/customers/{customer_id}/withdraw", response=WithdrawResponse)
 @role_floor(ADMIN)
-@records_audit("wallet.withdrawn")
+@records_audit(AUDIT_ACTION_WALLET_WITHDRAWN)
 def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
     """Withdraw base + paid money. Promo credit is NOT withdrawable (F4.3):
     availability is balance minus active promo remainders."""
@@ -262,8 +281,8 @@ def withdraw(request, customer_id: UUIDIdentifier, payload: WithdrawRequest):
             # resource_id/customer_id keep the SEAT as the named subject of
             # the action; owner_id records whose wallet actually moved.
             audit_record(
-                action="wallet.withdrawn", tenant_id=request.auth.tenant.id,
-                resource_type="wallet", resource_id=customer.id,
+                action=AUDIT_ACTION_WALLET_WITHDRAWN, tenant_id=request.auth.tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_WALLET, resource_id=customer.id,
                 metadata={"customer_id": str(customer.id),
                           "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
@@ -320,7 +339,7 @@ def affordability(request, customer_id: UUIDIdentifier,
 
 @billing_router.post("/customers/{customer_id}/refund", response=RefundResponse)
 @role_floor(ADMIN)
-@records_audit("usage.refunded")
+@records_audit(AUDIT_ACTION_USAGE_REFUNDED)
 def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
     """Refund a usage charge. LOT-AWARE (F4.3): the slices of the original
     USAGE_DEDUCTION that were funded by still-live grant lots are re-funded
@@ -344,8 +363,8 @@ def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
             # resource_id/customer_id keep the SEAT as the named subject of
             # the action; owner_id records whose wallet actually moved.
             audit_record(
-                action="usage.refunded", tenant_id=request.auth.tenant.id,
-                resource_type="wallet", resource_id=customer.id,
+                action=AUDIT_ACTION_USAGE_REFUNDED, tenant_id=request.auth.tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_WALLET, resource_id=customer.id,
                 metadata={"customer_id": str(customer.id),
                           "owner_id": str(owner.id),
                           "usage_event_id": str(payload.usage_event_id),
@@ -410,7 +429,7 @@ def get_transactions(request, customer_id: UUIDIdentifier, cursor: str = None, l
 
 @billing_router.post("/customers/{customer_id}/grants", response=GrantOut)
 @role_floor(ADMIN)
-@records_audit("grant.created")
+@records_audit(AUDIT_ACTION_GRANT_CREATED)
 def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
     """Create an expiring (or non-expiring) credit grant lot on the billing
     owner's wallet. Exactly-once via grant:{idempotency_key} — the GRANT
@@ -445,8 +464,8 @@ def create_grant(request, customer_id: UUID, payload: CreateGrantRequest):
         if result.outcome == "applied":
             # Audit the new grant lot (an idempotent replay skips this).
             audit_record(
-                action="grant.created", tenant_id=request.auth.tenant.id,
-                resource_type="grant", resource_id=result.grant.id,
+                action=AUDIT_ACTION_GRANT_CREATED, tenant_id=request.auth.tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_GRANT, resource_id=result.grant.id,
                 metadata={"customer_id": str(customer.id),
                           "owner_id": str(owner.id),
                           "grant_id": str(result.grant.id),
@@ -485,7 +504,7 @@ def list_grants(request, customer_id: UUID, status: str = None,
 
 @billing_router.post("/customers/{customer_id}/grants/{grant_id}/void", response=GrantOut)
 @role_floor(ADMIN)
-@records_audit("grant.voided")
+@records_audit(AUDIT_ACTION_GRANT_VOIDED)
 def void_grant(request, customer_id: UUID, grant_id: UUID):
     """Void a grant: debit its remaining (clamped so the balance never goes
     negative, like expiry) and retire the lot. Exactly-once via
@@ -502,8 +521,8 @@ def void_grant(request, customer_id: UUID, grant_id: UUID):
         if result.outcome == "applied":
             # Audit the real void — replay / already-voided paths skip this.
             audit_record(
-                action="grant.voided", tenant_id=request.auth.tenant.id,
-                resource_type="grant", resource_id=result.grant.id,
+                action=AUDIT_ACTION_GRANT_VOIDED, tenant_id=request.auth.tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_GRANT, resource_id=result.grant.id,
                 metadata={"customer_id": str(customer.id),
                           "grant_id": str(result.grant.id),
                           "kind": result.grant.kind,
@@ -581,14 +600,14 @@ def get_tenant_customer_spend_pool(request):
 
 @billing_router.put("/customer-spend-pool", response=CustomerSpendPoolOut)
 @role_floor(ADMIN)
-@records_audit("customer_spend_pool.set")
+@records_audit(AUDIT_ACTION_CUSTOMER_SPEND_POOL_SET)
 def put_tenant_customer_spend_pool(request, payload: CustomerSpendPoolIn):
     _product_check(request)
     with transaction.atomic():
         cfg = _upsert_spend_pool(request.auth.tenant, None, payload)
         audit_record(
-            action="customer_spend_pool.set", tenant_id=request.auth.tenant.id,
-            resource_type="customer_spend_pool", resource_id=request.auth.tenant.id,
+            action=AUDIT_ACTION_CUSTOMER_SPEND_POOL_SET, tenant_id=request.auth.tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_CUSTOMER_SPEND_POOL, resource_id=request.auth.tenant.id,
             metadata={"scope": "tenant", "cap_micros": cfg.cap_micros,
                       "enforce_mode": cfg.enforce_mode,
                       "hard_stop_pct": cfg.hard_stop_pct})
@@ -609,15 +628,15 @@ def get_customer_spend_pool(request, customer_id: UUID):
 
 @billing_router.put("/customers/{customer_id}/customer-spend-pool", response=CustomerSpendPoolOut)
 @role_floor(ADMIN)
-@records_audit("customer_spend_pool.set")
+@records_audit(AUDIT_ACTION_CUSTOMER_SPEND_POOL_SET)
 def put_customer_spend_pool(request, customer_id: UUID, payload: CustomerSpendPoolIn):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     with transaction.atomic():
         cfg = _upsert_spend_pool(request.auth.tenant, customer, payload)
         audit_record(
-            action="customer_spend_pool.set", tenant_id=request.auth.tenant.id,
-            resource_type="customer_spend_pool", resource_id=customer.id,
+            action=AUDIT_ACTION_CUSTOMER_SPEND_POOL_SET, tenant_id=request.auth.tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_CUSTOMER_SPEND_POOL, resource_id=customer.id,
             metadata={"scope": "customer", "customer_id": str(customer.id),
                       "cap_micros": cfg.cap_micros,
                       "enforce_mode": cfg.enforce_mode,
@@ -657,7 +676,7 @@ def get_customer_billing_profile(request, customer_id: UUID):
 @billing_router.put("/customers/{customer_id}/billing-profile",
                  response={200: CustomerBillingProfileOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("billing_profile.set")
+@records_audit(AUDIT_ACTION_BILLING_PROFILE_SET)
 def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBillingProfileIn):
     _product_check(request)
     from apps.billing.wallets.models import CustomerBillingProfile
@@ -703,8 +722,8 @@ def put_customer_billing_profile(request, customer_id: UUID, payload: CustomerBi
                       "topup_grant_expiry_days": payload.topup_grant_expiry_days,
                       "soft_min_balance_micros": payload.soft_min_balance_micros})
         audit_record(
-            action="billing_profile.set", tenant_id=request.auth.tenant.id,
-            resource_type="billing_profile", resource_id=customer.id,
+            action=AUDIT_ACTION_BILLING_PROFILE_SET, tenant_id=request.auth.tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_BILLING_PROFILE, resource_id=customer.id,
             metadata={"customer_id": str(customer.id),
                       "min_balance_micros": profile.min_balance_micros,
                       "topup_grant_expiry_days": profile.topup_grant_expiry_days,
@@ -812,7 +831,7 @@ def get_postpaid_config(request):
 
 @billing_router.put("/postpaid-config", response=PostpaidConfigOut)
 @role_floor(ADMIN)
-@records_audit("postpaid_config.set")
+@records_audit(AUDIT_ACTION_POSTPAID_CONFIG_SET)
 def put_postpaid_config(request, payload: PostpaidConfigIn):
     # ⚠ THE INVOICE-LINE GROUPING IS AN AXIS OF THE ONE VOCABULARY (#503, slice 7
     # §11), reached through metering's `queries.py` read contract — the only
@@ -861,7 +880,7 @@ def put_postpaid_config(request, payload: PostpaidConfigIn):
                 "axis": cfg.invoice_line_grouping, "warning": warning}})
             metadata[CARDINALITY_WARNING_KEY] = warning
         audit_record(
-            action="postpaid_config.set", tenant_id=tenant.id,
-            resource_type="postpaid_config", resource_id=tenant.id,
+            action=AUDIT_ACTION_POSTPAID_CONFIG_SET, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_POSTPAID_CONFIG, resource_id=tenant.id,
             metadata=metadata)
     return _postpaid_config_as_published(cfg)

@@ -218,7 +218,7 @@ class Pin13ContainmentTest(RailActivated, SubtaskPinTestBase):
         parent.refresh_from_db()
         self.assertEqual(parent.status, TASK_STATUS_ACTIVE)
         self.assertEqual(parent.total_provider_cost_micros, 9_000_000)
-        self.assertEqual(parent.event_count, 3)
+        self.assertEqual(parent.recorded_events, 3)
 
     def test_parent_trip_kills_parent_and_cascades_to_active_subtasks(self, _mock):
         parent = self._task(limit=10_000_000)

@@ -112,11 +112,12 @@ NON_VOCABULARY_ENUMS = {
     "/components/schemas/PlanIn/properties/interval":
         "The Stripe billing interval. Not UBB vocabulary at all — Stripe owns "
         "the value set and ADR-0006 does not rename it, so no concept is owed.",
-    "/components/schemas/ProgramCreateRequest/properties/reward_type":
-        "The referral programme's reward shape. No slice in #194's table "
-        "rebuilds referrals and the registry declares no concept for it, so "
-        "this is an undeclared value set rather than a debt.",
 }
+# ⚠ THE REFERRAL PROGRAMME'S `reward_type` ROW LEFT IN R10-W4, when the
+# registry declared `reward_type` from the backend's own set: the hand-written
+# `Literal` became the registry's `enum` on all four schemas that carry it, so
+# the node is generated metadata now and counting it here would over-state the
+# inventory by one.
 
 def _decision(concept_name="synthetic_concept", representation=ENUM,
               advertised=True, values=("alpha", "beta"), kind="closed"):
@@ -433,8 +434,10 @@ def test_g4_no_open_concept_is_a_closed_enum_in_the_contract(spec, registry,
             assert KNOWN_VALUES_KEY not in node, (
                 f"{pointer}: {name!r} is closed, so its values are the schema's "
                 f"`enum` and not documentation beside it")
-            assert node.get("enum") == list(registry.concepts[name].values), \
-                pointer
+            # What can OCCUR: the declared set less what the registry
+            # withholds (R10-W4, `withheld_values`; §0.4 C).
+            assert node.get("enum") == \
+                list(registry.concepts[name].occurring_values), pointer
 
 
 def test_g4_every_enum_in_the_contract_is_accounted_for(spec, decisions):
@@ -695,8 +698,10 @@ CONCEPTS_IN_THE_CONTRACT = {
     # #240 (slice 1) — the first marker of any kind.
     "tenant_product": Published(2, ENUM),         # TenantOut, and the update
     # #267 — the catalogue's three closed sets.
-    "costing_method": Published(3, ENUM),         # EventTypeIn/Out + the update
-    "source_kind": Published(4, ENUM),            # quantity + cost, in and out
+    # +1 in #558 (R10-W4): the typed Pricing Receipt's cost section.
+    "costing_method": Published(4, ENUM),         # EventTypeIn/Out + the update
+    # +1 in #558: the receipt's cost detail, as `reported_cost_source_kind`.
+    "source_kind": Published(5, ENUM),            # quantity + cost, in and out
     "amount_representation": Published(2, ENUM),  # the reported cost, in+out
     # #268 — THE FIRST OPEN CONCEPTS THE CONTRACT HAS EVER CARRIED. Both render
     # `x-ubb-known-values` beside an untouched `type: string`: the values are
@@ -744,7 +749,8 @@ CONCEPTS_IN_THE_CONTRACT = {
     # after a stop.
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
-    "costing_status": Published(7, ENUM),  # + the queue's row + the itemised event
+    # +1 in #558: the typed receipt's cost section.
+    "costing_status": Published(8, ENUM),  # + the queue's row + the itemised event
     # #323 (slice 3) — the other half of the sentence above, and the first
     # nullable marker on a RESPONSE. Nullable markers are not new:
     # `EventTypeUpdateIn` has carried two since #262, and they are the
@@ -771,7 +777,8 @@ CONCEPTS_IN_THE_CONTRACT = {
     # says you are waiting on a supplier.
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
-    "unresolved_reason": Published(5, ENUM),  # + the unresolved queue's row
+    # +1 in #558: the typed receipt's cost detail.
+    "unresolved_reason": Published(6, ENUM),  # + the unresolved queue's row
     # #351 (slice 4) — the price half of both entries above, and the same four
     # nodes for the same reasons. The customer price column went nullable with
     # a status beside it, so every response that publishes a price says whether
@@ -800,7 +807,8 @@ CONCEPTS_IN_THE_CONTRACT = {
     # new status meaning the same thing one scope up.
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
-    "pricing_status": Published(8, ENUM),  # + the queue's row + the itemised event
+    # +1 in #558: the typed receipt's price section.
+    "pricing_status": Published(9, ENUM),  # + the queue's row + the itemised event
     # #351 — the second nullable marker on a response, following exactly the
     # placement `unresolved_reason` above established: in the STRING MEMBER of
     # the union, never on the union node, because `enum` and `anyOf` at one node
@@ -813,7 +821,8 @@ CONCEPTS_IN_THE_CONTRACT = {
     # The same ruling #328 made for `unresolved_reason` on the same payload.
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
-    "not_applicable_reason": Published(4, ENUM),  # record + list row + detail
+    # +1 in #558: the typed receipt's price detail.
+    "not_applicable_reason": Published(5, ENUM),  # record + list row + detail
     # #603 — the price status's OWN reason, `negative_price_unsupported` beside
     # an `unknown` price UBB calculated and the money rails cannot carry.
     # EIGHT NODES, EXACTLY `pricing_status`'s EIGHT, and that is the owner's
@@ -823,7 +832,8 @@ CONCEPTS_IN_THE_CONTRACT = {
     # and `not_applicable_reason` above deliberately do not ride. The marker
     # sits in the string member of every nullable union, `unresolved_reason`'s
     # placement.
-    "pricing_status_reason": Published(8, ENUM),
+    # +1 in #558: the typed receipt's price detail.
+    "pricing_status_reason": Published(9, ENUM),
     # #355 (slice 4) — HOW a price was derived, beside the status that says
     # WHETHER it is settled. The third nullable marker on a response, in the
     # string member for the reason the two above give.
@@ -853,7 +863,11 @@ CONCEPTS_IN_THE_CONTRACT = {
     # inherited rule a client copies a starting point from.
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
-    "pricing_method": Published(7, ENUM),
+    # +1 in #558 (R10-W4): the typed receipt's price section — the value the
+    # lifted fields above were lifted OUT of is now marked where it lives too.
+    # 8 -> 9 in R10-W4: `RateOut` publishes a rule's method (#190 comment
+    # 5831552855), required and null only on a cost book's rate.
+    "pricing_method": Published(9, ENUM),
     # WHICH ARITHMETIC A RULE RUNS (#366) — seven nodes, which is every schema
     # that carries a rule in either direction rather than a subset of them.
     # Three are the immediate rate routes: the body that opens a rule, the body
@@ -883,7 +897,8 @@ CONCEPTS_IN_THE_CONTRACT = {
     # each time. Every schema that still carries a rule still carries the
     # shape, which is what the placement map below says and why a fall here
     # cannot hide a surface quietly losing it.
-    "rate_structure": Published(5, ENUM),
+    # +1 in #558 (R10-W4): each component of the typed receipt.
+    "rate_structure": Published(6, ENUM),
     # WHAT A PRICING RECEIPT EXPLAINS (#370) — one usage row, or one canonical
     # Charge. Two nodes, and they are `pricing_method`'s original two for
     # `pricing_method`'s original reason: the rule is "wherever the receipt
@@ -924,7 +939,12 @@ CONCEPTS_IN_THE_CONTRACT = {
     # note about an outstanding task.
     # +1 in #569: the typed batch item (`UsageBatchItemResponse`), which
     # inherits the acknowledgement's field and its marker.
-    "pricing_receipt_subject_type": Published(3, ENUM),
+    # +1 in #558 (R10-W4): the typed receipt's own subject.
+    "pricing_receipt_subject_type": Published(4, ENUM),
+    # WHICH RUNG SUPPLIED A MARKUP (the owner's review of #620). One node: the
+    # typed receipt's markup provenance. A module constant until #558 typed the
+    # receipt; a one-value set is still a value set.
+    "markup_rung": Published(1, ENUM),
     # WHICH ALTITUDE A DECLARED KIND OF WORK IS MEANT FOR (#407) — two nodes,
     # the declaration going in and the declaration coming back, which is the
     # whole surface the concept has. It is on the DECLARATION and on nothing
@@ -956,7 +976,8 @@ CONCEPTS_IN_THE_CONTRACT = {
     # column on the model, no map in the console's label layer, no occurrence in
     # the contract. Paying it was creation, and the number is identical either
     # way, which is exactly what §27 warns costs a window.
-    "pricing_mode": Published(2, ENUM),
+    # +1 in #558 (R10-W4): the regime, by value, in the receipt's price detail.
+    "pricing_mode": Published(3, ENUM),
     # THE DURABLE STATE A UNIT OF WORK IS IN (#408) — three nodes: the close
     # response, the listing row, and the detail view that extends it. Every
     # published shape that carries a state carries the marker, and there is no
@@ -1362,6 +1383,43 @@ CONCEPTS_IN_THE_CONTRACT = {
     # no reason, so the marker sits on the union's string member. No read
     # publishes it.
     "movement_reason": Published(2, ENUM),  # CreditRequest + DebitRequest
+    # R10-W4 (slice 8) — TWENTY-ONE CONCEPTS, EACH DECLARED FROM ITS BACKEND'S
+    # OWN SET AND MARKED IN THE SAME COMMIT, so none owed a G4 debt except the
+    # audit catalogue, whose entry dies with them. Every one was already on the
+    # wire as a bare string; what changed is that the contract now says which
+    # values it carries. The audit action's enum is the registry's OCCURRING
+    # set — sixty-nine, the withheld cutover action left out (§0.4 C).
+    "audit_action": Published(1, ENUM),             # AuditRecordOut
+    "audit_resource_type": Published(1, ENUM),      # AuditRecordOut
+    # Open (ADR-004 §4): known values beside a plain string, on every record
+    # of who acted — the feed, a book publish and a Resolution Run.
+    "actor_kind": Published(3, KNOWN_VALUES),
+    # The role on both identity reads and both identity writes, and on the
+    # two webhook payloads that announce a teammate.
+    "role": Published(6, ENUM),
+    "member_status": Published(1, ENUM),            # MemberOut
+    "invitation_status": Published(1, ENUM),        # InvitationOut
+    "enforcement_mode": Published(2, ENUM),         # TenantConfigIn + Out
+    # The acknowledgement (single and batch), the stop episode, and the
+    # customer stop pair's payloads, which call the field `scope`.
+    "stop_scope": Published(5, ENUM),
+    "wallet_transaction_type": Published(2, ENUM),  # the two ledger reads
+    # A grant's kind: the request, the two reads and the two expiry payloads.
+    "grant_kind": Published(5, ENUM),
+    "grant_status": Published(1, ENUM),             # GrantOut
+    "grant_source": Published(1, ENUM),             # GrantOut
+    "usage_invoice_status": Published(2, ENUM),     # the two invoice reads
+    # Nullable — absent on every invoice that was not skipped — so the marker
+    # sits on the union's string member.
+    "skip_reason": Published(2, ENUM),
+    "tenant_invoice_status": Published(1, ENUM),    # TenantInvoiceOut
+    "billing_period_status": Published(1, ENUM),    # TenantBillingPeriodOut
+    "reward_type": Published(4, ENUM),              # create, update, two reads
+    "referral_program_status": Published(1, ENUM),  # ProgramOut
+    "referral_status": Published(2, ENUM),          # AttributeResponse + ReferralOut
+    "calculation_method": Published(1, ENUM),       # LedgerEntryOut
+    # #550: on the ITEMS of the economic row's list, one entry per axis.
+    "grouping_field_value_status": Published(1, ENUM),
 }
 
 
@@ -1442,8 +1500,12 @@ def test_the_accounting_is_exactly_what_the_registry_declares(
 
     for name in CONCEPTS_IN_THE_CONTRACT:
         assert decisions[name].advertised, name
+        # The values that can OCCUR — the declared set less what the registry
+        # withholds (`withheld_values`; R10-W4, the audit cutover action). The
+        # exclusion is learned from the registry itself, the one place the
+        # backend and this Django-free suite both read.
         assert decisions[name].values == \
-            tuple(registry.concepts[name].declared_values), name
+            tuple(registry.concepts[name].occurring_values), name
 
 
 def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
@@ -1490,9 +1552,10 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
         assert where.get(concept) == schemas, concept
 
     placed("costing_method", {"EventTypeIn", "EventTypeOut",
-                              "EventTypeUpdateIn"})
+                              "EventTypeUpdateIn", "PricingReceiptCosting"})
     placed("source_kind", {"MeasurementIn", "MeasurementOut",
-                           "ReportedCostMappingIn", "ReportedCostMappingOut"})
+                           "ReportedCostMappingIn", "ReportedCostMappingOut",
+                           "PricingReceiptCostingDetail"})
     placed("amount_representation", {"ReportedCostMappingIn",
                                      "ReportedCostMappingOut"})
     # The unit sits on the declared quantity, in and out. It does NOT sit on
@@ -1544,7 +1607,8 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     placed("costing_status", {"RecordUsageResponse", "UsageBatchItemResponse",
                               "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
-                              "ItemisedEventRow", "usage.recorded"})
+                              "ItemisedEventRow", "usage.recorded",
+                              "PricingReceiptCosting"})
     # THE SAME THREE RESPONSES, AND THAT IS THE CLAIM RATHER THAN A COINCIDENCE.
     # The cause is unreadable without the status and the status is unactionable
     # without the cause, so over RESPONSES the two sets are equal by design — a
@@ -1569,7 +1633,8 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # acknowledgement it is.
     placed("unresolved_reason", {"RecordUsageResponse", "UsageBatchItemResponse",
                                  "UsageEventOut",
-                                 "UsageEventDetailOut", "UnresolvedQueueRow"})
+                                 "UsageEventDetailOut", "UnresolvedQueueRow",
+                                 "PricingReceiptCostingDetail"})
     # THE PRICE HALF OF BOTH SETS ABOVE, on the same rule and the same
     # asymmetry: the status rides the payload because two products accumulate
     # off it and need to tell a price UBB could not resolve from one that was
@@ -1595,17 +1660,19 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
                               "UsageEventOut",
                               "UsageEventDetailOut", "UnresolvedQueueRow",
                               "ItemisedEventRow", "usage.recorded",
-                              "SuppliedRevenueWindowOut"})
+                              "SuppliedRevenueWindowOut", "PricingReceiptPricing"})
     placed("not_applicable_reason", {"RecordUsageResponse",
                                      "UsageBatchItemResponse", "UsageEventOut",
-                                     "UsageEventDetailOut"})
+                                     "UsageEventDetailOut",
+                                     "PricingReceiptPricingDetail"})
     # Exactly where `pricing_status` is — required and nullable on every one
     # of its eight carriers (#603).
     placed("pricing_status_reason", {"RecordUsageResponse",
                                      "UsageBatchItemResponse", "UsageEventOut",
                                      "UsageEventDetailOut", "UnresolvedQueueRow",
                                      "ItemisedEventRow", "usage.recorded",
-                                     "SuppliedRevenueWindowOut"})
+                                     "SuppliedRevenueWindowOut",
+                                     "PricingReceiptPricingDetail"})
     # HOW a price was derived, beside the status saying WHETHER it is settled
     # (#355). The rule is "wherever the receipt goes", and it is asserted here
     # as the schemas rather than as a count precisely because those are the two
@@ -1620,10 +1687,15 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # that shows one changing, and the inherited rule a client copies from.
     # ⚠ SEVEN SINCE #569: the receipt now goes on the typed batch item too (it
     # inherits the acknowledgement), so by the rule the method does.
+    # ⚠ AND `RateOut` SINCE R10-W4: the rate a read answers with had hidden
+    # its rule's method, so a margin rule (stored with zero terms) read as a
+    # price of zero (#190 comment 5831552855). By the rule — every schema
+    # carrying a rule in either direction — it was owed.
     placed("pricing_method", {"RecordUsageResponse", "UsageBatchItemResponse",
                               "UsageEventDetailOut",
                               "BookRateChangeIn", "CustomerOverrideIn",
-                              "RuleTermsOut", "InheritedPricingRule"})
+                              "RuleTermsOut", "InheritedPricingRule",
+                              "PricingReceiptPricing", "RateOut"})
     # The rate's arithmetic shape (#366), on every schema carrying a rule in
     # either direction. The two `Rate*` schemas are the immediate reprice and
     # the row a read answers with; `BookRateChangeIn` and `RuleTermsOut` are the
@@ -1640,7 +1712,8 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # split that body by the kind of line it is about, `BookRateChangeIn`:
     # the agreed-price body carries no rule and no marker.
     placed("rate_structure", {"RateOut", "BookRateChangeIn", "RuleTermsOut",
-                              "CustomerOverrideIn", "InheritedPricingRule"})
+                              "CustomerOverrideIn", "InheritedPricingRule",
+                              "PricingReceiptComponent"})
     # WHAT THE RECEIPT EXPLAINS (#370), on exactly the two schemas that publish
     # the receipt. The rule is the mechanical one `pricing_method` states two
     # lines up — wherever the receipt goes — and naming the schemas rather than
@@ -1658,7 +1731,11 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # the "third response gaining the record" arrived WITH the marker.
     placed("pricing_receipt_subject_type", {"RecordUsageResponse",
                                             "UsageBatchItemResponse",
-                                            "UsageEventDetailOut"})
+                                            "UsageEventDetailOut",
+                                            "PricingReceipt"})
+    # The receipt's markup provenance, and nowhere else: only a receipt
+    # records which rung supplied a percentage.
+    placed("markup_rung", {"PricingReceiptProvenanceMarkup"})
     # The first marker of any kind (#240), and the tenant's own product set is
     # written where a tenant reads and where a tenant writes.
     placed("tenant_product", {"TenantConfigIn", "TenantConfigOut"})
@@ -1681,7 +1758,8 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # is FROZEN and a trigger on `ubb_task_type` keeps it — so a caller reading
     # this enum is reading a choice made once, and a set that grew would be a
     # third regime rather than a widening of these two.
-    placed("pricing_mode", {"TaskTypeIn", "TaskTypeOut"})
+    placed("pricing_mode", {"TaskTypeIn", "TaskTypeOut",
+                            "PricingReceiptPricingDetail"})
     # THE DURABLE STATE A UNIT OF WORK IS IN (#408), on every published shape
     # that carries one: the answer to a close, a row in a listing, and the
     # detail view that extends that row.
@@ -1877,7 +1955,7 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # row in `CONCEPTS_IN_THE_CONTRACT`.
     placed("declaration_status", {"EventTypeOut", "BookPublishOut"})
     placed("measurement_value_type", {"MeasurementIn", "MeasurementOut"})
-    placed("grouping_field_scope", {"DimensionDefIn", "DimensionDefOut"})
+    placed("grouping_field_scope", {"GroupingFieldIn", "GroupingFieldOut"})
 
     # WHETHER AN AXIS IS A COLUMN OR A JOIN, and — where it is a join — WHICH
     # ONE. Both on the discovery contract's row and on nothing else, which is
@@ -1913,6 +1991,37 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
     # move it, and on nothing else (#479).
     placed("movement_reason", {"CreditRequest", "DebitRequest"})
 
+    # R10-W4's twenty-one. Each sits on the schemas that already carried its
+    # values as a bare string, and on nothing else; the webhook payloads are
+    # placed by event type.
+    placed("audit_action", {"AuditRecordOut"})
+    placed("audit_resource_type", {"AuditRecordOut"})
+    placed("actor_kind", {"AuditRecordOut", "BookPublishOut", "ResolutionRunOut"})
+    placed("role", {"InvitationCreateIn", "InvitationOut", "MemberOut",
+                    "MemberRoleUpdateIn", "invitation.created",
+                    "member.activated"})
+    placed("member_status", {"MemberOut"})
+    placed("invitation_status", {"InvitationOut"})
+    placed("enforcement_mode", {"TenantConfigIn", "TenantConfigOut"})
+    placed("stop_scope", {"RecordUsageResponse", "UsageBatchItemResponse",
+                          "CeilingEpisodeRow", "customer.stopped",
+                          "customer.stop_cleared"})
+    placed("wallet_transaction_type", {"WalletTransactionOut", "TransactionOut"})
+    placed("grant_kind", {"CreateGrantRequest", "GrantOut", "GrantSummaryOut",
+                          "credit_grant.expiring", "credit_grant.expired"})
+    placed("grant_status", {"GrantOut"})
+    placed("grant_source", {"GrantOut"})
+    placed("usage_invoice_status", {"UsageInvoiceOut", "TenantUsageInvoiceOut"})
+    placed("skip_reason", {"UsageInvoiceOut", "TenantUsageInvoiceOut"})
+    placed("tenant_invoice_status", {"TenantInvoiceOut"})
+    placed("billing_period_status", {"TenantBillingPeriodOut"})
+    placed("reward_type", {"ProgramCreateRequest", "ProgramUpdateRequest",
+                           "ProgramOut", "ReferralOut"})
+    placed("referral_program_status", {"ProgramOut"})
+    placed("referral_status", {"AttributeResponse", "ReferralOut"})
+    placed("calculation_method", {"LedgerEntryOut"})
+    placed("grouping_field_value_status", {"EconomicRowOut"})
+
     # ⚠ AND THE REASON THE THREE LINES ABOVE COULD GO MISSING FOR TWO SLICES:
     # nothing held this test to naming every concept, so a marker whose
     # placement nobody stated still passed here — the count map beside it says
@@ -1943,6 +2052,11 @@ def _marker_on(node):
     for member in node.get("anyOf") or []:
         if isinstance(member, dict) and MARKER in member:
             return member[MARKER]
+    # A third legal placement since #550 (R10-W4): a property that is a LIST of
+    # the concept carries the marker on its `items`, where each value travels.
+    items = node.get("items")
+    if isinstance(items, dict) and MARKER in items:
+        return items[MARKER]
     return None
 
 
@@ -1998,16 +2112,15 @@ def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
       how `pricing_method` arrived in #355 and how the next one will.
 
     ⚠ **AND HERE IS WHAT IT CANNOT SEE, SAID PLAINLY.** It walks `properties`,
-    so it is blind inside an `additionalProperties: true` payload — which has
-    no properties to walk and is exactly where this repository's live instance
-    of the trap lives: the Pricing Receipt publishes four closed concepts
-    inside an untyped record on two responses. That is #349's recorded
-    residual, and it is not fixable by a check — marking needs a TYPED node, so
-    the fix is typing the payload. #355 answered it for its own concept by
-    lifting the value into a typed field on both responses carrying the record,
-    which is the pattern the rest will follow. This test holds the typed
-    surface; nothing holds the untyped one, and pretending otherwise would be a
-    green board over the half that is still open.
+    so it is blind inside an untyped payload, which has no properties to walk.
+    The Pricing Receipt was this repository's live instance of that trap —
+    eleven closed concepts inside an untyped record on three responses, #349's
+    recorded residual — and the fix was never a check, because marking needs a
+    TYPED node. #558 (R10-W4) typed it: version 2 only, with the open `detail`
+    and `provenance` containers typing every key UBB writes, and
+    `test_the_pricing_receipt_marks_every_closed_concept_inside_it` holds all
+    eleven by path. What stays blind is an additive key ADR-0020 lets a later
+    writer put in an open container before anyone types it.
     """
     unmarked = [pointer for pointer, name, node in _properties(spec)
                 if name in decisions and decisions[name].advertised
@@ -2053,6 +2166,99 @@ def test_no_advertised_concept_reaches_the_contract_unmarked(spec, decisions):
 #: above is what turns the next collision red, and an empty set is the only
 #: state in which it has nowhere to hide.
 PROPERTIES_NAMED_FOR_ANOTHER_CONCEPT = {}
+
+
+# ---------------------------------------------------------------------------
+# The Pricing Receipt, typed (#558, R10-W4)
+# ---------------------------------------------------------------------------
+
+#: EVERY CLOSED CONCEPT THAT RIDES INSIDE A VERSION-2 RECEIPT, BY PATH. Eleven,
+#: and the list is the issue's own: the subject's type; each section's method
+#: and status; the cost detail's unresolved reason and reported-cost source
+#: kind; the price detail's regime, not-applicable reason and status reason;
+#: and each component's rate structure. Pinned by (schema, property) rather
+#: than counted, because a count is satisfied by eleven markers on the wrong
+#: properties.
+RECEIPT_CONCEPTS = {
+    ("PricingReceipt", "subject_type"): "pricing_receipt_subject_type",
+    ("PricingReceiptCosting", "method"): "costing_method",
+    ("PricingReceiptCosting", "status"): "costing_status",
+    ("PricingReceiptCostingDetail", "unresolved_reason"): "unresolved_reason",
+    ("PricingReceiptCostingDetail", "reported_cost_source_kind"): "source_kind",
+    ("PricingReceiptPricing", "method"): "pricing_method",
+    ("PricingReceiptPricing", "status"): "pricing_status",
+    ("PricingReceiptPricingDetail", "pricing_mode"): "pricing_mode",
+    ("PricingReceiptPricingDetail", "not_applicable_reason"):
+        "not_applicable_reason",
+    ("PricingReceiptPricingDetail", "pricing_status_reason"):
+        "pricing_status_reason",
+    ("PricingReceiptComponent", "rate_structure"): "rate_structure",
+    # The owner's review of #620: the twelfth, which #558 published untyped
+    # in name only — a closed value set on the provenance's markup.
+    ("PricingReceiptProvenanceMarkup", "rung"): "markup_rung",
+}
+
+#: The three responses that publish the record, and whether each may say null.
+#: Only a REJECTED batch item recorded nothing to explain.
+RECEIPT_CARRIERS = {"RecordUsageResponse": False, "UsageEventDetailOut": False,
+                    "UsageBatchItemResponse": True}
+
+#: The containers ADR-0020's additive rule keeps open; every other level of
+#: the record is closed.
+OPEN_RECEIPT_CONTAINERS = {"PricingReceiptCostingDetail",
+                           "PricingReceiptPricingDetail",
+                           "PricingReceiptProvenance", "PricingReceiptComponent"}
+
+
+def _receipt_findings(document):
+    """What is wrong with the published receipt, as a list of sentences."""
+    schemas = document["components"]["schemas"]
+    findings = []
+    for (schema, prop), concept in sorted(RECEIPT_CONCEPTS.items()):
+        node = schemas.get(schema, {}).get("properties", {}).get(prop)
+        if _marker_on(node) != concept:
+            findings.append(f"{schema}.{prop} does not carry `{concept}`")
+    for carrier, nullable in sorted(RECEIPT_CARRIERS.items()):
+        node = schemas[carrier]["properties"].get("pricing_receipt", {})
+        refs = [node.get("$ref")] + [m.get("$ref") for m in node.get("anyOf", [])]
+        if "#/components/schemas/PricingReceipt" not in refs:
+            findings.append(f"{carrier}.pricing_receipt is not the typed receipt")
+        says_null = any(m.get("type") == "null" for m in node.get("anyOf", []))
+        if says_null is not nullable:
+            findings.append(f"{carrier}.pricing_receipt nullable={says_null}")
+        if "pricing_receipt" not in schemas[carrier].get("required", []):
+            findings.append(f"{carrier}.pricing_receipt is not required")
+    for name in sorted(n for n in schemas if n.startswith("PricingReceipt")):
+        is_open = schemas[name].get("additionalProperties") is True
+        if is_open is not (name in OPEN_RECEIPT_CONTAINERS):
+            findings.append(f"{name} open={is_open}")
+    provenance = schemas["PricingReceiptProvenance"]["properties"]
+    if "held_name_id" not in provenance:
+        findings.append("the provenance does not type W1's held_name_id")
+    return findings
+
+
+def test_the_pricing_receipt_marks_every_closed_concept_inside_it(spec):
+    """#558's done condition, held by the suite: the receipt is a typed schema,
+    each closed concept inside it carries its marker, and the record it
+    publishes is version 2 only (§0.3 ruling 3 — no legacy branch)."""
+    findings = _receipt_findings(spec)
+    assert not findings, "\n".join(findings)
+    schemas = spec["components"]["schemas"]
+    assert not [name for name in schemas if "Legacy" in name and "Receipt" in name]
+
+
+def test_negative_control_an_unmarked_closed_value_in_the_receipt_is_found(spec):
+    """The check above is red on a planted defect: one closed value inside the
+    receipt published as a bare string, the shape #349 left open."""
+    import copy
+    planted = copy.deepcopy(spec)
+    node = planted["components"]["schemas"]["PricingReceiptComponent"][
+        "properties"]["rate_structure"]
+    node.pop(MARKER, None)
+    node.pop("enum", None)
+    assert _receipt_findings(planted) == [
+        "PricingReceiptComponent.rate_structure does not carry `rate_structure`"]
 
 
 def test_every_name_collision_carries_a_real_reason():
@@ -2764,6 +2970,16 @@ def test_the_g4_seeding_is_the_size_the_document_says(programme, decisions):
     # with a `CHECK` beside them and derives the posture from a total map,
     # and both marked on the tenant configuration in the same commit. Two
     # entries out, two steps down.
-    assert len(_entries(programme)) >= 1, (
-        f"only {len(_entries(programme))} G4 debts — the contract has not "
-        f"suddenly caught up with the registry, so suspect the walk")
+    # 1 -> 0 in R10-W4 (slice 8): `audit_action`, the last, paid with its G2
+    # twin when the audit catalogue came from the registry by reference — and
+    # advertised as the values a row can hold, the withheld cutover action left
+    # out. THE CONTRACT HAS CAUGHT UP WITH THE REGISTRY: every concept that
+    # declares an `openapi` consumer is advertised, so the floor is zero and
+    # the vacuity guard moves to the other side of the same fact.
+    assert len(_entries(programme)) == 0, (
+        f"{len(_entries(programme))} G4 debt(s) — the contract caught up with "
+        f"the registry in R10-W4, and the ratchet admits no new entry")
+    contributing = [d for d in decisions.values() if d.contributes]
+    assert contributing and all(d.advertised for d in contributing), (
+        "a concept the contract may carry is not advertised, yet no G4 debt "
+        "records it — suspect the walk")

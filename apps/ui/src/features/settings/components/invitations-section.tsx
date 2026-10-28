@@ -35,7 +35,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ROLES, invitationStatusLabel, roleLabel } from "@/lib/labels";
+import { ROLES, roleLabel } from "@/lib/role";
+import { ROLE_VALUES, type Role } from "@/lib/vocabulary";
+
+import { invitationStatusLabel } from "../lib/team";
 import { formatShortDate } from "@/lib/format";
 import { toastOnError, toastSuccess } from "@/lib/mutations";
 
@@ -48,7 +51,7 @@ import type { Invitation } from "../api/types";
 
 const inviteSchema = z.object({
   email: z.email("Enter a valid email address"),
-  role: z.string().min(1),
+  role: z.enum(ROLE_VALUES),
 });
 
 type InviteValues = z.infer<typeof inviteSchema>;
@@ -121,7 +124,7 @@ export function InvitationsSection() {
           </div>
           <Select
             value={role}
-            onValueChange={(value: string | null) => {
+            onValueChange={(value: Role | null) => {
               if (value !== null) {
                 form.setValue("role", value, { shouldDirty: true });
               }

@@ -85,9 +85,12 @@ from apps.billing.gating.services.stop_signal_service import (
 from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
 from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
-from core.vocabulary import (CUSTOMER_BILLING_MODE_POSTPAID,
-                             TRIGGER_SOURCE_ENFORCEMENT_PATROL,
-                             TRIGGER_SOURCE_USAGE_INGEST)
+from core.vocabulary import (
+    CUSTOMER_BILLING_MODE_POSTPAID,
+    STOP_SCOPE_CUSTOMER,
+    TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+    TRIGGER_SOURCE_USAGE_INGEST,
+)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -793,7 +796,7 @@ class LiveCounter:
             whose, raw = named
             reason, opening = _read_flag(raw)
             verdict = {"stop": True, "stop_reason": reason,
-                       "stop_scope": "customer", **opening,
+                       "stop_scope": STOP_SCOPE_CUSTOMER, **opening,
                        "stop_customer_id": whose}
         if counter:
             try:

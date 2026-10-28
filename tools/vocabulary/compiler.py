@@ -162,6 +162,10 @@ class Concept:
     #: in terms of it, and a second copy of the pattern in that gate could
     #: drift from this one.
     token_pattern: str = ""
+    #: Declared values that can never occur — no producer writes one and the
+    #: published contract does not advertise it (`schema.yaml`,
+    #: `withheld_values`). Always a subset of :attr:`values`.
+    withheld_values: tuple = ()
 
     @property
     def declared_values(self):
@@ -169,6 +173,14 @@ class Concept:
         known values. Empty for ``tenant_defined`` and ``free_text``, which is
         the whole point of those kinds."""
         return self.values or self.known_values
+
+    @property
+    def occurring_values(self):
+        """The declared values that can actually occur: what a producer may
+        write and what the published contract advertises. The declared set
+        less :attr:`withheld_values`, in declaration order."""
+        return tuple(value for value in self.declared_values
+                     if value not in self.withheld_values)
 
 
 @dataclass(frozen=True)
@@ -617,6 +629,19 @@ def _build_concept(name, body, source, schema, surfaces, repo_root, errors):
     values = _value_list(body, "values", value_pattern, add)
     known_values = _value_list(body, "known_values", value_pattern, add)
 
+    withheld = ()
+    if "withheld_values" in body and "withheld_values" not in rule.forbids:
+        withheld = _value_list(body, "withheld_values", value_pattern, add)
+        for value in withheld:
+            if value not in values:
+                add(E.WITHHELD_VALUE_UNDECLARED,
+                    f"`withheld_values` names {value!r}, which `values` does not "
+                    f"declare — withholding subtracts from a declared set")
+        if values and set(values) <= set(withheld):
+            add(E.WITHHELD_EVERY_VALUE,
+                "`withheld_values` withholds every value, so nothing this "
+                "concept declares can occur")
+
     allow_unknown = body.get("allow_unknown", False)
     if "allow_unknown" in body and not isinstance(allow_unknown, bool):
         add(E.INVALID_FIELD_TYPE, "`allow_unknown` is a boolean")
@@ -670,6 +695,7 @@ def _build_concept(name, body, source, schema, surfaces, repo_root, errors):
         retired_senses=senses,
         value_semantics=semantics,
         token_pattern=value_pattern,
+        withheld_values=withheld,
     )
 
 

@@ -145,9 +145,9 @@ When a customer's balance drops below their threshold, Billing automatically cha
         │  BILLING & PAYMENTS   │
         │                       │
         │  1. Look up customer's│
-        │     auto-topup config │
+        │     auto top-up config│
         │                       │
-        │  2. Is auto-topup     │───► No: Do nothing
+        │  2. Is auto top-up    │───► No: Do nothing
         │     enabled?          │
         │           │           │
         │          Yes          │
@@ -170,7 +170,7 @@ When a customer's balance drops below their threshold, Billing automatically cha
                     │
                     │  credit_wallet command
                     │  (customer_id, amount,
-                    │   source="auto_topup",
+                    │   source="auto_top_up",
                     │   reference="pi_xxx")
                     │
                     ▼
@@ -356,7 +356,7 @@ customer.suspended
 credit_wallet
 ├── customer_id: UUID
 ├── amount: integer (micros)
-├── source: string ("manual_topup", "auto_topup", "refund", "adjustment")
+├── source: string ("manual_topup", "auto_top_up", "refund", "adjustment")
 ├── reference: string (payment intent ID, invoice ID, etc.)
 ├── idempotency_key: string
 └── Returns: { success: bool, new_balance: integer, transaction_id: UUID }
@@ -431,7 +431,7 @@ def record_usage(...):
     # Direct call to billing concern
     if wallet.balance < threshold:
         AutoTopUpService.create_pending_attempt(customer)  # ❌ Tight coupling
-        charge_auto_topup_task.delay(attempt.id)           # ❌ Tight coupling
+        charge_auto_top_up_task.delay(attempt.id)          # ❌ Tight coupling
 ```
 
 ### Target State (Loosely Coupled)

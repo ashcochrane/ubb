@@ -32,7 +32,11 @@ are built on — use them rather than reaching across a boundary directly.
   migration has stamped every stored row and queued payload — where it has no honest default
   (#458's `control_family`), or where the owner has ruled the concept required wherever it is
   published (#603's `pricing_status_reason`, required AND nullable: its null is a value, never an
-  absence, `events/0010`); and while the pre-live lane is open (ADR-0007 §5) a rename may be made in
+  absence, `events/0010`) — or with NO stamp, where the field's producers have always written it
+  from the closed column it publishes, so no stored or queued payload can lack it and there is
+  nothing to stamp (R10-W4, ADR-0024: the credit-grant pair's `kind`, `invitation.created`'s and
+  `member.activated`'s `role`; each field names the producer it rests on); and while the pre-live
+  lane is open (ADR-0007 §5) a rename may be made in
   place with its break recorded in the gate's block and its queued payloads migrated (#458's
   `reason` → `reason_code` on the customer stop pair; #464's five event NAMES moved under their
   families, with every stored subscription and queued row carried by `events/0009`) — and, in

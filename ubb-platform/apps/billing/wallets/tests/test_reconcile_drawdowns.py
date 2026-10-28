@@ -31,7 +31,7 @@ class TestReconcileDrawdowns:
         w.refresh_from_db()
         assert w.balance_micros == -2_000_000
         assert WalletTransaction.objects.filter(wallet=w, usage_event_id=e.id,
-                                                transaction_type="USAGE_DEDUCTION").count() == 1
+                                                transaction_type="usage_deduction").count() == 1
         reconcile_usage_drawdowns()  # idempotent
         w.refresh_from_db()
         assert w.balance_micros == -2_000_000
@@ -41,7 +41,7 @@ class TestReconcileDrawdowns:
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=-2_000_000)
         e = _old_event(t, c, c.id, 2_000_000, "i1")
-        WalletTransaction.objects.create(wallet=w, transaction_type="USAGE_DEDUCTION",
+        WalletTransaction.objects.create(wallet=w, transaction_type="usage_deduction",
             amount_micros=-2_000_000, balance_after_micros=-2_000_000,
             reference_id=str(e.id), idempotency_key="usage_deduction:OLD_OUTBOX_KEY",
             usage_event_id=e.id)  # old key, but column backfilled

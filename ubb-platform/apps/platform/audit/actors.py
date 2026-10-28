@@ -15,16 +15,25 @@ concrete Member / TenantApiKey / Customer stays where it is already imported.
 import contextvars
 from dataclasses import dataclass
 
+from core.vocabulary import (
+    ACTOR_KIND_API_KEY,
+    ACTOR_KIND_END_CUSTOMER,
+    ACTOR_KIND_MEMBER,
+    ACTOR_KIND_OPERATOR,
+    ACTOR_KIND_SYSTEM,
+)
+
 # Actor kinds — an OPEN enum (ADR-004 §4): the feed and its clients must tolerate
 # it growing. Four are live from day one; ``system`` is reserved for the deferred
 # system-initiated actions (auto-top-up firing, suspensions, patrol repairs — out
 # of scope for v1, §3) and is used here only as the honest label for a record
-# with no resolvable principal.
-MEMBER = "member"
-API_KEY = "api_key"
-OPERATOR = "operator"
-END_CUSTOMER = "end_customer"
-SYSTEM = "system"  # reserved / deferred — see ADR-004 §3, §4
+# with no resolvable principal. The registry's `actor_kind` (R10-W4) holds the
+# five by name; these aliases keep the builders' call sites unchanged.
+MEMBER = ACTOR_KIND_MEMBER
+API_KEY = ACTOR_KIND_API_KEY
+OPERATOR = ACTOR_KIND_OPERATOR
+END_CUSTOMER = ACTOR_KIND_END_CUSTOMER
+SYSTEM = ACTOR_KIND_SYSTEM  # reserved / deferred — see ADR-004 §3, §4
 
 # An operator is a UBB staffer acting on a tenant's account. The feed records
 # *that* staff acted, never *which* staffer — every operator action renders under

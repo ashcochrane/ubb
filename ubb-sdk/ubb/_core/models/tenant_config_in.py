@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.tenant_config_in_billing_mode_type_0 import TenantConfigInBillingModeType0
+from ..models.tenant_config_in_enforcement_mode_type_0 import TenantConfigInEnforcementModeType0
 from ..models.tenant_config_in_products_type_0_item import TenantConfigInProductsType0Item
 from ..types import UNSET, Unset
 from typing import cast
@@ -31,7 +32,7 @@ class TenantConfigIn:
             default_currency (None | str | Unset):
             default_subtask_cogs_ceiling_micros (int | None | Unset):
             default_task_cogs_ceiling_micros (int | None | Unset):
-            enforcement_mode (None | str | Unset):
+            enforcement_mode (None | TenantConfigInEnforcementModeType0 | Unset):
             live_counter_maintenance_enabled (bool | None | Unset):
             max_task_starts_per_minute (int | None | Unset):
             min_balance_micros (int | None | Unset):
@@ -44,7 +45,7 @@ class TenantConfigIn:
     default_currency: None | str | Unset = UNSET
     default_subtask_cogs_ceiling_micros: int | None | Unset = UNSET
     default_task_cogs_ceiling_micros: int | None | Unset = UNSET
-    enforcement_mode: None | str | Unset = UNSET
+    enforcement_mode: None | TenantConfigInEnforcementModeType0 | Unset = UNSET
     live_counter_maintenance_enabled: bool | None | Unset = UNSET
     max_task_starts_per_minute: int | None | Unset = UNSET
     min_balance_micros: int | None | Unset = UNSET
@@ -92,6 +93,8 @@ class TenantConfigIn:
         enforcement_mode: None | str | Unset
         if isinstance(self.enforcement_mode, Unset):
             enforcement_mode = UNSET
+        elif isinstance(self.enforcement_mode, TenantConfigInEnforcementModeType0):
+            enforcement_mode = self.enforcement_mode.value
         else:
             enforcement_mode = self.enforcement_mode
 
@@ -227,12 +230,22 @@ class TenantConfigIn:
         default_task_cogs_ceiling_micros = _parse_default_task_cogs_ceiling_micros(d.pop("default_task_cogs_ceiling_micros", UNSET))
 
 
-        def _parse_enforcement_mode(data: object) -> None | str | Unset:
+        def _parse_enforcement_mode(data: object) -> None | TenantConfigInEnforcementModeType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
-            return cast(None | str | Unset, data)
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                enforcement_mode_type_0 = TenantConfigInEnforcementModeType0(data)
+
+
+
+                return enforcement_mode_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | TenantConfigInEnforcementModeType0 | Unset, data)
 
         enforcement_mode = _parse_enforcement_mode(d.pop("enforcement_mode", UNSET))
 

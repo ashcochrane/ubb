@@ -5,7 +5,7 @@ import { TopBar } from "./top-bar";
 import { useAuthUser } from "@/hooks/use-auth";
 import { useCurrentRole } from "@/hooks/use-current-role";
 import { useTenantConfig } from "@/hooks/use-tenant-config";
-import { roleLabel } from "@/lib/labels";
+import { roleLabel } from "@/lib/role";
 import { cn } from "@/lib/utils";
 
 interface NavShellProps {

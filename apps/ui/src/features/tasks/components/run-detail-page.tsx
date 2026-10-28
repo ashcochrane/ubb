@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMeteringOnly, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { readCeiling } from "@/lib/ceiling";
 import { controlFamilyLabel } from "@/lib/control-family";
-import { formatDate, formatEventCount, shortId } from "@/lib/format";
+import { formatDate, formatCount, shortId } from "@/lib/format";
 import { tenantDefinedLabel } from "@/lib/localisation";
 import { TASK_STATUS_EXPLANATIONS } from "@/lib/task-status";
 import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";
@@ -218,7 +218,7 @@ function RunDetailBody({
       <Section title="What it cost and earned" description={describeRunTotals(applicability)}>
         <DetailList
           items={[
-            { label: "Events", value: formatEventCount(detail.event_count) },
+            { label: "Events", value: formatCount(detail.recorded_events) },
             {
               label: "Supplier cost",
               value: (

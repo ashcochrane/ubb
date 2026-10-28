@@ -258,6 +258,7 @@ describe("the chart tooltip — each series as its state allows", () => {
         measure: "customer_revenue",
         status: "estimated" as EconomicMeasureScenario["status"],
         amount_micros: 4_000_000,
+        count: null,
       },
     ]);
     const { container } = render(
@@ -296,6 +297,7 @@ describe("a state this build has never seen", () => {
         // The wire's enum is closed today; a later server's is not (ADR-003).
         status: "estimated" as EconomicMeasureScenario["status"],
         amount_micros: 4_000_000,
+        count: null,
       },
     ]);
     expect(node.querySelector("[data-label]")?.getAttribute("data-label")).toBe("unfamiliar");

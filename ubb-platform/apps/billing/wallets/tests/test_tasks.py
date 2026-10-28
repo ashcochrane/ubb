@@ -15,7 +15,7 @@ def _top_up(wallet, amount_micros, key):
         locked.save(update_fields=["balance_micros", "updated_at"])
         WalletTransaction.objects.create(
             wallet=locked,
-            transaction_type="TOP_UP",
+            transaction_type="top_up",
             amount_micros=amount_micros,
             balance_after_micros=locked.balance_micros,
             description="top-up",
@@ -33,7 +33,7 @@ def _deduct(wallet, amount_micros, key):
         locked.save(update_fields=["balance_micros", "updated_at"])
         WalletTransaction.objects.create(
             wallet=locked,
-            transaction_type="USAGE_DEDUCTION",
+            transaction_type="usage_deduction",
             amount_micros=-amount_micros,
             balance_after_micros=locked.balance_micros,
             description="usage",

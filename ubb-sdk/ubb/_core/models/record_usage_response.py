@@ -15,14 +15,15 @@ from ..models.record_usage_response_pricing_method_type_0 import RecordUsageResp
 from ..models.record_usage_response_pricing_receipt_subject_type_type_0 import RecordUsageResponsePricingReceiptSubjectTypeType0
 from ..models.record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from ..models.record_usage_response_pricing_status_reason_type_0 import RecordUsageResponsePricingStatusReasonType0
+from ..models.record_usage_response_stop_scope_type_0 import RecordUsageResponseStopScopeType0
 from ..models.record_usage_response_unresolved_reason_type_0 import RecordUsageResponseUnresolvedReasonType0
 from ..types import UNSET, Unset
 from typing import cast
 
 if TYPE_CHECKING:
+  from ..models.pricing_receipt import PricingReceipt
   from ..models.record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
   from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
-  from ..models.record_usage_response_pricing_receipt_type_0 import RecordUsageResponsePricingReceiptType0
 
 
 
@@ -38,6 +39,7 @@ class RecordUsageResponse:
         Attributes:
             costing_status (RecordUsageResponseCostingStatus):
             event_id (str):
+            pricing_receipt (PricingReceipt): The Pricing Receipt, version 2 — see `RECEIPT_DESCRIPTION`.
             pricing_status (RecordUsageResponsePricingStatus):
             pricing_status_reason (None | RecordUsageResponsePricingStatusReasonType0): Why `pricing_status` applies, where
                 a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
@@ -82,14 +84,6 @@ class RecordUsageResponse:
             not_applicable_reason (None | RecordUsageResponseNotApplicableReasonType0 | Unset):
             parent_task_id (None | str | Unset):
             pricing_method (None | RecordUsageResponsePricingMethodType0 | Unset):
-            pricing_receipt (None | RecordUsageResponsePricingReceiptType0 | Unset): The Pricing Receipt: the authoritative
-                record of the ECONOMIC RESOLUTION behind this event's amounts — what UBB resolved, how, and as of when. It is
-                not a guarantee that customer revenue exists and it is not evidence a customer was charged: a metering-only
-                tenant has a receipt for every event it records. The record carries its own shape version
-                (receipt_schema_version) and the version of the engine that computed it (pricing_engine_version), the subject it
-                explains, a costing and a pricing section holding their method, status and detail BY VALUE, the totals
-                (`provider_cost_micros` and `billed_cost_micros`: the amount each section resolved, null where it is not
-                settled), and a provenance section of cross-reference ids that nothing reads to reconstruct an amount.
             pricing_receipt_subject_type (None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset):
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
                 canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
@@ -103,7 +97,7 @@ class RecordUsageResponse:
                 words (the values under `x-ubb-known-values`), or `task_not_active` — the one verdict that is not a bound, which
                 UBB produces and the registry deliberately does not list: this report landed on a unit of work that had already
                 ended, and it was still recorded and charged. Null when `stop` is false. Open: accept a reason not listed here.
-            stop_scope (None | str | Unset):
+            stop_scope (None | RecordUsageResponseStopScopeType0 | Unset):
             task_id (None | str | Unset):
             task_total_billed_cost_micros (int | None | Unset):
             task_total_provider_cost_micros (int | None | Unset):
@@ -115,6 +109,7 @@ class RecordUsageResponse:
 
     costing_status: RecordUsageResponseCostingStatus
     event_id: str
+    pricing_receipt: PricingReceipt
     pricing_status: RecordUsageResponsePricingStatus
     pricing_status_reason: None | RecordUsageResponsePricingStatusReasonType0
     stop_bound_micros: int | None
@@ -132,13 +127,12 @@ class RecordUsageResponse:
     not_applicable_reason: None | RecordUsageResponseNotApplicableReasonType0 | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     pricing_method: None | RecordUsageResponsePricingMethodType0 | Unset = UNSET
-    pricing_receipt: None | RecordUsageResponsePricingReceiptType0 | Unset = UNSET
     pricing_receipt_subject_type: None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     stop: bool | Unset = False
     stop_context: list[Any] | None | Unset = UNSET
     stop_reason: None | str | Unset = UNSET
-    stop_scope: None | str | Unset = UNSET
+    stop_scope: None | RecordUsageResponseStopScopeType0 | Unset = UNSET
     task_id: None | str | Unset = UNSET
     task_total_billed_cost_micros: int | None | Unset = UNSET
     task_total_provider_cost_micros: int | None | Unset = UNSET
@@ -153,12 +147,14 @@ class RecordUsageResponse:
 
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.pricing_receipt import PricingReceipt
         from ..models.record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
         from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
-        from ..models.record_usage_response_pricing_receipt_type_0 import RecordUsageResponsePricingReceiptType0
         costing_status = self.costing_status.value
 
         event_id = self.event_id
+
+        pricing_receipt = self.pricing_receipt.to_dict()
 
         pricing_status = self.pricing_status.value
 
@@ -251,14 +247,6 @@ class RecordUsageResponse:
         else:
             pricing_method = self.pricing_method
 
-        pricing_receipt: dict[str, Any] | None | Unset
-        if isinstance(self.pricing_receipt, Unset):
-            pricing_receipt = UNSET
-        elif isinstance(self.pricing_receipt, RecordUsageResponsePricingReceiptType0):
-            pricing_receipt = self.pricing_receipt.to_dict()
-        else:
-            pricing_receipt = self.pricing_receipt
-
         pricing_receipt_subject_type: None | str | Unset
         if isinstance(self.pricing_receipt_subject_type, Unset):
             pricing_receipt_subject_type = UNSET
@@ -294,6 +282,8 @@ class RecordUsageResponse:
         stop_scope: None | str | Unset
         if isinstance(self.stop_scope, Unset):
             stop_scope = UNSET
+        elif isinstance(self.stop_scope, RecordUsageResponseStopScopeType0):
+            stop_scope = self.stop_scope.value
         else:
             stop_scope = self.stop_scope
 
@@ -347,6 +337,7 @@ class RecordUsageResponse:
         field_dict.update({
             "costing_status": costing_status,
             "event_id": event_id,
+            "pricing_receipt": pricing_receipt,
             "pricing_status": pricing_status,
             "pricing_status_reason": pricing_status_reason,
             "stop_bound_micros": stop_bound_micros,
@@ -376,8 +367,6 @@ class RecordUsageResponse:
             field_dict["parent_task_id"] = parent_task_id
         if pricing_method is not UNSET:
             field_dict["pricing_method"] = pricing_method
-        if pricing_receipt is not UNSET:
-            field_dict["pricing_receipt"] = pricing_receipt
         if pricing_receipt_subject_type is not UNSET:
             field_dict["pricing_receipt_subject_type"] = pricing_receipt_subject_type
         if provider_cost_micros is not UNSET:
@@ -411,9 +400,9 @@ class RecordUsageResponse:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.pricing_receipt import PricingReceipt
         from ..models.record_usage_response_grouping_fields import RecordUsageResponseGroupingFields
         from ..models.record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
-        from ..models.record_usage_response_pricing_receipt_type_0 import RecordUsageResponsePricingReceiptType0
         d = dict(src_dict)
         costing_status = RecordUsageResponseCostingStatus(d.pop("costing_status"))
 
@@ -421,6 +410,11 @@ class RecordUsageResponse:
 
 
         event_id = d.pop("event_id")
+
+        pricing_receipt = PricingReceipt.from_dict(d.pop("pricing_receipt"))
+
+
+
 
         pricing_status = RecordUsageResponsePricingStatus(d.pop("pricing_status"))
 
@@ -621,26 +615,6 @@ class RecordUsageResponse:
         pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
 
-        def _parse_pricing_receipt(data: object) -> None | RecordUsageResponsePricingReceiptType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, dict):
-                    raise TypeError()
-                pricing_receipt_type_0 = RecordUsageResponsePricingReceiptType0.from_dict(data)
-
-
-
-                return pricing_receipt_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | RecordUsageResponsePricingReceiptType0 | Unset, data)
-
-        pricing_receipt = _parse_pricing_receipt(d.pop("pricing_receipt", UNSET))
-
-
         def _parse_pricing_receipt_subject_type(data: object) -> None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset:
             if data is None:
                 return data
@@ -701,12 +675,22 @@ class RecordUsageResponse:
         stop_reason = _parse_stop_reason(d.pop("stop_reason", UNSET))
 
 
-        def _parse_stop_scope(data: object) -> None | str | Unset:
+        def _parse_stop_scope(data: object) -> None | RecordUsageResponseStopScopeType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
-            return cast(None | str | Unset, data)
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                stop_scope_type_0 = RecordUsageResponseStopScopeType0(data)
+
+
+
+                return stop_scope_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RecordUsageResponseStopScopeType0 | Unset, data)
 
         stop_scope = _parse_stop_scope(d.pop("stop_scope", UNSET))
 
@@ -787,6 +771,7 @@ class RecordUsageResponse:
         record_usage_response = cls(
             costing_status=costing_status,
             event_id=event_id,
+            pricing_receipt=pricing_receipt,
             pricing_status=pricing_status,
             pricing_status_reason=pricing_status_reason,
             stop_bound_micros=stop_bound_micros,
@@ -804,7 +789,6 @@ class RecordUsageResponse:
             not_applicable_reason=not_applicable_reason,
             parent_task_id=parent_task_id,
             pricing_method=pricing_method,
-            pricing_receipt=pricing_receipt,
             pricing_receipt_subject_type=pricing_receipt_subject_type,
             provider_cost_micros=provider_cost_micros,
             stop=stop,

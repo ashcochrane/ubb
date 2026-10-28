@@ -13,7 +13,7 @@ import {
 import { formatMicros } from "@/lib/format";
 import { PRICING_METHOD_VALUES, RATE_STRUCTURE_VALUES } from "@/lib/vocabulary";
 import { cn } from "@/lib/utils";
-import type { GroupingFieldDef } from "../api/types";
+import type { GroupingField } from "../api/types";
 import {
   exampleChargeMicros,
   toMicros,
@@ -91,7 +91,7 @@ export function RuleEditor({
   inheritedNote,
 }: {
   form: UseFormReturn<RuleFormValues>;
-  groupingFields: readonly GroupingFieldDef[];
+  groupingFields: readonly GroupingField[];
   currency: string;
   identityEditable?: boolean;
   inheritedNote?: React.ReactNode;

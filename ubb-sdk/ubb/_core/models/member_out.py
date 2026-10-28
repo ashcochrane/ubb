@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.member_out_role import MemberOutRole
+from ..models.member_out_status import MemberOutStatus
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -27,8 +29,8 @@ class MemberOut:
             created_at (str):
             email (str):
             id (str):
-            role (str):
-            status (str):
+            role (MemberOutRole):
+            status (MemberOutStatus):
             activated_at (None | str | Unset):
             clerk_user_id (str | Unset):  Default: ''.
      """
@@ -36,8 +38,8 @@ class MemberOut:
     created_at: str
     email: str
     id: str
-    role: str
-    status: str
+    role: MemberOutRole
+    status: MemberOutStatus
     activated_at: None | str | Unset = UNSET
     clerk_user_id: str | Unset = ''
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -53,9 +55,9 @@ class MemberOut:
 
         id = self.id
 
-        role = self.role
+        role = self.role.value
 
-        status = self.status
+        status = self.status.value
 
         activated_at: None | str | Unset
         if isinstance(self.activated_at, Unset):
@@ -93,9 +95,15 @@ class MemberOut:
 
         id = d.pop("id")
 
-        role = d.pop("role")
+        role = MemberOutRole(d.pop("role"))
 
-        status = d.pop("status")
+
+
+
+        status = MemberOutStatus(d.pop("status"))
+
+
+
 
         def _parse_activated_at(data: object) -> None | str | Unset:
             if data is None:

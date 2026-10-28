@@ -94,7 +94,7 @@ class TestGrantLedgerInvariantFuzz:
                 wallet, _c = lock_for_billing(w.customer_id)
                 new_balance = wallet.balance_micros + amount
                 txn = WalletTransaction.objects.create(
-                    wallet=wallet, transaction_type="GRANT",
+                    wallet=wallet, transaction_type="grant",
                     amount_micros=amount, balance_after_micros=new_balance,
                     idempotency_key=key)
                 GrantLedger.create_grant(
@@ -130,7 +130,7 @@ class TestGrantLedgerInvariantFuzz:
                 wallet.balance_micros -= amount
                 wallet.save(update_fields=["balance_micros", "updated_at"])
                 txn = WalletTransaction.objects.create(
-                    wallet=wallet, transaction_type="WITHDRAWAL",
+                    wallet=wallet, transaction_type="withdrawal",
                     amount_micros=-amount,
                     balance_after_micros=wallet.balance_micros,
                     idempotency_key=f"wd:{uuid.uuid4()}")
@@ -165,7 +165,7 @@ class TestGrantLedgerInvariantFuzz:
                             max(wallet.balance_micros, 0))
                 new_balance = wallet.balance_micros - debit
                 WalletTransaction.objects.create(
-                    wallet=wallet, transaction_type="GRANT_VOID",
+                    wallet=wallet, transaction_type="grant_void",
                     amount_micros=-debit, balance_after_micros=new_balance,
                     reference_id=str(grant.id),
                     idempotency_key=f"grant_void:{grant.id}")
@@ -193,7 +193,7 @@ class TestGrantLedgerInvariantFuzz:
                 wallet.balance_micros -= amount
                 wallet.save(update_fields=["balance_micros", "updated_at"])
                 txn = WalletTransaction.objects.create(
-                    wallet=wallet, transaction_type="DISPUTE_DEDUCTION",
+                    wallet=wallet, transaction_type="dispute_deduction",
                     amount_micros=-amount,
                     balance_after_micros=wallet.balance_micros,
                     idempotency_key=f"dispute:{uuid.uuid4()}")
@@ -216,7 +216,7 @@ class TestGrantLedgerInvariantFuzz:
                 wallet.balance_micros += cost
                 wallet.save(update_fields=["balance_micros", "updated_at"])
                 WalletTransaction.objects.create(
-                    wallet=wallet, transaction_type="REFUND",
+                    wallet=wallet, transaction_type="refund",
                     amount_micros=cost,
                     balance_after_micros=wallet.balance_micros,
                     reference_id=ev,

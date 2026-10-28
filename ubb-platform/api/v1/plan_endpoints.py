@@ -21,6 +21,14 @@ from apps.platform.plans import queries
 from apps.platform.plans.services import PlanInUse, PlanService
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
 from core.problems import Problem, ProblemOut
+from core.vocabulary import (
+    AUDIT_ACTION_PLAN_ARCHIVED,
+    AUDIT_ACTION_PLAN_ASSIGNED,
+    AUDIT_ACTION_PLAN_CREATED,
+    AUDIT_ACTION_PLAN_UPDATED,
+    AUDIT_RESOURCE_TYPE_CUSTOMER,
+    AUDIT_RESOURCE_TYPE_PLAN,
+)
 
 plan_router = Router(auth=ApiKeyAuth())
 
@@ -85,7 +93,7 @@ def _the_new_plans_book(tenant, key, name):
 
 @plan_router.post("/plans", response={201: PlanOut, 409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("plan.created")
+@records_audit(AUDIT_ACTION_PLAN_CREATED)
 def create_plan(request, payload: PlanIn):
     _product_check(request)
     tenant = request.auth.tenant
@@ -112,8 +120,8 @@ def create_plan(request, payload: PlanIn):
                 interval=payload.interval,
             )
             audit_record(
-                action="plan.created", tenant_id=tenant.id,
-                resource_type="plan", resource_id=plan.key,
+                action=AUDIT_ACTION_PLAN_CREATED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_PLAN, resource_id=plan.key,
                 metadata=_plan_out(plan))
     except IntegrityError:
         raise Problem("conflict", f"plan with key '{payload.key}' already exists")
@@ -123,7 +131,7 @@ def create_plan(request, payload: PlanIn):
 @plan_router.patch("/plans/{key}",
                    response={200: PlanOut, 404: ProblemOut, 409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("plan.updated")
+@records_audit(AUDIT_ACTION_PLAN_UPDATED)
 def update_plan(request, key: str, payload: PlanUpdateIn):
     """Edit a plan.
 
@@ -163,8 +171,8 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
         with transaction.atomic():
             plan.save()
             audit_record(
-                action="plan.updated", tenant_id=tenant.id,
-                resource_type="plan", resource_id=plan.key,
+                action=AUDIT_ACTION_PLAN_UPDATED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_PLAN, resource_id=plan.key,
                 metadata={"changed": fields, **_plan_out(plan)})
 
     # Fee axes go through the orchestrator, which mints versioned Stripe
@@ -190,8 +198,8 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
         except (OrchestrationError, StripeFatalError) as e:
             raise Problem("validation_error", str(e))
         audit_record(
-            action="plan.updated", tenant_id=tenant.id,
-            resource_type="plan", resource_id=plan.key,
+            action=AUDIT_ACTION_PLAN_UPDATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_PLAN, resource_id=plan.key,
             metadata={"changed": fee_fields,
                       "migrate_existing": payload.migrate_existing, **_plan_out(plan)})
 
@@ -200,7 +208,7 @@ def update_plan(request, key: str, payload: PlanUpdateIn):
 
 @plan_router.delete("/plans/{key}", response={204: None, 404: ProblemOut, 409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("plan.archived")
+@records_audit(AUDIT_ACTION_PLAN_ARCHIVED)
 def archive_plan(request, key: str):
     """Archive a plan. Refused while customers are still assigned — archiving
     an assigned plan would silently move every one of them off the book it
@@ -216,8 +224,8 @@ def archive_plan(request, key: str):
         with transaction.atomic():
             PlanService.archive(plan)
             audit_record(
-                action="plan.archived", tenant_id=tenant.id,
-                resource_type="plan", resource_id=plan.key, metadata={"key": plan.key})
+                action=AUDIT_ACTION_PLAN_ARCHIVED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_PLAN, resource_id=plan.key, metadata={"key": plan.key})
     except PlanInUse as e:
         raise Problem("conflict", str(e))
     return 204, None
@@ -226,7 +234,7 @@ def archive_plan(request, key: str):
 @plan_router.post("/customers/{external_id}/plan",
                   response={200: dict, 404: ProblemOut})
 @role_floor(WRITE)
-@records_audit("plan.assigned")
+@records_audit(AUDIT_ACTION_PLAN_ASSIGNED)
 def assign_plan(request, external_id: str, payload: AssignPlanIn):
     """Put a customer on a plan.
 
@@ -248,7 +256,7 @@ def assign_plan(request, external_id: str, payload: AssignPlanIn):
     with transaction.atomic():
         PlanService.assign(tenant, customer, plan)
         audit_record(
-            action="plan.assigned", tenant_id=tenant.id,
-            resource_type="customer", resource_id=customer.external_id,
+            action=AUDIT_ACTION_PLAN_ASSIGNED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_CUSTOMER, resource_id=customer.external_id,
             metadata={"external_id": customer.external_id, "plan_key": plan.key})
     return 200, {"external_id": customer.external_id, "plan_key": plan.key}

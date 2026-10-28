@@ -406,7 +406,9 @@ export async function getUsageTimeseries(
         // grouped question carries one value, an ungrouped one carries none.
         grouping_field_value: group === undefined ? [] : [group],
         grouping_field_value_status:
-          group === undefined ? [] : [group === null ? "not_recorded" : "recorded"],
+          group === undefined
+            ? []
+            : [group === null ? ("not_recorded" as const) : ("recorded" as const)],
         measures: measuresOver(bucketed, billed, provider).filter((entry) =>
           asked.includes(entry.measure),
         ),
@@ -508,7 +510,7 @@ export async function closeTask(
     // work sold that way earns a charge (#416). Not a stub: it is what the
     // route answers for this workspace.
     charge_created: false,
-    event_count: taskEvents.length,
+    recorded_events: taskEvents.length,
     total_billed_cost_micros: billed,
     total_provider_cost_micros: provider,
     unresolved_event_count: countUnresolved(taskEvents),

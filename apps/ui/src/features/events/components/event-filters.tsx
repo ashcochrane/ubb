@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { stopScopeLabel } from "@/lib/labels";
+import { stopScopeLabel } from "@/lib/stop-scope";
 
 import {
   NO_FILTERS,

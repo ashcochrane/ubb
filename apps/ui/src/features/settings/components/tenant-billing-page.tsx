@@ -24,16 +24,16 @@ import {
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import {
   formatCalendarDate,
-  formatEventCount,
+  formatCount,
   formatMicros,
   formatShortDate,
 } from "@/lib/format";
+
+import { useBillingPeriods, useTenantInvoices } from "../api/queries";
 import {
   billingPeriodStatusLabel,
   tenantInvoiceStatusLabel,
-} from "@/lib/labels";
-
-import { useBillingPeriods, useTenantInvoices } from "../api/queries";
+} from "../lib/tenant-billing";
 
 /** What UBB charges THIS workspace — platform fees, not customer invoices. */
 export function TenantBillingPage() {
@@ -108,7 +108,7 @@ export function TenantBillingPage() {
                           {formatMicros(period.total_billed_cost_micros, currency)}
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatEventCount(period.recorded_events)}
+                          {formatCount(period.recorded_events)}
                         </TableCell>
                         <TableCell className="text-right font-medium">
                           {formatMicros(period.platform_fee_micros, currency)}

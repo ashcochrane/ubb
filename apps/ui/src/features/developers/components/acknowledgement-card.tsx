@@ -34,7 +34,7 @@ import {
   settledPriceMicros,
 } from "@/lib/customer-price";
 import { formatEventMicros, formatExactMicros, formatMicros, type ExactMicros } from "@/lib/format";
-import { stopScopeLabel } from "@/lib/labels";
+import { stopScopeLabel } from "@/lib/stop-scope";
 import { costingStatusLabel, unresolvedReasonLabel } from "@/lib/supplier-cost";
 import { describeTotal, readTotal, type TotalReading } from "@/lib/total-reading";
 import { REASON_CODE_LABEL_KEYS, TRIGGER_SOURCE_LABEL_KEYS } from "@/lib/vocabulary";

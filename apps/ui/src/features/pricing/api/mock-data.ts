@@ -27,7 +27,7 @@ import type {
   AgreedPrice,
   BookPublish,
   CostBook,
-  GroupingFieldDef,
+  GroupingField,
   PricingBook,
   Rule,
   TenantDefaultMarkup,
@@ -55,7 +55,7 @@ export function daysFromNow(days: number): string {
  * That is not hypothetical: it is exactly what let the picker offer slot names
  * for years. One list, and the rows each surface needs are built from it.
  */
-export const MOCK_GROUPING_FIELDS: GroupingFieldDef[] =
+export const MOCK_GROUPING_FIELDS: GroupingField[] =
   MOCK_DECLARED_AXIS_KEYS.map((key, index) => ({
     key,
     slot: `grouping_field_${index + 1}`,
@@ -87,17 +87,32 @@ type RuleSeed = Omit<
   | "grouping_field_8"
   | "grouping_field_9"
   | "grouping_field_10"
+  | "pricing_method"
 > & {
   model?: string;
   region?: string;
   /** A pin on the seventh slot, which is the one ruling 15 made reachable. */
   tier?: string;
+  /** Stated where a seed means one; otherwise the book decides, below. */
+  pricing_method?: Rule["pricing_method"];
 };
 
+/**
+ * A rule in a Pricing Book STATES its method, and a cost book's rate states
+ * none (R10-W4 ruling 4, `ck_rate_a_selling_rule_states_its_method`): what
+ * `RateOut.pricing_method` publishes. A seed naming none gets what a publish
+ * writes for a body naming none — the backend fixtures' rule too.
+ */
+function methodFor(seed: RuleSeed): Rule["pricing_method"] {
+  if (seed.pricing_method !== undefined) return seed.pricing_method;
+  return COST_BOOK_IDS.has(seed.book_id ?? "") ? null : "direct_event_price";
+}
+
 function rule(seed: RuleSeed): Rule {
-  const { model, region, tier, ...rest } = seed;
+  const { model, region, tier, pricing_method: _stated, ...rest } = seed;
   return {
     ...rest,
+    pricing_method: methodFor(seed),
     task_type: "",
     subtask_type: "",
     grouping_field_1: model ?? "",
@@ -174,6 +189,7 @@ const ANTHROPIC_COST_BOOK = "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e02";
 export const STANDARD_PRICE_BOOK = "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e03";
 export const EMPTY_PRICING_BOOK = "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e04";
 export const CUSTOMERS_OWN_BOOK = "0b1e6a4e-9c1d-4f2a-8f3b-1a2b3c4d5e05";
+const COST_BOOK_IDS = new Set([OPENAI_COST_BOOK, ANTHROPIC_COST_BOOK]);
 
 /** The customer's own rule, which the override editor reads and replaces. */
 export const MOCK_OVERRIDE_RULE_ID = "ra1e0005-0000-4000-8000-000000000001";

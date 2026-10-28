@@ -165,18 +165,14 @@ export type TenantDefaultMarkupIn = MeteringSchemas["TenantDefaultMarkupIn"];
  * declares — anywhere from none to ten — instead of a hand-written six that
  * would be the same bug written in the console.
  *
- * ⚠ **THE TWO COMPONENT NAMES BELOW ARE THE CONTRACT'S, AND THEY ARE ALIASED
- * HERE SO THAT NOTHING ELSE HAS TO SPELL THEM (#509).** The published
- * schemas kept a name from before the Grouping Field took its own — a
- * different, singular word from the axis word slice 7 retired — and
- * `gates/migration-ledger.yaml` records them as deliberately not renamed:
- * renaming four published components is a contract ticket of its own, not a
- * corner of a console one. Aliasing them here to the vocabulary's names is what
- * keeps every caller and every screen off them; a second module indexing the
- * schema by those names would undo that.
+ * The two components carry the Grouping Field's own name since #541, which
+ * renamed the four the contract had published under the noun the Grouping
+ * Field replaced — #509 aliased them here so that nothing else in the console
+ * spelled it. The aliases now follow this feature's convention, the response
+ * component without its `Out`.
  */
-export type GroupingFieldRegistry = MeteringSchemas["DimensionRegistryOut"];
-export type GroupingFieldDef = MeteringSchemas["DimensionDefOut"];
+export type GroupingFieldRegistry = MeteringSchemas["GroupingFieldRegistryOut"];
+export type GroupingField = MeteringSchemas["GroupingFieldOut"];
 
 export type StatusResponse = MeteringSchemas["StatusResponse"];
 

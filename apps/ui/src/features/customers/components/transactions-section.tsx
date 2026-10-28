@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/table";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros, formatSignedMicros } from "@/lib/format";
-import { transactionTypeLabel } from "@/lib/labels";
+import { transactionTypeLabel } from "../lib/wallet";
 import { cn } from "@/lib/utils";
 
 import { useTransactionsList } from "../api/queries";

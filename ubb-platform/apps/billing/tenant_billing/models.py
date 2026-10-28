@@ -2,21 +2,42 @@ from django.db import models
 
 from core.currency_policy import usd_only_check
 from core.models import BaseModel
+from core.vocabulary import (
+    BILLING_PERIOD_STATUS_CLOSED,
+    BILLING_PERIOD_STATUS_INVOICED,
+    BILLING_PERIOD_STATUS_INVOICING,
+    BILLING_PERIOD_STATUS_OPEN,
+    TENANT_INVOICE_STATUS_DRAFT,
+    TENANT_INVOICE_STATUS_FINALIZED,
+    TENANT_INVOICE_STATUS_PAID,
+    TENANT_INVOICE_STATUS_UNCOLLECTIBLE,
+    TENANT_INVOICE_STATUS_VOID,
+    TENANT_INVOICE_STATUS_WITHHELD_VALUES,
+)
 
 
+# The registry's closed `billing_period_status` and `tenant_invoice_status`
+# (R10-W4), by reference.
 TENANT_BILLING_PERIOD_STATUS_CHOICES = [
-    ("open", "Open"),
-    ("closed", "Closed"),
-    ("invoicing", "Invoicing"),
-    ("invoiced", "Invoiced"),
+    (BILLING_PERIOD_STATUS_OPEN, "Open"),
+    (BILLING_PERIOD_STATUS_CLOSED, "Closed"),
+    (BILLING_PERIOD_STATUS_INVOICING, "Invoicing"),
+    (BILLING_PERIOD_STATUS_INVOICED, "Invoiced"),
 ]
 
+# The states a platform-fee invoice can reach TODAY. `void` and `uncollectible`
+# are declared but WITHHELD (the owner's review of #620): no production
+# transition writes either (the registry entry records the proof), so neither
+# is offered here nor advertised on the contract. A writer that mirrors one
+# onto the tenant invoice un-withholds it in the same commit.
 TENANT_INVOICE_STATUS_CHOICES = [
-    ("draft", "Draft"),
-    ("finalized", "Finalized"),
-    ("paid", "Paid"),
-    ("void", "Void"),
-    ("uncollectible", "Uncollectible"),
+    (value, label) for value, label in (
+        (TENANT_INVOICE_STATUS_DRAFT, "Draft"),
+        (TENANT_INVOICE_STATUS_FINALIZED, "Finalized"),
+        (TENANT_INVOICE_STATUS_PAID, "Paid"),
+        (TENANT_INVOICE_STATUS_VOID, "Void"),
+        (TENANT_INVOICE_STATUS_UNCOLLECTIBLE, "Uncollectible"),
+    ) if value not in TENANT_INVOICE_STATUS_WITHHELD_VALUES
 ]
 
 
@@ -29,7 +50,7 @@ class TenantBillingPeriod(BaseModel):
     status = models.CharField(
         max_length=20,
         choices=TENANT_BILLING_PERIOD_STATUS_CHOICES,
-        default="open",
+        default=BILLING_PERIOD_STATUS_OPEN,
         db_index=True,
     )
     #: Σ `billed_cost_micros` over the period's postings, placed by ARRIVAL
@@ -40,10 +61,11 @@ class TenantBillingPeriod(BaseModel):
     #: Every real `metered_usage` event recorded in the period, priced or
     #: not — and never a Task Charge, which is synthetic revenue rather
     #: than an event the tenant recorded (#563). So the money above
-    #: includes what this count excludes, deliberately. PUBLISHED as
-    #: `recorded_events`, the registry's measure; `event_count` is the
-    #: column's internal name only.
-    event_count = models.BigIntegerField(default=0)
+    #: includes what this count excludes, deliberately. Published under
+    #: this same name, the registry's measure (`analytics_measure`); the
+    #: column took it by `RenameField` in R10-W4 (ruling 1), so the stored
+    #: name and the published one are one name.
+    recorded_events = models.BigIntegerField(default=0)
     platform_fee_micros = models.BigIntegerField(default=0)
     #: THE CURRENCY THIS PERIOD'S MONEY IS IN, stamped from the tenant when
     #: the period opens. A fact about money names its currency (#145 §7.2),
@@ -64,7 +86,7 @@ class TenantBillingPeriod(BaseModel):
             # Only one open period per tenant at a time
             models.UniqueConstraint(
                 fields=["tenant"],
-                condition=models.Q(status="open"),
+                condition=models.Q(status=BILLING_PERIOD_STATUS_OPEN),
                 name="uq_one_open_period_per_tenant",
             ),
         ]
@@ -88,7 +110,7 @@ class TenantInvoice(BaseModel):
     status = models.CharField(
         max_length=20,
         choices=TENANT_INVOICE_STATUS_CHOICES,
-        default="draft",
+        default=TENANT_INVOICE_STATUS_DRAFT,
         db_index=True,
     )
     finalized_at = models.DateTimeField(null=True, blank=True)

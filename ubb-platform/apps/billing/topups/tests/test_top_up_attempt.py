@@ -18,7 +18,7 @@ class TopUpAttemptModelTest(TestCase):
         attempt = TopUpAttempt.objects.create(
             customer=self.customer,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
         self.assertEqual(attempt.status, "pending")
@@ -26,11 +26,11 @@ class TopUpAttemptModelTest(TestCase):
         self.assertIsNone(attempt.stripe_payment_intent_id)
         self.assertIsNone(attempt.failure_reason)
 
-    def test_unique_pending_auto_topup_per_customer(self):
+    def test_unique_pending_auto_top_up_per_customer(self):
         TopUpAttempt.objects.create(
             customer=self.customer,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
         with self.assertRaises(IntegrityError):
@@ -38,7 +38,7 @@ class TopUpAttemptModelTest(TestCase):
                 TopUpAttempt.objects.create(
                     customer=self.customer,
                     amount_micros=10_000_000,
-                    trigger="auto_topup",
+                    trigger="auto_top_up",
                     status="pending",
                 )
 
@@ -57,11 +57,11 @@ class TopUpAttemptModelTest(TestCase):
         )
         self.assertEqual(attempt2.trigger, "manual")
 
-    def test_pending_auto_topup_allowed_after_previous_succeeded(self):
+    def test_pending_auto_top_up_allowed_after_previous_succeeded(self):
         attempt1 = TopUpAttempt.objects.create(
             customer=self.customer,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
         attempt1.status = "succeeded"
@@ -69,7 +69,7 @@ class TopUpAttemptModelTest(TestCase):
         attempt2 = TopUpAttempt.objects.create(
             customer=self.customer,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
         self.assertEqual(attempt2.status, "pending")
@@ -78,7 +78,7 @@ class TopUpAttemptModelTest(TestCase):
         attempt = TopUpAttempt.objects.create(
             customer=self.customer,
             amount_micros=20_000_000,
-            trigger="auto_topup",
+            trigger="auto_top_up",
             status="pending",
         )
         attempt.status = "expired"

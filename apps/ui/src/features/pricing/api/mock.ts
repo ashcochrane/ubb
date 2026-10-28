@@ -37,7 +37,7 @@ import type {
   CostBook,
   CostBookIn,
   CustomerOverrideIn,
-  GroupingFieldDef,
+  GroupingField,
   InheritedRule,
   InheritedRuleParams,
   ListAgreedPricesParams,
@@ -790,7 +790,7 @@ export async function withdrawTenantDefaultMarkup(): Promise<StatusResponse> {
 
 // --- The tenant's declared grouping vocabulary ------------------------------
 
-export async function listGroupingFields(): Promise<GroupingFieldDef[]> {
+export async function listGroupingFields(): Promise<GroupingField[]> {
   await mockDelay();
   return MOCK_GROUPING_FIELDS.map((field) => ({ ...field }));
 }

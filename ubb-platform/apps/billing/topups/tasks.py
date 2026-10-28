@@ -10,21 +10,21 @@ logger = logging.getLogger(__name__)
 @shared_task(queue="ubb_topups")
 def expire_stale_topup_attempts():
     """Expire stale pending TopUpAttempts that are stuck."""
-    from apps.billing.topups.models import TopUpAttempt
+    from apps.billing.topups.models import TRIGGER_AUTO_TOP_UP, TopUpAttempt
 
     now = timezone.now()
     auto_cutoff = now - timedelta(minutes=30)
     manual_cutoff = now - timedelta(hours=24)
 
-    # Expire stale auto-topup attempts
+    # Expire stale auto top-up attempts
     auto_expired = TopUpAttempt.objects.filter(
         status="pending",
-        trigger="auto_topup",
+        trigger=TRIGGER_AUTO_TOP_UP,
         created_at__lt=auto_cutoff,
     ).update(status="expired")
     if auto_expired:
         logger.info(
-            "Expired stale auto-topup attempts",
+            "Expired stale auto top-up attempts",
             extra={"data": {"expired_count": auto_expired}},
         )
 

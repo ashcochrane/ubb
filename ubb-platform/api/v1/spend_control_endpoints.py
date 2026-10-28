@@ -63,10 +63,17 @@ from core.identifiers import UUIDIdentifier
 from core.problems import Problem
 from core.time_windows import REPORT_WINDOW_MAX_DAYS
 from core.vocabulary import (
-    CEILING_STATUS_CEILING_REACHED, CEILING_STATUS_INDETERMINATE,
-    CEILING_STATUS_NOT_APPLICABLE, CEILING_STATUS_WITHIN_CEILING,
-    CONTROL_FAMILY_CEILING, CONTROL_FAMILY_CUSTOMER_SPEND_POOL,
-    CONTROL_FAMILY_VALUES, CONTROL_FAMILY_WALLET_POLICY)
+    CEILING_STATUS_CEILING_REACHED,
+    CEILING_STATUS_INDETERMINATE,
+    CEILING_STATUS_NOT_APPLICABLE,
+    CEILING_STATUS_WITHIN_CEILING,
+    CONTROL_FAMILY_CEILING,
+    CONTROL_FAMILY_CUSTOMER_SPEND_POOL,
+    CONTROL_FAMILY_VALUES,
+    CONTROL_FAMILY_WALLET_POLICY,
+    STOP_SCOPE_CUSTOMER,
+    STOP_SCOPE_SUBTASK,
+)
 
 spend_control_router = Router(auth=ApiKeyAuth())
 
@@ -150,7 +157,7 @@ def _itemised(events):
     price = _pair_total_of(events, CUSTOMER_PRICE)
     supplier = _pair_total_of(events, SUPPLIER_COST)
     return ItemisedEventsOut(
-        events=events, event_count=len(events),
+        events=events, posting_count=len(events),
         billed_cost_micros=price["billed_cost_micros"],
         unpriced_event_count=price[UNPRICED_EVENT_COUNT_KEY],
         provider_cost_micros=supplier["provider_cost_micros"],
@@ -177,14 +184,14 @@ def _bucket(postings, stop_lines):
             if word in excluded:
                 continue
             row = _event_row(posting, arrived_after=ctx.get("arrived_after", True))
-            if scope == "customer":
+            if scope == STOP_SCOPE_CUSTOMER:
                 if word in stop_lines:
-                    key = ("customer", owner, word, ctx.get("episode_seq"))
+                    key = (STOP_SCOPE_CUSTOMER, owner, word, ctx.get("episode_seq"))
                 else:
-                    key = ("customer", owner, None, ctx.get("episode_seq"))
+                    key = (STOP_SCOPE_CUSTOMER, owner, None, ctx.get("episode_seq"))
                     row = (parse_datetime(ctx["tripped_at"])
                            if ctx.get("tripped_at") else None, row)
-            elif scope == "subtask":
+            elif scope == STOP_SCOPE_SUBTASK:
                 key = ("unit", ctx.get("subtask_id"))
             else:
                 key = ("unit", ctx.get("task_id"))
@@ -201,7 +208,7 @@ def _claim_legacy(buckets, episodes):
     """
     claimed = {}
     for key, tagged in buckets.items():
-        if key[0] != "customer" or key[2] is not None:
+        if key[0] != STOP_SCOPE_CUSTOMER or key[2] is not None:
             continue
         owner, seq = key[1], key[3]
         candidates = [ep for ep in episodes
@@ -262,7 +269,7 @@ def build_stops_and_breaches(tenant, *, since, until, customer=None,
                    for ep in episodes) else []
         for ep in episodes:
             events = list(buckets.get(
-                ("customer", ep["owner_id"], ep["reason_code"], ep["episode_seq"]), []))
+                (STOP_SCOPE_CUSTOMER, ep["owner_id"], ep["reason_code"], ep["episode_seq"]), []))
             events += legacy.get(id(ep), [])
             events.sort(key=lambda e: e.effective_at)
             if ep["control_family"] == CONTROL_FAMILY_CUSTOMER_SPEND_POOL:
@@ -333,7 +340,7 @@ def _totals(rows):
         events = list(by_family[family].values())
         block = _itemised(events)
         out.append(SpendControlFamilyTotalsRow(
-            control_family=family, event_count=block.event_count,
+            control_family=family, posting_count=block.posting_count,
             billed_cost_micros=block.billed_cost_micros,
             unpriced_event_count=block.unpriced_event_count,
             provider_cost_micros=block.provider_cost_micros,

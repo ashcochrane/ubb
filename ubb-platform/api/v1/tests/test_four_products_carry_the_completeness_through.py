@@ -133,7 +133,7 @@ class TestTheWorkUnitTotalIsTheSumOfWhatResolved:
         unit.refresh_from_db()
         assert unit.total_provider_cost_micros == KNOWN_COST_MICROS
         assert unit.unresolved_event_count == 1
-        assert unit.event_count == 2
+        assert unit.recorded_events == 2
 
     def test_a_cost_that_does_not_exist_leaves_the_total_whole(self):
         unit = self._unit()
@@ -207,7 +207,7 @@ class TestTheWorkUnitTotalIsTheSumOfWhatResolved:
                     unit.id, billed_cost_micros=1, provider_cost_micros=None)
         unit.refresh_from_db()
         assert unit.unresolved_event_count == 0
-        assert unit.event_count == 0
+        assert unit.recorded_events == 0
 
     def test_the_re_announcement_publishes_the_current_completeness(self):
         """A repaired delivery says exactly what the original said.
@@ -682,7 +682,7 @@ class TestStopsAndBreachesAddsUpWhatItHas:
 
     def test_the_episode_total_is_the_part_the_report_could_add_up(self):
         row, = self._report().rows
-        assert row.itemised.event_count == 2
+        assert row.itemised.posting_count == 2
         assert row.itemised.provider_cost_micros == KNOWN_COST_MICROS
         assert getattr(row.itemised, UNRESOLVED_EVENT_COUNT_KEY) == 1
 

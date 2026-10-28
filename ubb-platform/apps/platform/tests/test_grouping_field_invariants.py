@@ -15,13 +15,13 @@ that: `declare` rejects those keys before it ever looks at `slot`, so no slot
 argument can change the outcome. Those two loops are driven at ten anyway
 because the ticket asks for it, and because "the refusal does not consult the
 slot" is itself the thing worth holding still — but they buy their coverage from
-the ordering in `DimensionService.declare`, not from the repetition.
+the ordering in `GroupingFieldService.declare`, not from the repetition.
 """
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import SLOT_CHOICES, GroupingField
-from apps.platform.grouping_fields.services import DimensionError, DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldError, GroupingFieldService
 from apps.metering.pricing.tests._helpers import a_usage_event_subject
 from core.vocabulary import COSTING_METHOD_CALCULATED
 
@@ -36,41 +36,41 @@ class TestGroupingFieldInvariants:
     def test_slot_rebinding_is_refused(self):
         for origin, destination in zip(SLOTS, SLOTS[1:] + SLOTS[:1]):
             t = self._t()
-            DimensionService.declare(t, key="region", slot=origin, scope="task")
-            with pytest.raises(DimensionError, match="immutable"):
-                DimensionService.declare(t, key="region", slot=destination, scope="task")
+            GroupingFieldService.declare(t, key="region", slot=origin, scope="task")
+            with pytest.raises(GroupingFieldError, match="immutable"):
+                GroupingFieldService.declare(t, key="region", slot=destination, scope="task")
 
     def test_scope_change_is_refused(self):
         for slot in SLOTS:
             t = self._t()
-            DimensionService.declare(t, key="region", slot=slot, scope="task")
-            with pytest.raises(DimensionError, match="immutable"):
-                DimensionService.declare(t, key="region", slot=slot, scope="event")
+            GroupingFieldService.declare(t, key="region", slot=slot, scope="task")
+            with pytest.raises(GroupingFieldError, match="immutable"):
+                GroupingFieldService.declare(t, key="region", slot=slot, scope="event")
 
     def test_cardinality_cannot_be_lowered(self):
         for slot in SLOTS:
             t = self._t()
-            DimensionService.declare(t, key="region", slot=slot, scope="task",
-                                     max_cardinality=100)
-            with pytest.raises(DimensionError, match="lowered"):
-                DimensionService.declare(t, key="region", slot=slot, scope="task",
-                                         max_cardinality=99)
+            GroupingFieldService.declare(t, key="region", slot=slot, scope="task",
+                                         max_cardinality=100)
+            with pytest.raises(GroupingFieldError, match="lowered"):
+                GroupingFieldService.declare(t, key="region", slot=slot, scope="task",
+                                             max_cardinality=99)
 
-    def test_every_correlation_id_is_refused_as_a_dimension(self):
+    def test_every_correlation_id_is_refused_as_a_grouping_field(self):
         t = self._t()
         from apps.platform.grouping_fields.models import FORBIDDEN_KEYS
         for key in FORBIDDEN_KEYS:
             for slot in SLOTS:
-                with pytest.raises(DimensionError, match="correlation"):
-                    DimensionService.declare(t, key=key, slot=slot, scope="event")
+                with pytest.raises(GroupingFieldError, match="correlation"):
+                    GroupingFieldService.declare(t, key=key, slot=slot, scope="event")
 
-    def test_every_reserved_key_is_refused_as_a_dimension(self):
+    def test_every_reserved_key_is_refused_as_a_grouping_field(self):
         t = self._t()
         from apps.platform.grouping_fields.models import RESERVED_KEYS
         for key in RESERVED_KEYS:
             for slot in SLOTS:
-                with pytest.raises(DimensionError, match="reserved"):
-                    DimensionService.declare(t, key=key, slot=slot, scope="event")
+                with pytest.raises(GroupingFieldError, match="reserved"):
+                    GroupingFieldService.declare(t, key=key, slot=slot, scope="event")
 
     def test_a_slot_outside_the_vocabulary_is_refused(self):
         """#276's own refusal, and it exists because the alternative is silent.
@@ -87,8 +87,8 @@ class TestGroupingFieldInvariants:
         """
         t = self._t()
         for slot in ("dim1", "slot_1", ""):
-            with pytest.raises(DimensionError, match="is not a slot"):
-                DimensionService.declare(t, key="region", slot=slot, scope="event")
+            with pytest.raises(GroupingFieldError, match="is not a slot"):
+                GroupingFieldService.declare(t, key="region", slot=slot, scope="event")
 
     def test_every_declared_slot_is_accepted(self):
         """The control for the refusal above.
@@ -99,7 +99,7 @@ class TestGroupingFieldInvariants:
         """
         t = self._t()
         for position, slot in enumerate(SLOTS):
-            declared = DimensionService.declare(
+            declared = GroupingFieldService.declare(
                 t, key=f"key_{position}", slot=slot, scope="event")
             assert declared.slot == slot
 
@@ -112,7 +112,7 @@ class TestGroupingFieldInvariants:
         for position, slot in enumerate(SLOTS):
             t = self._t()
             key = f"key_{position}"
-            DimensionService.declare(t, key=key, slot=slot, scope="task")
+            GroupingFieldService.declare(t, key=key, slot=slot, scope="task")
             GroupingField.objects.filter(tenant=t, key=key).update(
                 retired_at=timezone.now())
             assert slot_map(t.id)[key] == slot
@@ -133,9 +133,9 @@ class TestGroupingFieldInvariants:
         from apps.platform.grouping_fields.models import GroupingFieldValue
 
         t = self._t()
-        DimensionService.declare(t, key="region", slot=SLOTS[-1], scope="event")
-        DimensionService.admit(t, {"region": "eu-west-1"}, scope="event")
-        DimensionService.admit(t, {"region": "us-east-1"}, scope="event")
+        GroupingFieldService.declare(t, key="region", slot=SLOTS[-1], scope="event")
+        GroupingFieldService.admit(t, {"region": "eu-west-1"}, scope="event")
+        GroupingFieldService.admit(t, {"region": "us-east-1"}, scope="event")
 
         GroupingField.objects.filter(tenant=t, key="region").update(
             retired_at=timezone.now())
@@ -145,9 +145,9 @@ class TestGroupingFieldInvariants:
                 "eu-west-1", "us-east-1"}
         # A value already admitted is still admissible — it is a read of the
         # ledger, not a new entry — while a novel one is refused.
-        DimensionService.admit(t, {"region": "eu-west-1"}, scope="event")
-        with pytest.raises(DimensionError, match="retired"):
-            DimensionService.admit(t, {"region": "ap-south-1"}, scope="event")
+        GroupingFieldService.admit(t, {"region": "eu-west-1"}, scope="event")
+        with pytest.raises(GroupingFieldError, match="retired"):
+            GroupingFieldService.admit(t, {"region": "ap-south-1"}, scope="event")
 
     def test_posting_and_rate_share_one_selector_vocabulary(self):
         """The unification (design D3): one word list, both sides.

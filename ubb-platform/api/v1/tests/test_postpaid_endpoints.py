@@ -7,15 +7,15 @@ from apps.platform.customers.models import Customer
 
 class PostpaidEndpointsTest(TestCase):
     def setUp(self):
-        from apps.platform.grouping_fields.services import DimensionService
+        from apps.platform.grouping_fields.services import GroupingFieldService
         self.http = Client()
         self.tenant = Tenant.objects.create(name="T", products=["metering", "billing"])
         # The invoice-line grouping is an axis this tenant declared (#503), so
         # the two the config tests below send have to exist.
         for key, slot in (("product_id", "grouping_field_1"),
                           ("model", "grouping_field_2")):
-            DimensionService.declare(self.tenant, key=key, slot=slot,
-                                     scope="event")
+            GroupingFieldService.declare(self.tenant, key=key, slot=slot,
+                                         scope="event")
         _, self.key = TenantApiKey.create_key(self.tenant, label="t")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
@@ -95,15 +95,15 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
     """
 
     def setUp(self):
-        from apps.platform.grouping_fields.services import DimensionService
+        from apps.platform.grouping_fields.services import GroupingFieldService
         self.http = Client()
         self.tenant = Tenant.objects.create(
             name="T", products=["metering", "billing"])
         # `max_cardinality=2` is the whole fixture for the warning cases below:
         # the default is 100, which no reasonable fixture reaches.
-        DimensionService.declare(self.tenant, key="region",
-                                 slot="grouping_field_1", scope="event",
-                                 max_cardinality=2)
+        GroupingFieldService.declare(self.tenant, key="region",
+                                     slot="grouping_field_1", scope="event",
+                                     max_cardinality=2)
         _, self.key = TenantApiKey.create_key(self.tenant, label="t")
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="c1")

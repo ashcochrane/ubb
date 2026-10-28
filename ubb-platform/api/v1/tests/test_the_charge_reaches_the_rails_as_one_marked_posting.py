@@ -75,7 +75,7 @@ from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.events.dispatch import dispatch_to_handlers
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import UsageRecorded
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.work.models import Task
 from core.exceptions import NegativeKnownPriceRefused
 from core.vocabulary import (
@@ -244,8 +244,8 @@ class TestAChargeProjectsOntoExactlyOnePosting(ProjectionTestBase):
         identical to the ones the metered postings beside it carry, because
         landing in the same bucket is the whole claim.
         """
-        DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
-                                 slot="grouping_field_1", scope="task")
+        GroupingFieldService.declare(self.tenant, key=A_GROUPING_KEY,
+                                     slot="grouping_field_1", scope="task")
         a_price_for_whole_work(self.tenant, task_type=SOLD_WHOLE,
                                agreed_price_micros=THE_AGREED_PRICE)
         started = self._start(**declared_grouping_values(
@@ -466,7 +466,7 @@ class TestThePostingsIdIsStillTheExactlyOnceMoneyKey(ProjectionTestBase):
 
         projection = self._projection_of(started)
         debits = WalletTransaction.objects.filter(
-            usage_event_id=projection.id, transaction_type="USAGE_DEDUCTION")
+            usage_event_id=projection.id, transaction_type="usage_deduction")
         assert debits.count() == 1
         assert debits.get().amount_micros == -THE_AGREED_PRICE
 
@@ -492,7 +492,7 @@ class TestThePostingsIdIsStillTheExactlyOnceMoneyKey(ProjectionTestBase):
             customer=self.customer).balance_micros == before
         assert WalletTransaction.objects.filter(
             usage_event_id=self._projection_of(started).id,
-            transaction_type="USAGE_DEDUCTION").count() == 1
+            transaction_type="usage_deduction").count() == 1
 
     def test_the_amount_mismatch_guard_still_fires_on_a_second_amount(
             self, caplog):

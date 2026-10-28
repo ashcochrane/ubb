@@ -27,15 +27,17 @@ class CloseTaskResponse:
     """ 
         Attributes:
             charge_created (bool):
-            event_count (int):
             outcome (CloseTaskResponseOutcome):
+            recorded_events (int): How many metered usage events were recorded under this unit of work, its contained work's
+                included, whatever each was priced at. It never counts the Charge of a unit sold at one agreed price: that
+                Charge is revenue, in `total_billed_cost_micros`, not an event anybody reported.
             replayed (bool):
             status (CloseTaskResponseStatus):
             task_id (str):
             total_billed_cost_micros (int): What this unit billed, in micros: the sum of the customer prices UBB has
                 resolved for its events and, for a unit sold at one agreed price that delivered, its Charge — included from the
                 close that created it. `unpriced_event_count` says how many events it does not include. The Charge is never in
-                `total_provider_cost_micros`, `event_count` or `unpriced_event_count`.
+                `total_provider_cost_micros`, `recorded_events` or `unpriced_event_count`.
             total_provider_cost_micros (int):
             unpriced_event_count (int):
             unresolved_event_count (int):
@@ -43,8 +45,8 @@ class CloseTaskResponse:
      """
 
     charge_created: bool
-    event_count: int
     outcome: CloseTaskResponseOutcome
+    recorded_events: int
     replayed: bool
     status: CloseTaskResponseStatus
     task_id: str
@@ -62,9 +64,9 @@ class CloseTaskResponse:
     def to_dict(self) -> dict[str, Any]:
         charge_created = self.charge_created
 
-        event_count = self.event_count
-
         outcome = self.outcome.value
+
+        recorded_events = self.recorded_events
 
         replayed = self.replayed
 
@@ -91,8 +93,8 @@ class CloseTaskResponse:
         field_dict.update(self.additional_properties)
         field_dict.update({
             "charge_created": charge_created,
-            "event_count": event_count,
             "outcome": outcome,
+            "recorded_events": recorded_events,
             "replayed": replayed,
             "status": status,
             "task_id": task_id,
@@ -113,12 +115,12 @@ class CloseTaskResponse:
         d = dict(src_dict)
         charge_created = d.pop("charge_created")
 
-        event_count = d.pop("event_count")
-
         outcome = CloseTaskResponseOutcome(d.pop("outcome"))
 
 
 
+
+        recorded_events = d.pop("recorded_events")
 
         replayed = d.pop("replayed")
 
@@ -149,8 +151,8 @@ class CloseTaskResponse:
 
         close_task_response = cls(
             charge_created=charge_created,
-            event_count=event_count,
             outcome=outcome,
+            recorded_events=recorded_events,
             replayed=replayed,
             status=status,
             task_id=task_id,

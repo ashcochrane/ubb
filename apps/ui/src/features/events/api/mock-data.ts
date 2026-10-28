@@ -38,6 +38,7 @@ import { receiptComponent, type ReceiptComponent } from "../lib/receipt";
 
 import type {
   CustomerChoice,
+  PricingReceipt,
   UsageEventDetail,
 } from "./types";
 
@@ -422,7 +423,7 @@ function methodOf(seed: DetailSeed): PricingMethod | null {
  * seed already states, which is the same rule `@/lib/economic-scenarios`
  * applies one layer down.
  */
-function pricingReceipt(seed: DetailSeed): Record<string, unknown> {
+function pricingReceipt(seed: DetailSeed): PricingReceipt {
   const method = methodOf(seed);
   const costSettled = seed.cost.costing_status === "known";
   return {
@@ -457,7 +458,7 @@ function pricingReceipt(seed: DetailSeed): Record<string, unknown> {
         // supply one; both are deleted and the rung that remains takes a
         // percentage and a basis, so a receipt carrying a third term would be
         // recording a zero nobody declared.
-        ...(method === "margin_over_cost"
+        ...(method === "margin_over_cost" && seed.markup_micro_percent != null
           ? {
               markup: {
                 micro_percent: seed.markup_micro_percent,

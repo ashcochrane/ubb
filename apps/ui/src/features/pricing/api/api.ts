@@ -10,7 +10,7 @@ import type {
   CostBook,
   CostBookIn,
   CustomerOverrideIn,
-  GroupingFieldDef,
+  GroupingField,
   GroupingFieldRegistry,
   InheritedRule,
   InheritedRuleParams,
@@ -319,7 +319,7 @@ export async function withdrawTenantDefaultMarkup(): Promise<StatusResponse> {
  * rules table all want the rows, and turning a wire envelope into what the
  * console means is what this module is for.
  */
-export async function listGroupingFields(): Promise<GroupingFieldDef[]> {
+export async function listGroupingFields(): Promise<GroupingField[]> {
   const registry: GroupingFieldRegistry = unwrap(
     await meteringApi.GET("/grouping-fields"),
   );

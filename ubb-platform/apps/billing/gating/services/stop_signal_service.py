@@ -53,7 +53,10 @@ from apps.platform.tenants.flags import enforcing
 from apps.platform.work import reasons
 from core import controls
 from core.vocabulary import (
-    CONTROL_FAMILY_WALLET_POLICY, CUSTOMER_BILLING_MODE_PREPAID)
+    CONTROL_FAMILY_WALLET_POLICY,
+    CUSTOMER_BILLING_MODE_PREPAID,
+    STOP_SCOPE_CUSTOMER,
+)
 
 logger = logging.getLogger("ubb.billing")
 
@@ -306,7 +309,7 @@ class StopSignalService:
                 return None
             emit_stamped(row, CustomerStopped(
                 tenant_id=str(tenant.id), owner_id=str(owner.id),
-                scope="customer", episode_seq=row.episode_seq,
+                scope=STOP_SCOPE_CUSTOMER, episode_seq=row.episode_seq,
                 **control_fields(row)))
             postpaid = tenant.billing_mode == "postpaid"
             if (not postpaid or enforcing(tenant)) and owner.status == "active":
@@ -356,7 +359,7 @@ class StopSignalService:
                 return None
             emit_stamped(row, CustomerStopCleared(
                 tenant_id=str(tenant.id), owner_id=str(owner_id),
-                scope="customer", episode_seq=row.episode_seq,
+                scope=STOP_SCOPE_CUSTOMER, episode_seq=row.episode_seq,
                 balance_micros=announced_balance(
                     owner_id, tenant, measured=balance_micros),
                 **control_fields(row)))

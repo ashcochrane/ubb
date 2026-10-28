@@ -241,7 +241,7 @@ small shell results (`TopUpResult`, `AutoTopUpResult`, `WithdrawResult`,
 | `withdraw` | `WithdrawResponse` |
 | `refund_usage` | `RefundResponse` |
 | `get_transactions` | `PaginatedResponse[WalletTransactionOut]` |
-| `get_customer_margin` | `CustomerMarginOut` (full body — adds `usage_revenue_micros`, `total_revenue_micros`, `event_count`, `external_id`, `period`) |
+| `get_customer_margin` | `CustomerMarginOut` (full body — adds `usage_revenue_micros`, `total_revenue_micros`, a count of the customer's postings, `external_id`, `period`) |
 | `get_margin_by_grouping_field` (was `get_margin_by_dimension` — see §8) | `list[GroupingFieldMarginRow]` |
 | `get_margin_trend` | `list[MarginTrendPointOut]` |
 
@@ -1022,8 +1022,9 @@ elsewhere — on a stop — is a different concept and is unchanged.
 The period's money, published under a "usage cost" name until #516, is
 `TenantBillingPeriodOut.total_billed_cost_micros`: the sum of `billed_cost_micros`
 over the period's postings, a fixed-price unit's charge included. Its count is
-`recorded_events` (the registry's measure; it was `event_count`), every metered usage event, priced or not,
-and never that charge — so the money includes what the count excludes.
+`recorded_events` (the registry's measure; until #619 it was published under the generic count
+name §22 retires), every metered usage event, priced or not, and never that charge — so the money
+includes what the count excludes.
 
 ### Money is in US dollars
 
@@ -1034,6 +1035,113 @@ in another currency is kept as Stripe sent it — `amount_micros` /
 `source_amount_paid_minor` — and left out of revenue; every margin read that could
 have counted one states how many it left out in `foreign_currency_subscription_count`
 (0 when none).
+
+## 22. Each count is named for what it counts (R10-W4 ruling 1 — pre-live)
+
+Eight response fields shared one generic count name, so a reader could not tell
+from the name which rows were counted. Each now carries the name of what it
+counts, and the generic name is retired: the API never publishes it again. The
+regenerated models carry the new attribute names; no amount, row or arithmetic
+changes.
+
+| Model | Now | What it counts |
+|---|---|---|
+| `TaskOut`, `TaskDetailOut`, `CloseTaskResponse` | `recorded_events` | Metered usage events recorded under the unit of work, its contained work's included — never the Charge of a unit sold at one agreed price |
+| `EconomicMeasureOut` | `count` | The count measure's figure; `measure` beside it (`recorded_events`) says what is counted |
+| `ItemisedEventsOut` | `posting_count` | The postings an episode itemises (the rows its totals add up) |
+| `SpendControlFamilyTotalsRow` | `posting_count` | The distinct postings a family's episodes itemise |
+| `SeatMarginOut` | `posting_count` | Every posting the customer has in the window |
+| `BusinessMarginTotals` | `posting_count` | The seats' posting counts added up |
+
+A `posting_count` counts postings of every kind, so it **can include a Task
+Charge's projected posting**; `recorded_events` never does. Read
+`recorded_events` for "how many events were reported", and a `posting_count` only
+as the size of the set its own totals add up.
+
+## 23. One vocabulary authority, a typed Pricing Receipt, and a rule's method (R10-W4 — pre-live)
+
+Pre-live changes from #190's W4, each recorded in the contract's suppression
+files as reviewed (ADR-0024). No amount, posting selection or report arithmetic
+changes; `PRICING_ENGINE_VERSION` stays 3.0.0.
+
+### Twenty more value sets arrive as enums
+
+Fields that carried a fixed set of values as a bare string are now the
+registry's enums, and the regenerated core gives each its own enum class — an
+audit record's `action`, `resource_type` and `actor_kind` (open: an unfamiliar
+kind still parses), a member's and an invitation's `role` and `status`,
+`enforcement_mode`, a stop's `stop_scope`, a wallet movement's
+`transaction_type`, a grant's `kind`, `status` and `source`, a usage invoice's
+`status` and `skip_reason`, a tenant invoice's and billing period's `status`,
+a referral programme's `reward_type` and `status`, a referral's `status`, a
+reward ledger entry's `calculation_method`, and an economic row's
+`grouping_field_value_status`. Compare against `ubb.vocabulary`'s constants
+rather than spelling a value. A `stop_scope` read off `RecordUsageResponse` is
+now such an enum member (it compares equal to its token); `UBBStopRequested.stop_scope`
+and a batch item's `stop_scope` still answer the plain token, as they are typed.
+
+### Wallet transaction types are lowercase, and the automatic top-up source is `auto_top_up`
+
+`WalletTransactionOut.transaction_type` answers `top_up`, `usage_deduction`,
+`debit`, … — never the upper-case spellings it used before. A grant's `source`
+answers `auto_top_up` where it answered the run-together form. No other
+spelling is accepted on any route.
+
+### A skipped usage invoice says why; any other says null
+
+`TenantUsageInvoiceOut.skip_reason` is `None` on an invoice that was not
+skipped, where it was the empty string.
+
+### The Pricing Receipt is a typed model, version 2 only
+
+`RecordUsageResponse.pricing_receipt` and `UsageEventDetailOut.pricing_receipt`
+are a `PricingReceipt` and never `None`; `UsageBatchItemResponse.pricing_receipt`
+is `None` only on a rejected item. Its `costing`, `pricing`, `totals` and
+`provenance` are typed models; `detail` and `provenance` keep any key UBB adds
+later in `additional_properties`. A receipt older than version 2 does not
+parse — none exists outside a development database.
+
+### A rate says its rule's method
+
+`RateOut.pricing_method` is `margin_over_cost` or `direct_event_price` on every
+Pricing Book rule and `None` on a cost book's rate. A margin rule stores zero
+terms, so read the method before reading `rate_per_unit_micros` as a price.
+
+### The Grouping Field's models take its own name (#541)
+
+| Before | Now |
+|---|---|
+| `DimensionDefIn`, `DimensionDefOut` | `GroupingFieldIn`, `GroupingFieldOut` |
+| `DimensionRegistryIn`, `DimensionRegistryOut` | `GroupingFieldRegistryIn`, `GroupingFieldRegistryOut` |
+
+The audit `resource_type` for the registry is `grouping_field_registry`.
+
+### Webhook payloads state what they always carried
+
+`credit_grant.expiring` and `credit_grant.expired` always carry the grant's
+`kind`, and `invitation.created` and `member.activated` the `role`: each is now
+a required field.
+
+### The automatic top-up is spelled one way
+
+`BillingClient.configure_auto_topup` is now `configure_auto_top_up` (the
+wrapper `UBBClient.configure_auto_top_up` already was); the old name is gone,
+with no alias. The `usage.recorded` payload field is `auto_top_up_attempt_id`.
+
+### Each value says only what can be true
+
+- `InheritedPricingRule.pricing_method` is always set: the rule a customer is
+  priced from is a selling rule, which always states its method.
+- `RuleTermsOut.pricing_method` and `EconomicMeasureOut.count` are always
+  present. The method is null only on a cost book's rate, and `count` is null
+  on a money measure. Neither is ever omitted, and a null `count` never stands
+  in for zero.
+- A receipt's `provenance.markup.rung` is the enum `markup_rung` (one value
+  today, `tenant_default`).
+- `TenantInvoiceOut.status` no longer advertises `void` or `uncollectible`, and
+  a referral programme's `status` no longer advertises `paused`. Nothing
+  creates those states today; they return to the enum with the first writer
+  that does.
 
 ## Release checklist (operator)
 

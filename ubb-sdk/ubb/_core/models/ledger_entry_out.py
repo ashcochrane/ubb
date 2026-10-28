@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.ledger_entry_out_calculation_method import LedgerEntryOutCalculationMethod
 
 
 
@@ -22,7 +23,7 @@ T = TypeVar("T", bound="LedgerEntryOut")
 class LedgerEntryOut:
     """ 
         Attributes:
-            calculation_method (str):
+            calculation_method (LedgerEntryOutCalculationMethod):
             created_at (str):
             id (str):
             period_end (str):
@@ -32,7 +33,7 @@ class LedgerEntryOut:
             reward_micros (int):
      """
 
-    calculation_method: str
+    calculation_method: LedgerEntryOutCalculationMethod
     created_at: str
     id: str
     period_end: str
@@ -47,7 +48,7 @@ class LedgerEntryOut:
 
 
     def to_dict(self) -> dict[str, Any]:
-        calculation_method = self.calculation_method
+        calculation_method = self.calculation_method.value
 
         created_at = self.created_at
 
@@ -84,7 +85,10 @@ class LedgerEntryOut:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        calculation_method = d.pop("calculation_method")
+        calculation_method = LedgerEntryOutCalculationMethod(d.pop("calculation_method"))
+
+
+
 
         created_at = d.pop("created_at")
 

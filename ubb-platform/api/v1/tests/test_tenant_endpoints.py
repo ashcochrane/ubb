@@ -23,7 +23,7 @@ class TenantBillingPeriodsEndpointTest(TestCase):
             period_end=date(2026, 2, 1),
             status="closed",
             total_billed_cost_micros=50_000_000_000,
-            event_count=1000,
+            recorded_events=1000,
             platform_fee_micros=500_000_000,
         )
 
@@ -37,9 +37,14 @@ class TenantBillingPeriodsEndpointTest(TestCase):
         self.assertEqual(len(body["data"]), 1)
         self.assertEqual(body["data"][0]["total_billed_cost_micros"], 50_000_000_000)
         # The count by the registry's canonical name, and by no other
-        # (`analytics_measure`'s `recorded_events`; the review of #619).
+        # (`analytics_measure`'s `recorded_events`; the review of #619). The
+        # row's whole key set is pinned, so no second spelling of the count
+        # can ride beside it — the retired one included (R10-W4 ruling 1).
         self.assertEqual(body["data"][0]["recorded_events"], 1000)
-        self.assertNotIn("event_count", body["data"][0])
+        self.assertEqual(set(body["data"][0]), {
+            "id", "period_start", "period_end", "status",
+            "total_billed_cost_micros", "recorded_events",
+            "platform_fee_micros"})
 
     def test_unauthenticated_returns_401(self):
         response = self.http_client.get("/api/v1/tenant/billing-periods")
@@ -553,7 +558,7 @@ class TenantConfigCurrencyTest(TestCase):
         customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         wallet = Wallet.objects.create(customer=customer)
         WalletTransaction.objects.create(
-            wallet=wallet, transaction_type="TOP_UP",
+            wallet=wallet, transaction_type="top_up",
             amount_micros=1_000_000, balance_after_micros=1_000_000)
         a_plan(tenant=self.tenant, key="pro", name="Pro",
                access_fee_micros=10_000_000, stripe_access_price_id="price_123")

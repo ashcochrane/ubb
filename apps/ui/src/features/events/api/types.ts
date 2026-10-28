@@ -10,6 +10,7 @@ import type {
   RootSchemas,
 } from "@/api/types";
 import {
+  axisStatusOn,
   axisValueOn,
   caveatsOf,
   figuresOn,
@@ -18,10 +19,15 @@ import {
   type EconomicFigures,
   type EconomicsAnswer,
 } from "@/lib/economic-query";
-import type { AnalyticsMeasure } from "@/lib/vocabulary";
+import type {
+  AnalyticsMeasure,
+  GroupingFieldValueStatus,
+} from "@/lib/vocabulary";
 
 export type UsageEventRow = MeteringSchemas["UsageEventOut"];
 export type UsageEventDetail = MeteringSchemas["UsageEventDetailOut"];
+/** The Pricing Receipt, typed since #558 (R10-W4) — version 2 only. */
+export type PricingReceipt = MeteringSchemas["PricingReceipt"];
 export type UsagePage = MeteringSchemas["PaginatedUsageResponse"];
 // ⚠ **FOUR OF THIS FEATURE'S READS WERE FOUR ROUTES AND ARE ONE (#501)** —
 // the usage report, its day series, the per-customer margin list and one
@@ -223,8 +229,10 @@ export function asStopContextEntries(
  */
 export interface TimeseriesPoint extends EconomicFigures {
   bucket: string;
-  /** Present only when group_by was requested; "(unattributed)" for empties. */
+  /** Present only when group_by was requested and the row holds a value. */
   group_value?: string;
+  /** Why the axis holds what it holds, where the answer was grouped (#550). */
+  group_value_status?: GroupingFieldValueStatus;
 }
 
 /** The series, and what the answer said beside it — the revenue it could not
@@ -261,6 +269,8 @@ export function asTimeseries(answer: Economics): Timeseries {
       const point: TimeseriesPoint = { bucket: row.bucket_start ?? "", ...figuresOn(row) };
       const value = axisValueOn(row);
       if (value !== null) point.group_value = value;
+      const status = axisStatusOn(row);
+      if (status !== null) point.group_value_status = status;
       return point;
     }),
   };

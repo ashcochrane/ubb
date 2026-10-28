@@ -47,7 +47,7 @@ export interface MockDailyRow {
   day: string;
   provider_cost_micros: number;
   revenue_micros: number;
-  event_count: number;
+  recorded_events: number;
   unresolved_event_count: number;
   unpriced_event_count: number;
 }
@@ -82,7 +82,7 @@ export function buildDailyRows(): MockDailyRow[] {
       day: date.toISOString().slice(0, 10),
       provider_cost_micros: provider,
       revenue_micros: billed,
-      event_count: Math.round((provider / 1200) * (0.8 + noise(i + 900) * 0.4)),
+      recorded_events: Math.round((provider / 1200) * (0.8 + noise(i + 900) * 0.4)),
       // TODAY IS THE ONE INCOMPLETE DAY, and it is today on purpose (#330).
       // A supplier cost that has not arrived is a fact about the day still in
       // progress, so putting it on the last row is both the realistic story and
@@ -178,7 +178,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 1_284_520_000,
       status: "pushing",
       stripe_invoice_id: "",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 1,
       last_attempt_error: null,
     },
@@ -189,7 +189,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 642_180_000,
       status: "pending",
       stripe_invoice_id: "",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 0,
       last_attempt_error: null,
     },
@@ -200,7 +200,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 2_918_450_000,
       status: "failed",
       stripe_invoice_id: "",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 3,
       last_attempt_error:
         "Stripe: This customer has no attached payment source or default payment method.",
@@ -212,7 +212,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 0,
       status: "skipped",
       stripe_invoice_id: "",
-      skip_reason: "zero_usage_period",
+      skip_reason: "no_usage",
       push_attempts: 0,
       last_attempt_error: null,
     },
@@ -224,7 +224,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 1_106_330_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kQ2eZvKYlo2C9yTasMx1",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 1,
       last_attempt_error: null,
     },
@@ -235,7 +235,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 587_940_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kR2eZvKYlo2CqW7bNd42",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 2,
       last_attempt_error: null,
     },
@@ -246,7 +246,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 2_403_710_000,
       status: "failed_permanent",
       stripe_invoice_id: "",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 8,
       last_attempt_error: "Stripe: No such customer: 'cus_QRs7tUvWxYz012'.",
     },
@@ -257,7 +257,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 148_200_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kS2eZvKYlo2CeR3cPq83",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 1,
       last_attempt_error: null,
     },
@@ -268,7 +268,7 @@ export function buildUsageInvoices(): TenantUsageInvoice[] {
       total_billed_micros: 96_750_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kT2eZvKYlo2CxN5dRs29",
-      skip_reason: "",
+      skip_reason: null,
       push_attempts: 1,
       last_attempt_error: null,
     },

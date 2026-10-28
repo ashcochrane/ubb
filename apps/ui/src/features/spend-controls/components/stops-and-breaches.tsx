@@ -53,7 +53,7 @@ function FamilyTotalsTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="text-[11px] text-text-muted">Totals per family</TableHead>
-            <TableHead className="text-right text-[11px] text-text-muted">Events</TableHead>
+            <TableHead className="text-right text-[11px] text-text-muted">Postings</TableHead>
             <TableHead className="text-right text-[11px] text-text-muted">Billed</TableHead>
             <TableHead className="text-right text-[11px] text-text-muted">
               Provider cost
@@ -71,7 +71,7 @@ function FamilyTotalsTable({
                 {controlFamilyLabel(row.control_family)}
               </TableCell>
               <TableCell className="text-right text-[13px] tabular-nums">
-                {row.event_count.toLocaleString()}
+                {row.posting_count.toLocaleString()}
               </TableCell>
               {/* Each total is over exactly the itemised events of the rows
                   shown, each event once per family, and each is the sum of

@@ -24,7 +24,7 @@ class SandboxFeeExclusionTest(TestCase):
         return TenantBillingPeriod.objects.create(
             tenant=tenant,
             period_start=date(2026, 5, 1), period_end=date(2026, 6, 1),
-            status="open", total_billed_cost_micros=usage_micros, event_count=10)
+            status="open", total_billed_cost_micros=usage_micros, recorded_events=10)
 
     def test_calculate_fees_zero_for_sandbox_with_product_fee_configs(self):
         ProductFeeConfig.objects.create(

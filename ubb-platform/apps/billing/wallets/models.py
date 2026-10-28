@@ -4,21 +4,51 @@ from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 from core.transitions import RECORD_RULE
-from core.vocabulary import MOVEMENT_REASON_VALUES
+from core.vocabulary import (
+    GRANT_KIND_PAID,
+    GRANT_KIND_PROMO,
+    GRANT_SOURCE_API,
+    GRANT_SOURCE_AUTO_TOP_UP,
+    GRANT_SOURCE_CHECKOUT,
+    GRANT_SOURCE_OTHER,
+    GRANT_SOURCE_VALUES,
+    GRANT_STATUS_ACTIVE,
+    GRANT_STATUS_DEPLETED,
+    GRANT_STATUS_EXPIRED,
+    GRANT_STATUS_VOIDED,
+    MOVEMENT_REASON_VALUES,
+    WALLET_TRANSACTION_TYPE_ADJUSTMENT,
+    WALLET_TRANSACTION_TYPE_DEBIT,
+    WALLET_TRANSACTION_TYPE_DISPUTE_DEDUCTION,
+    WALLET_TRANSACTION_TYPE_GRANT,
+    WALLET_TRANSACTION_TYPE_GRANT_EXPIRY,
+    WALLET_TRANSACTION_TYPE_GRANT_VOID,
+    WALLET_TRANSACTION_TYPE_REFUND,
+    WALLET_TRANSACTION_TYPE_STRIPE_REFUND,
+    WALLET_TRANSACTION_TYPE_TOP_UP,
+    WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION,
+    WALLET_TRANSACTION_TYPE_VALUES,
+    WALLET_TRANSACTION_TYPE_WITHDRAWAL,
+)
 
 
+# What one wallet movement was — the registry's closed
+# `wallet_transaction_type` (R10-W4), by reference. LOWERCASE since R10-W4
+# (ruling 7): the ledger spelled them in upper case until then, outside the
+# registry's token rule; `0014` moved the stored rows and
+# `ck_wallet_transaction_type_known` admits exactly these afterwards.
 WALLET_TXN_TYPES = [
-    ("TOP_UP", "Top Up"),
-    ("USAGE_DEDUCTION", "Usage Deduction"),
-    ("WITHDRAWAL", "Withdrawal"),
-    ("REFUND", "Refund"),
-    ("ADJUSTMENT", "Adjustment"),
-    ("DISPUTE_DEDUCTION", "Dispute Deduction"),
-    ("STRIPE_REFUND", "Stripe Refund"),
-    ("DEBIT", "Debit"),  # written by /debit (billing_endpoints) — was missing from choices
-    ("GRANT", "Credit Grant"),
-    ("GRANT_EXPIRY", "Credit Grant Expiry"),
-    ("GRANT_VOID", "Credit Grant Void"),
+    (WALLET_TRANSACTION_TYPE_TOP_UP, "Top Up"),
+    (WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION, "Usage Deduction"),
+    (WALLET_TRANSACTION_TYPE_WITHDRAWAL, "Withdrawal"),
+    (WALLET_TRANSACTION_TYPE_REFUND, "Refund"),
+    (WALLET_TRANSACTION_TYPE_ADJUSTMENT, "Adjustment"),
+    (WALLET_TRANSACTION_TYPE_DISPUTE_DEDUCTION, "Dispute Deduction"),
+    (WALLET_TRANSACTION_TYPE_STRIPE_REFUND, "Stripe Refund"),
+    (WALLET_TRANSACTION_TYPE_DEBIT, "Debit"),
+    (WALLET_TRANSACTION_TYPE_GRANT, "Credit Grant"),
+    (WALLET_TRANSACTION_TYPE_GRANT_EXPIRY, "Credit Grant Expiry"),
+    (WALLET_TRANSACTION_TYPE_GRANT_VOID, "Credit Grant Void"),
 ]
 
 
@@ -110,6 +140,14 @@ class WalletTransaction(BaseModel):
                 | models.Q(movement_reason__in=sorted(MOVEMENT_REASON_VALUES)),
                 name="ck_wallet_transaction_movement_reason_known",
             ),
+            # The registry's eleven, lowercase (R10-W4, ruling 7). No other
+            # spelling is admitted: an upper-case type is refused here, not
+            # translated, and there is no per-concept token exception.
+            models.CheckConstraint(
+                condition=models.Q(
+                    transaction_type__in=sorted(WALLET_TRANSACTION_TYPE_VALUES)),
+                name="ck_wallet_transaction_type_known",
+            ),
         ]
 
     def __str__(self):
@@ -127,7 +165,7 @@ class CustomerBillingProfile(BaseModel):
     # values place it above zero). NULL = inherit the tenant default. Must
     # resolve to a line at or above the hard floor's (the resolver clamps).
     soft_min_balance_micros = models.BigIntegerField(null=True, blank=True)
-    # F4.3: when set, paid top-up credits (auto-topup + checkout) become a PAID
+    # F4.3: when set, paid top-up credits (auto top-up + checkout) become a PAID
     # grant expiring this many days after the credit lands. NULL = top-ups
     # never expire (legacy behavior, the default).
     topup_grant_expiry_days = models.PositiveIntegerField(null=True, blank=True)
@@ -139,18 +177,23 @@ class CustomerBillingProfile(BaseModel):
         return f"CustomerBillingProfile({self.customer.external_id})"
 
 
-GRANT_KINDS = [("paid", "Paid"), ("promo", "Promo")]
+# A credit grant's kind, status and source — the registry's closed
+# `grant_kind`, `grant_status` and `grant_source` (R10-W4), by reference.
+# The source carried the run-together spelling until R10-W4; one concept has
+# one spelling (ADR-0006 §2), and `0014` moved the stored rows with the
+# transaction types.
+GRANT_KINDS = [(GRANT_KIND_PAID, "Paid"), (GRANT_KIND_PROMO, "Promo")]
 GRANT_STATUSES = [
-    ("active", "Active"),
-    ("depleted", "Depleted"),
-    ("expired", "Expired"),
-    ("voided", "Voided"),
+    (GRANT_STATUS_ACTIVE, "Active"),
+    (GRANT_STATUS_DEPLETED, "Depleted"),
+    (GRANT_STATUS_EXPIRED, "Expired"),
+    (GRANT_STATUS_VOIDED, "Voided"),
 ]
 GRANT_SOURCES = [
-    ("checkout", "Checkout"),
-    ("auto_topup", "Auto Top-Up"),
-    ("api", "API"),
-    ("other", "Other"),
+    (GRANT_SOURCE_CHECKOUT, "Checkout"),
+    (GRANT_SOURCE_AUTO_TOP_UP, "Auto Top-Up"),
+    (GRANT_SOURCE_API, "API"),
+    (GRANT_SOURCE_OTHER, "Other"),
 ]
 
 
@@ -181,8 +224,10 @@ class CreditGrant(BaseModel):
     currency = models.CharField(max_length=3, default="usd")  # CUR-1: lowercase
     expires_at = models.DateTimeField(null=True, blank=True)
     warning_sent_at = models.DateTimeField(null=True, blank=True)
-    status = models.CharField(max_length=10, choices=GRANT_STATUSES, default="active")
-    source = models.CharField(max_length=20, choices=GRANT_SOURCES, default="other")
+    status = models.CharField(max_length=10, choices=GRANT_STATUSES,
+                              default=GRANT_STATUS_ACTIVE)
+    source = models.CharField(max_length=20, choices=GRANT_SOURCES,
+                              default=GRANT_SOURCE_OTHER)
     source_reference = models.CharField(max_length=255, blank=True, default="")
     source_transaction = models.OneToOneField(
         WalletTransaction, on_delete=models.SET_NULL, null=True, blank=True,
@@ -205,6 +250,12 @@ class CreditGrant(BaseModel):
             ),
             # UBB v1 is USD-only (ADR-0023).
             usd_only_check("currency", "ck_credit_grant_currency_usd"),
+            # The registry's four sources (R10-W4): the run-together spelling
+            # the automatic top-up's lots carried until then is refused.
+            models.CheckConstraint(
+                condition=models.Q(source__in=sorted(GRANT_SOURCE_VALUES)),
+                name="ck_credit_grant_source_known",
+            ),
         ]
 
     def __str__(self):

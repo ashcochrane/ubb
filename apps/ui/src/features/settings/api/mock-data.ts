@@ -173,6 +173,12 @@ export const TENANT_INVOICES: TenantInvoice[] = [
   },
 ];
 
+// EVERY ACTION AND RESOURCE TYPE BELOW IS ONE THE BACKEND WRITES (R10-W4).
+// The fixtures used to name eight actions and four resource types nothing
+// declares, and a test pinned the humanised words for them; the feed now words
+// both from the registry's catalogue, so an invented one would render as a
+// token the catalogue has never seen. `AuditRecord`'s generated type refuses
+// one at compile time.
 export const AUDIT_RECORDS: AuditRecord[] = [
   {
     id: "aud-18",
@@ -180,8 +186,8 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "mem-mia",
     actor_kind: "member",
     actor_display: "mia@acme.ai",
-    action: "config.updated",
-    resource_type: "tenant_config",
+    action: "tenant.config_changed",
+    resource_type: "tenant",
     resource_id: "cfg-acme",
     correlation_id: "corr-9f31",
     metadata: {
@@ -229,8 +235,8 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "mem-mia",
     actor_kind: "member",
     actor_display: "mia@acme.ai",
-    action: "credit_grant.created",
-    resource_type: "credit_grant",
+    action: "grant.created",
+    resource_type: "grant",
     resource_id: "grant-72aa",
     correlation_id: "corr-51fe",
     metadata: {
@@ -246,13 +252,13 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "system",
     actor_kind: "system",
     actor_display: "UBB",
-    action: "billing_period.closed",
-    resource_type: "billing_period",
+    action: "postpaid_config.set",
+    resource_type: "postpaid_config",
     resource_id: "bp-2026-06",
     correlation_id: "corr-4410",
     metadata: {
       period_start: "2026-06-01",
-      event_count: 1_204_118,
+      recorded_events: 1_204_118,
       platform_fee_micros: 92_130_000,
     },
   },
@@ -288,8 +294,8 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "key-live-2",
     actor_kind: "api_key",
     actor_display: "ubb_live_k9x2…",
-    action: "customer.suspended",
-    resource_type: "customer",
+    action: "wallet.debited",
+    resource_type: "wallet",
     resource_id: "cust-vanta-ml",
     correlation_id: "corr-19c4",
     metadata: { reason: "chargeback", balance_micros: -12_400_000 },
@@ -300,7 +306,7 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "mem-dev",
     actor_kind: "member",
     actor_display: "dev@example.com",
-    action: "member.role_updated",
+    action: "member.role_changed",
     resource_type: "member",
     resource_id: "mem-sasha",
     correlation_id: "corr-0fa8",
@@ -312,8 +318,8 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "operator-1",
     actor_kind: "operator",
     actor_display: "UBB support",
-    action: "ingest.backfill_reopened",
-    resource_type: "billing_period",
+    action: "margin_threshold.set",
+    resource_type: "margin_threshold",
     resource_id: "bp-2026-05",
     correlation_id: "corr-ee02",
     metadata: { window_days: 34, requested_by: "mia@acme.ai" },
@@ -324,8 +330,8 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "system",
     actor_kind: "system",
     actor_display: "UBB",
-    action: "invoice.finalized",
-    resource_type: "tenant_invoice",
+    action: "subscription.canceled",
+    resource_type: "subscription",
     resource_id: "ti-2026-06",
     correlation_id: "corr-cd55",
     metadata: {
@@ -366,7 +372,7 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_kind: "member",
     actor_display: "dev@example.com",
     action: "sandbox.created",
-    resource_type: "tenant",
+    resource_type: "sandbox",
     resource_id: "tenant-acme-sandbox",
     correlation_id: "corr-a2c9",
     metadata: { key_prefix: "ubb_test_q7ln" },
@@ -433,8 +439,8 @@ export const AUDIT_RECORDS: AuditRecord[] = [
     actor_id: "system",
     actor_kind: "system",
     actor_display: "UBB",
-    action: "tenant.created",
-    resource_type: "tenant",
+    action: "api_key.created",
+    resource_type: "api_key",
     resource_id: "tenant-acme",
     correlation_id: "corr-0001",
     metadata: { billing_mode: "external", default_currency: "usd" },

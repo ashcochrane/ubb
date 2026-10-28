@@ -86,6 +86,23 @@ from apps.platform.event_types.models import (
 )
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, role_floor
 from core.problems import Problem, ProblemOut
+from core.vocabulary import (
+    AUDIT_ACTION_EVENT_CATEGORY_DECLARED,
+    AUDIT_ACTION_EVENT_CATEGORY_WITHDRAWN,
+    AUDIT_ACTION_EVENT_TYPE_DECLARED,
+    AUDIT_ACTION_EVENT_TYPE_PUBLISHED,
+    AUDIT_ACTION_MEASUREMENT_DECLARED,
+    AUDIT_ACTION_MEASUREMENT_WITHDRAWN,
+    AUDIT_ACTION_PROVIDER_DECLARED,
+    AUDIT_ACTION_PROVIDER_RETIRED,
+    AUDIT_ACTION_REPORTED_COST_MAPPING_DECLARED,
+    AUDIT_ACTION_REPORTED_COST_MAPPING_WITHDRAWN,
+    AUDIT_RESOURCE_TYPE_EVENT_CATEGORY,
+    AUDIT_RESOURCE_TYPE_EVENT_TYPE,
+    AUDIT_RESOURCE_TYPE_MEASUREMENT,
+    AUDIT_RESOURCE_TYPE_PROVIDER,
+    AUDIT_RESOURCE_TYPE_REPORTED_COST_MAPPING,
+)
 
 event_type_router = Router(auth=ApiKeyAuth())
 
@@ -296,14 +313,14 @@ def list_providers(request, cursor: str = None, limit: int = _DEFAULT_LIMIT):
                         response={201: ProviderOut, 409: ProblemOut,
                                   422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("provider.declared")
+@records_audit(AUDIT_ACTION_PROVIDER_DECLARED)
 def declare_provider(request, payload: ProviderIn):
     """Declare a supplier. The key is the tenant's own handle for it."""
     _product_check(request)
     tenant = request.auth.tenant
     provider = _saved(
         Provider(tenant=tenant, key=payload.key),
-        action="provider.declared", tenant=tenant, resource_type="provider",
+        action=AUDIT_ACTION_PROVIDER_DECLARED, tenant=tenant, resource_type=AUDIT_RESOURCE_TYPE_PROVIDER,
         resource_id=payload.key,
         metadata=provider_out,
         conflict=f"provider with key '{payload.key}' already exists")
@@ -314,7 +331,7 @@ def declare_provider(request, payload: ProviderIn):
                          response={200: ProviderOut, 404: ProblemOut,
                                    409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("provider.declared", "provider.retired")
+@records_audit(AUDIT_ACTION_PROVIDER_DECLARED, AUDIT_ACTION_PROVIDER_RETIRED)
 def revise_provider(request, key: str, payload: ProviderUpdateIn):
     """Rename a supplier, or retire one — two acts, recorded apart.
 
@@ -352,9 +369,9 @@ def revise_provider(request, key: str, payload: ProviderUpdateIn):
 
     _saved(
         provider,
-        action=("provider.retired" if retirement_moved
-                else "provider.declared"),
-        tenant=tenant, resource_type="provider", resource_id=provider.key,
+        action=(AUDIT_ACTION_PROVIDER_RETIRED if retirement_moved
+                else AUDIT_ACTION_PROVIDER_DECLARED),
+        tenant=tenant, resource_type=AUDIT_RESOURCE_TYPE_PROVIDER, resource_id=provider.key,
         metadata=lambda saved: {"changed": changed, **provider_out(saved)},
         conflict=f"provider with key '{provider.key}' already exists")
     return 200, provider_out(provider)
@@ -379,15 +396,15 @@ def list_event_categories(request, cursor: str = None,
                         response={201: EventCategoryOut, 409: ProblemOut,
                                   422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_category.declared")
+@records_audit(AUDIT_ACTION_EVENT_CATEGORY_DECLARED)
 def declare_event_category(request, payload: EventCategoryIn):
     """Declare a category. Analytics-only: it can never reach a cost or price."""
     _product_check(request)
     tenant = request.auth.tenant
     category = _saved(
         EventCategory(tenant=tenant, key=payload.key),
-        action="event_category.declared", tenant=tenant,
-        resource_type="event_category", resource_id=payload.key,
+        action=AUDIT_ACTION_EVENT_CATEGORY_DECLARED, tenant=tenant,
+        resource_type=AUDIT_RESOURCE_TYPE_EVENT_CATEGORY, resource_id=payload.key,
         metadata=event_category_out,
         conflict=f"event category with key '{payload.key}' already exists")
     return 201, event_category_out(category)
@@ -397,7 +414,7 @@ def declare_event_category(request, payload: EventCategoryIn):
                           response={204: None, 404: ProblemOut,
                                     409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_category.withdrawn")
+@records_audit(AUDIT_ACTION_EVENT_CATEGORY_WITHDRAWN)
 def withdraw_event_category(request, key: str):
     """Withdraw a category, unless an Event Type still groups under it.
 
@@ -417,8 +434,8 @@ def withdraw_event_category(request, key: str):
             "conflict",
             f"event category '{key}' still groups {in_use} event type(s); "
             f"move them to another category first")
-    _withdrawn(category, action="event_category.withdrawn", tenant=tenant,
-               resource_type="event_category", resource_id=key,
+    _withdrawn(category, action=AUDIT_ACTION_EVENT_CATEGORY_WITHDRAWN, tenant=tenant,
+               resource_type=AUDIT_RESOURCE_TYPE_EVENT_CATEGORY, resource_id=key,
                metadata={"key": key})
     return 204, None
 
@@ -449,7 +466,7 @@ def get_event_type(request, key: str):
                         response={201: EventTypeOut, 404: ProblemOut,
                                   409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_type.declared")
+@records_audit(AUDIT_ACTION_EVENT_TYPE_DECLARED)
 def declare_event_type(request, payload: EventTypeIn):
     """Register an Event Type. It arrives as a draft, always.
 
@@ -469,8 +486,8 @@ def declare_event_type(request, payload: EventTypeIn):
                                       payload.category_key, "event category"),
                   source_shape_id=payload.source_shape_id,
                   source_shape_label=payload.source_shape_label),
-        action="event_type.declared", tenant=tenant,
-        resource_type="event_type", resource_id=payload.key,
+        action=AUDIT_ACTION_EVENT_TYPE_DECLARED, tenant=tenant,
+        resource_type=AUDIT_RESOURCE_TYPE_EVENT_TYPE, resource_id=payload.key,
         metadata=event_type_out,
         conflict=f"event type with key '{payload.key}' already exists")
     return 201, event_type_out(event_type)
@@ -480,7 +497,7 @@ def declare_event_type(request, payload: EventTypeIn):
                          response={200: EventTypeOut, 404: ProblemOut,
                                    409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_type.declared")
+@records_audit(AUDIT_ACTION_EVENT_TYPE_DECLARED)
 def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
     """Edit a declaration. Changing a pinned element returns it to draft.
 
@@ -521,8 +538,8 @@ def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
     if not changed:
         return 200, event_type_out(event_type)
 
-    _saved(event_type, action="event_type.declared", tenant=tenant,
-           resource_type="event_type", resource_id=event_type.key,
+    _saved(event_type, action=AUDIT_ACTION_EVENT_TYPE_DECLARED, tenant=tenant,
+           resource_type=AUDIT_RESOURCE_TYPE_EVENT_TYPE, resource_id=event_type.key,
            metadata=lambda saved: {"changed": changed, **event_type_out(saved)},
            conflict=f"event type with key '{event_type.key}' already exists")
     return 200, event_type_out(_declaration(tenant, event_type.key))
@@ -532,7 +549,7 @@ def revise_event_type(request, key: str, payload: EventTypeUpdateIn):
                         response={200: EventTypeOut, 404: ProblemOut,
                                   409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("event_type.published")
+@records_audit(AUDIT_ACTION_EVENT_TYPE_PUBLISHED)
 def publish_event_type(request, key: str):
     """Publish the declaration, or refuse and say what is missing.
 
@@ -552,8 +569,8 @@ def publish_event_type(request, key: str):
         with transaction.atomic():
             event_type.publish()
             audit_record(
-                action="event_type.published", tenant_id=tenant.id,
-                resource_type="event_type", resource_id=event_type.key,
+                action=AUDIT_ACTION_EVENT_TYPE_PUBLISHED, tenant_id=tenant.id,
+                resource_type=AUDIT_RESOURCE_TYPE_EVENT_TYPE, resource_id=event_type.key,
                 metadata={"published_revision": event_type.published_revision,
                           **event_type_out(event_type)})
     except DeclarationIncomplete as incomplete:
@@ -582,7 +599,7 @@ def list_measurements(request, key: str, cursor: str = None,
                                  404: ProblemOut, 409: ProblemOut,
                                  422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("measurement.declared")
+@records_audit(AUDIT_ACTION_MEASUREMENT_DECLARED)
 def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
     """Declare or re-declare one quantity beneath an Event Type.
 
@@ -616,8 +633,8 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
     # and refuses what is not one (#571).
     measurement.constant_value = payload.constant_value
 
-    _saved(measurement, action="measurement.declared", tenant=tenant,
-           resource_type="measurement",
+    _saved(measurement, action=AUDIT_ACTION_MEASUREMENT_DECLARED, tenant=tenant,
+           resource_type=AUDIT_RESOURCE_TYPE_MEASUREMENT,
            resource_id=f"{event_type.key}:{code}",
            metadata=lambda saved: {"event_type_key": event_type.key,
                                   **measurement_out(saved)},
@@ -630,7 +647,7 @@ def declare_measurement(request, key: str, code: str, payload: MeasurementIn):
                           response={204: None, 404: ProblemOut,
                                     409: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("measurement.withdrawn")
+@records_audit(AUDIT_ACTION_MEASUREMENT_WITHDRAWN)
 def withdraw_measurement(request, key: str, code: str):
     """Withdraw one declared quantity, unless a rate still prices it.
 
@@ -673,8 +690,8 @@ def withdraw_measurement(request, key: str, code: str):
             f"a rate prices '{code}'. Delete it first, or keep the "
             f"declaration: a rate names the quantity it prices, so a quantity "
             f"nobody declares is a rate that prices nothing.")
-    _withdrawn(measurement, action="measurement.withdrawn", tenant=tenant,
-               resource_type="measurement",
+    _withdrawn(measurement, action=AUDIT_ACTION_MEASUREMENT_WITHDRAWN, tenant=tenant,
+               resource_type=AUDIT_RESOURCE_TYPE_MEASUREMENT,
                resource_id=f"{event_type.key}:{code}",
                metadata={"event_type_key": event_type.key, "code": code})
     return 204, None
@@ -700,7 +717,7 @@ def get_reported_cost_mapping(request, key: str):
                                  201: ReportedCostMappingOut, 404: ProblemOut,
                                  409: ProblemOut, 422: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("reported_cost_mapping.declared")
+@records_audit(AUDIT_ACTION_REPORTED_COST_MAPPING_DECLARED)
 def declare_reported_cost_mapping(request, key: str,
                                   payload: ReportedCostMappingIn):
     """Declare where a supplier's own cost figure is read from. One per type.
@@ -732,8 +749,8 @@ def declare_reported_cost_mapping(request, key: str,
     mapping.currency_path = list(payload.currency_path)
     mapping.currency = payload.currency
 
-    _saved(mapping, action="reported_cost_mapping.declared", tenant=tenant,
-           resource_type="reported_cost_mapping", resource_id=event_type.key,
+    _saved(mapping, action=AUDIT_ACTION_REPORTED_COST_MAPPING_DECLARED, tenant=tenant,
+           resource_type=AUDIT_RESOURCE_TYPE_REPORTED_COST_MAPPING, resource_id=event_type.key,
            metadata=lambda saved: {"event_type_key": event_type.key,
                                   **reported_cost_mapping_out(saved)},
            conflict=f"event type '{key}' is already declaring a reported cost "
@@ -744,7 +761,7 @@ def declare_reported_cost_mapping(request, key: str,
 @event_type_router.delete("/event-types/{key}/reported-cost-mapping",
                           response={204: None, 404: ProblemOut})
 @role_floor(ADMIN)
-@records_audit("reported_cost_mapping.withdrawn")
+@records_audit(AUDIT_ACTION_REPORTED_COST_MAPPING_WITHDRAWN)
 def withdraw_reported_cost_mapping(request, key: str):
     """Withdraw the mapping. A `reported` declaration then cannot publish.
 
@@ -761,8 +778,8 @@ def withdraw_reported_cost_mapping(request, key: str):
     tenant = request.auth.tenant
     event_type = _declaration(tenant, key)
     _withdrawn(_mapping(event_type, key),
-               action="reported_cost_mapping.withdrawn", tenant=tenant,
-               resource_type="reported_cost_mapping",
+               action=AUDIT_ACTION_REPORTED_COST_MAPPING_WITHDRAWN, tenant=tenant,
+               resource_type=AUDIT_RESOURCE_TYPE_REPORTED_COST_MAPPING,
                resource_id=event_type.key,
                metadata={"event_type_key": event_type.key})
     return 204, None

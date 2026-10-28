@@ -46,25 +46,17 @@ from dataclasses import dataclass
 
 from apps.metering.pricing.models import TenantDefaultMarkup
 from core.money import round_charge
+from core.vocabulary import MARKUP_RUNG_TENANT_DEFAULT
 
-#: WHICH RUNG SUPPLIED A PERCENTAGE — the value the receipt's provenance names.
+#: WHICH RUNG SUPPLIED A PERCENTAGE — the value the receipt's provenance names,
+#: the registry's closed `markup_rung` (R10-W4), held here by reference.
 #:
-#: A named constant rather than a string literal because the receipt records it,
-#: so it is part of what a stored record means rather than an implementation
-#: detail of this module.
-#:
-#: ⚠ **ONE VALUE, AND RECEIPTS WRITTEN BEFORE #369 CARRY TWO MORE.** The
-#: customer-override and plan rungs each named themselves here, and the records
-#: they read are deleted, so nothing writes those words again — but they are on
-#: postings already, in a `provenance` section whose whole job is to survive the
-#: configuration it points at. Nothing reads the value back by constant, which
-#: is why the two are deleted here rather than kept as unwritable spellings.
-#:
-#: **NOT A REGISTRY CONCEPT.** It crosses no typed surface — the receipt is
-#: published as an untyped record — so nothing advertises it to a consumer who
-#: could switch on it, and a single-member closed concept would be a value set
-#: with nothing to discriminate.
-MARKUP_RUNG_TENANT_DEFAULT = "tenant_default"
+#: ⚠ **IT WAS A MODULE CONSTANT AND DELIBERATELY NOT A CONCEPT UNTIL #558**,
+#: because the receipt was published as an untyped record. #558 typed it, so
+#: the value reaches the contract on `PricingReceiptProvenanceMarkup.rung` and
+#: the registry is its one authority. The customer-override and plan rungs
+#: named themselves here before #369 deleted the records they read; only
+#: version-0/1 receipts on development databases carry those words.
 
 
 @dataclass(frozen=True)

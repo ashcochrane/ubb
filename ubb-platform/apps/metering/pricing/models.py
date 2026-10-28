@@ -165,6 +165,20 @@ DECLARES_A_RATIFIED_METHOD_CHECK = "ck_rate_pricing_method"
 #: naming the discriminator beside the amount.
 NEVER_COMPOSES_CHECK = "ck_rate_never_composes"
 
+#: The check that makes a selling rule STATE its method, and keeps a selling
+#: method off everything that is not one (R10-W4, ruling 4).
+#:
+#: A rule sits in a Pricing Book (a selling rule — a customer override is a
+#: Pricing Book of its own), in a cost book (a supplier's rate), or in neither
+#: (a bare row: no production path writes one and no resolution reads one,
+#: because rules are reached through their book). A method says how a CUSTOMER
+#: PRICE is derived, so it applies exactly to the first: a rule states one if
+#: and only if it is in a Pricing Book. Null on a selling rule used to MEAN
+#: `direct_event_price`, read so at resolution; the owner ruled that implicit
+#: encoding out, and `pricing/0034` stated the method on every such row before
+#: this check went on.
+STATES_ITS_SELLING_METHOD_CHECK = "ck_rate_a_selling_rule_states_its_method"
+
 #: HOW A PRICING RULE DERIVES A CUSTOMER PRICE, DERIVED FROM THE REGISTRY rather
 #: than restated beside it — the construction the posting's four closed sets
 #: already use, and for the same reason: a hand-typed list is correct on the day
@@ -325,9 +339,9 @@ class Rate(BaseModel):
     # stored, which is the failure the receipt exists to remove.
     # `NEVER_COMPOSES_CHECK` above is where that stops being a sentence.
     #
-    # NULLABLE, AND NULL IS NOT A THIRD METHOD. It means the price was not
-    # DERIVED — because it was agreed, or because there is none — and which of
-    # those is read off the price STATUS beside the amount on the posting
+    # NULL IS NOT A THIRD METHOD. On a posting's receipt it means the price was
+    # not DERIVED — because it was agreed, or because there is none — and which
+    # of those is read off the price STATUS beside the amount on the posting
     # (`usage/models.py`), which already carries `waived`, `unknown` and
     # `not_applicable`. THIS IS THE ONE PLACE THAT ARGUMENT IS MADE IN FULL; the
     # migration, the published schema and the receipt module state the rule and
@@ -335,13 +349,14 @@ class Rate(BaseModel):
     # go false separately. It is the shape the cost side already ships: the
     # derivation lives on the declaration and the receipt snapshots it.
     #
-    # ⚠ EVERY ROW IN THE TREE IS NULL TODAY AND THAT IS THE HONEST READING, not
-    # a backfill left undone. The engine that writes a method into a receipt
-    # decides it from the rung that supplied the price rather than from a column
-    # (`services/pricing_service.py`), and the rule that carries its own method
-    # is what the resolver of the next ticket resolves against. Nothing is lost
-    # meanwhile: a receipt written today already records which method produced
-    # its amount.
+    # ⚠ STATED ON EVERY SELLING RULE, AND NULL ONLY WHERE NO SELLING METHOD
+    # APPLIES (R10-W4, ruling 4). A rule in a Pricing Book carries
+    # `margin_over_cost` or `direct_event_price`; a cost book's rate, and a row
+    # in no book, carry null — `STATES_ITS_SELLING_METHOD_CHECK` holds both
+    # halves. Until R10-W4 a null on a selling rule MEANT `direct_event_price`
+    # and resolution read it so; `0034` stated the method on every such row,
+    # the publish writes it wherever a body is silent, and the resolver refuses
+    # a selling rule with none rather than defaulting.
     #
     # ⚠ NOT DECLARED INTO A TRANSITION CLASS, AND THAT IS AN ANSWER RATHER THAN
     # A SILENCE. Every term on this table is undeclared — the two effective
@@ -564,6 +579,15 @@ class Rate(BaseModel):
                     ~models.Q(pricing_method=PRICING_METHOD_MARGIN_OVER_COST)
                     | models.Q(rate_per_unit_micros=0, fixed_micros=0)),
                 name=NEVER_COMPOSES_CHECK),
+            # A SELLING RULE STATES ITS METHOD; NOTHING ELSE STATES ONE
+            # (R10-W4) — see `STATES_ITS_SELLING_METHOD_CHECK`.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(pricing_book__isnull=False,
+                             pricing_method__isnull=False)
+                    | models.Q(pricing_book__isnull=True,
+                               pricing_method__isnull=True)),
+                name=STATES_ITS_SELLING_METHOD_CHECK),
         ]
 
     @property

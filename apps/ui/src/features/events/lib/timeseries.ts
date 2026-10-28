@@ -21,6 +21,7 @@ import {
   SUPPLIER_COGS,
   type MeasureFigure,
 } from "@/lib/economic-query";
+import { axisHeading } from "@/lib/grouping-field-value-status";
 import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import type { TimeseriesPoint } from "../api/types";
@@ -50,8 +51,10 @@ const SERIES_COLORS = [
 export const OTHER_LABEL = "Other";
 const OTHER_KEY = "d:__other__";
 
+/** A series' name: the axis value, or the catalogue's word for which absence
+ *  it is (#550) — never one shared heading for both. */
 function groupValueOf(point: TimeseriesPoint): string {
-  return point.group_value ?? "(unattributed)";
+  return axisHeading(point.group_value, point.group_value_status);
 }
 
 /**

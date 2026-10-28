@@ -578,7 +578,7 @@ class TestTheRecordingCallStopsRefusing:
 
         task.refresh_from_db()
         assert task.total_provider_cost_micros == 0
-        assert task.event_count == 1
+        assert task.recorded_events == 1
 
 
 class TestTheRefusalIsGoneFromTheTree:

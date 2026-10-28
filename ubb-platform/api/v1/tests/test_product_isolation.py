@@ -83,7 +83,7 @@ class TestMeteringOnlyTenant(TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
-    def test_gets_403_on_billing_auto_topup(self):
+    def test_gets_403_on_billing_auto_top_up(self):
         response = self.http_client.put(
             f"/api/v1/billing/customers/{self.customer.id}/auto-top-up",
             data=json.dumps({

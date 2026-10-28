@@ -203,12 +203,12 @@ class BillingClientTest(unittest.TestCase):
         self.assertEqual(call_args.args[0], "/api/v1/billing/customers/cust_1/top-up")
         self.assertEqual(call_args.kwargs["json"]["idempotency_key"], "topup_k1")
 
-    # ---- configure_auto_topup ----
+    # ---- configure_auto_top_up ----
 
     @patch("ubb.billing.httpx.Client.put")
-    def test_configure_auto_topup(self, mock_put):
+    def test_configure_auto_top_up(self, mock_put):
         mock_put.return_value = MagicMock(status_code=200, json=lambda: {"status": "ok"})
-        result = self.client.configure_auto_topup(
+        result = self.client.configure_auto_top_up(
             customer_id="cust_1", is_enabled=True,
             trigger_threshold_micros=5_000_000, top_up_amount_micros=50_000_000,
         )
@@ -220,9 +220,9 @@ class BillingClientTest(unittest.TestCase):
         self.assertEqual(body["trigger_threshold_micros"], 5_000_000)
 
     @patch("ubb.billing.httpx.Client.put")
-    def test_configure_auto_topup_disable(self, mock_put):
+    def test_configure_auto_top_up_disable(self, mock_put):
         mock_put.return_value = MagicMock(status_code=200, json=lambda: {"status": "ok"})
-        result = self.client.configure_auto_topup(
+        result = self.client.configure_auto_top_up(
             customer_id="cust_1", is_enabled=False,
         )
         self.assertEqual(result["status"], "ok")
@@ -238,7 +238,7 @@ class BillingClientTest(unittest.TestCase):
             "data": [
                 {
                     "id": "6f0f2a4e-3f09-4bb5-8f2e-2a1c07f13a90",
-                    "transaction_type": "DEBIT", "amount_micros": -100000,
+                    "transaction_type": "debit", "amount_micros": -100000,
                     "balance_after_micros": 9_900_000, "description": "Usage debit",
                     "reference_id": "evt_1", "created_at": "2025-01-01T00:00:00Z",
                 },

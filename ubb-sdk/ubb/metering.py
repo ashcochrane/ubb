@@ -14,7 +14,7 @@ from ubb.exceptions import (
     UBBValidationError,
 )
 from ubb._http import raise_for_status
-from ubb._models import from_wire, list_from_wire, page_from_wire
+from ubb._models import from_wire, list_from_wire, page_from_wire, token
 from ubb.retry import request_with_retry
 from ubb.types import (
     PaginatedResponse,
@@ -829,7 +829,7 @@ class MeteringClient:
                 # `stop` is optional with a false default. Both read False.
                 stop=bool(item.stop),
                 stop_reason=item.stop_reason,
-                stop_scope=item.stop_scope,
+                stop_scope=token(item.stop_scope),
                 trigger_source=item.trigger_source,
                 stop_bound_micros=item.stop_bound_micros,
                 stop_measured_micros=item.stop_measured_micros,

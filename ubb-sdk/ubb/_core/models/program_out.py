@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.program_out_reward_type import ProgramOutRewardType
+from ..models.program_out_status import ProgramOutStatus
 from typing import cast
 
 
@@ -30,10 +32,10 @@ class ProgramOut:
             max_referrals_per_day (int | None):
             max_reward_micros (int | None):
             min_customer_age_hours (int | None):
-            reward_type (str):
+            reward_type (ProgramOutRewardType):
             reward_value (float):
             reward_window_days (int | None):
-            status (str):
+            status (ProgramOutStatus):
             updated_at (str):
      """
 
@@ -44,10 +46,10 @@ class ProgramOut:
     max_referrals_per_day: int | None
     max_reward_micros: int | None
     min_customer_age_hours: int | None
-    reward_type: str
+    reward_type: ProgramOutRewardType
     reward_value: float
     reward_window_days: int | None
-    status: str
+    status: ProgramOutStatus
     updated_at: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -74,14 +76,14 @@ class ProgramOut:
         min_customer_age_hours: int | None
         min_customer_age_hours = self.min_customer_age_hours
 
-        reward_type = self.reward_type
+        reward_type = self.reward_type.value
 
         reward_value = self.reward_value
 
         reward_window_days: int | None
         reward_window_days = self.reward_window_days
 
-        status = self.status
+        status = self.status.value
 
         updated_at = self.updated_at
 
@@ -148,7 +150,10 @@ class ProgramOut:
         min_customer_age_hours = _parse_min_customer_age_hours(d.pop("min_customer_age_hours"))
 
 
-        reward_type = d.pop("reward_type")
+        reward_type = ProgramOutRewardType(d.pop("reward_type"))
+
+
+
 
         reward_value = d.pop("reward_value")
 
@@ -160,7 +165,10 @@ class ProgramOut:
         reward_window_days = _parse_reward_window_days(d.pop("reward_window_days"))
 
 
-        status = d.pop("status")
+        status = ProgramOutStatus(d.pop("status"))
+
+
+
 
         updated_at = d.pop("updated_at")
 

@@ -62,7 +62,7 @@ describe("ReferrerDetailPage", () => {
     expect(await screen.findByText("Revoked", undefined, FIND_OPTS)).toBeInTheDocument();
   });
 
-  it("opens the per-referral reward ledger with humanized calculation methods", async () => {
+  it("opens the per-referral reward ledger with each calculation method in the catalogue's words", async () => {
     renderWithClient(
       <ReferrerDetailPage customerId={MOCK_CUSTOMER_IDS.acme} onBack={vi.fn()} />,
     );
@@ -73,9 +73,11 @@ describe("ReferrerDetailPage", () => {
     fireEvent.click(ledgerButtons[1]!);
 
     expect(await screen.findByText("Reward ledger", undefined, FIND_OPTS)).toBeInTheDocument();
-    // rfl-0001's July entry uses the capped method → humanized, never raw.
+    // rfl-0001's July entry was costed from the referred customer's actual
+    // cost — the registry's `calculation_method` (R10-W4), worded from the
+    // catalogue rather than title-cased from the token.
     expect(
-      await screen.findByText("Revenue share capped", undefined, FIND_OPTS),
+      await screen.findByText("Actual cost", undefined, FIND_OPTS),
     ).toBeInTheDocument();
     expect(screen.getByText("$34.50")).toBeInTheDocument();
   });

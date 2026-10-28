@@ -34,6 +34,22 @@ from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRew
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from core.auth import ADMIN, ApiKeyAuth, ProductAccess, READ, WRITE, role_floor
+from core.vocabulary import (
+    AUDIT_ACTION_REFERRAL_ATTRIBUTED,
+    AUDIT_ACTION_REFERRAL_PROGRAM_CREATED,
+    AUDIT_ACTION_REFERRAL_PROGRAM_DEACTIVATED,
+    AUDIT_ACTION_REFERRAL_PROGRAM_REACTIVATED,
+    AUDIT_ACTION_REFERRAL_PROGRAM_UPDATED,
+    AUDIT_ACTION_REFERRAL_REVOKED,
+    AUDIT_ACTION_REFERRER_REGISTERED,
+    AUDIT_RESOURCE_TYPE_REFERRAL,
+    AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM,
+    AUDIT_RESOURCE_TYPE_REFERRER,
+    REFERRAL_PROGRAM_STATUS_ACTIVE,
+    REFERRAL_PROGRAM_STATUS_DEACTIVATED,
+    REFERRAL_STATUS_ACTIVE,
+    REFERRAL_STATUS_REVOKED,
+)
 
 referrals_router = Router(auth=ApiKeyAuth())
 
@@ -68,12 +84,12 @@ def _program_to_dict(program):
 
 @referrals_router.post("/program", response=ProgramOut)
 @role_floor(ADMIN)
-@records_audit("referral_program.created")
+@records_audit(AUDIT_ACTION_REFERRAL_PROGRAM_CREATED)
 def create_program(request, payload: ProgramCreateRequest):
     _product_check(request)
     tenant = request.auth.tenant
 
-    if ReferralProgram.objects.filter(tenant=tenant).exclude(status="deactivated").exists():
+    if ReferralProgram.objects.filter(tenant=tenant).exclude(status=REFERRAL_PROGRAM_STATUS_DEACTIVATED).exists():
         raise Problem("conflict", "Tenant already has an active or paused referral program")
 
     with transaction.atomic():
@@ -89,8 +105,8 @@ def create_program(request, payload: ProgramCreateRequest):
             min_customer_age_hours=payload.min_customer_age_hours,
         )
         audit_record(
-            action="referral_program.created", tenant_id=tenant.id,
-            resource_type="referral_program", resource_id=program.id,
+            action=AUDIT_ACTION_REFERRAL_PROGRAM_CREATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM, resource_id=program.id,
             metadata={"reward_type": program.reward_type,
                       "reward_value": float(program.reward_value),
                       "attribution_window_days": program.attribution_window_days,
@@ -107,7 +123,7 @@ def get_program(request):
 
     program = ReferralProgram.objects.filter(
         tenant=tenant,
-    ).exclude(status="deactivated").order_by("-created_at").first()
+    ).exclude(status=REFERRAL_PROGRAM_STATUS_DEACTIVATED).order_by("-created_at").first()
 
     if not program:
         raise Problem("not_found", "No active referral program found")
@@ -117,14 +133,14 @@ def get_program(request):
 
 @referrals_router.patch("/program", response=ProgramOut)
 @role_floor(ADMIN)
-@records_audit("referral_program.updated")
+@records_audit(AUDIT_ACTION_REFERRAL_PROGRAM_UPDATED)
 def update_program(request, payload: ProgramUpdateRequest):
     _product_check(request)
     tenant = request.auth.tenant
 
     program = ReferralProgram.objects.filter(
         tenant=tenant,
-    ).exclude(status="deactivated").order_by("-created_at").first()
+    ).exclude(status=REFERRAL_PROGRAM_STATUS_DEACTIVATED).order_by("-created_at").first()
 
     if not program:
         raise Problem("not_found", "No active referral program found")
@@ -143,56 +159,56 @@ def update_program(request, payload: ProgramUpdateRequest):
     with transaction.atomic():
         program.save(update_fields=update_fields)
         audit_record(
-            action="referral_program.updated", tenant_id=tenant.id,
-            resource_type="referral_program", resource_id=program.id,
+            action=AUDIT_ACTION_REFERRAL_PROGRAM_UPDATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM, resource_id=program.id,
             metadata={"changed_fields": [f for f in update_fields if f != "updated_at"]})
     return _program_to_dict(program)
 
 
 @referrals_router.delete("/program", response=StatusResponse)
 @role_floor(ADMIN)
-@records_audit("referral_program.deactivated")
+@records_audit(AUDIT_ACTION_REFERRAL_PROGRAM_DEACTIVATED)
 def deactivate_program(request):
     _product_check(request)
     tenant = request.auth.tenant
 
     program = ReferralProgram.objects.filter(
         tenant=tenant,
-    ).exclude(status="deactivated").order_by("-created_at").first()
+    ).exclude(status=REFERRAL_PROGRAM_STATUS_DEACTIVATED).order_by("-created_at").first()
 
     if not program:
         raise Problem("not_found", "No active referral program found")
 
     with transaction.atomic():
-        program.status = "deactivated"
+        program.status = REFERRAL_PROGRAM_STATUS_DEACTIVATED
         program.save(update_fields=["status", "updated_at"])
         audit_record(
-            action="referral_program.deactivated", tenant_id=tenant.id,
-            resource_type="referral_program", resource_id=program.id,
+            action=AUDIT_ACTION_REFERRAL_PROGRAM_DEACTIVATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM, resource_id=program.id,
             metadata={"status": "deactivated"})
     return {"status": "deactivated"}
 
 
 @referrals_router.post("/program/reactivate", response=ProgramOut)
 @role_floor(ADMIN)
-@records_audit("referral_program.reactivated")
+@records_audit(AUDIT_ACTION_REFERRAL_PROGRAM_REACTIVATED)
 def reactivate_program(request):
     _product_check(request)
     tenant = request.auth.tenant
 
     program = ReferralProgram.objects.filter(
-        tenant=tenant, status="deactivated",
+        tenant=tenant, status=REFERRAL_PROGRAM_STATUS_DEACTIVATED,
     ).order_by("-created_at").first()
 
     if not program:
         raise Problem("not_found", "No deactivated referral program found")
 
     with transaction.atomic():
-        program.status = "active"
+        program.status = REFERRAL_PROGRAM_STATUS_ACTIVE
         program.save(update_fields=["status", "updated_at"])
         audit_record(
-            action="referral_program.reactivated", tenant_id=tenant.id,
-            resource_type="referral_program", resource_id=program.id,
+            action=AUDIT_ACTION_REFERRAL_PROGRAM_REACTIVATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM, resource_id=program.id,
             metadata={"status": "active"})
     return _program_to_dict(program)
 
@@ -202,7 +218,7 @@ def reactivate_program(request):
 
 @referrals_router.post("/referrers", response=ReferrerOut)
 @role_floor(WRITE)
-@records_audit("referrer.registered")
+@records_audit(AUDIT_ACTION_REFERRER_REGISTERED)
 def register_referrer(request, payload: RegisterReferrerRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -213,7 +229,7 @@ def register_referrer(request, payload: RegisterReferrerRequest):
         raise Problem("conflict", "Customer is already registered as a referrer")
 
     # Check program exists
-    if not ReferralProgram.objects.filter(tenant=tenant, status="active").exists():
+    if not ReferralProgram.objects.filter(tenant=tenant, status=REFERRAL_PROGRAM_STATUS_ACTIVE).exists():
         raise Problem("validation_error", "No active referral program. Create a program first.")
 
     with transaction.atomic():
@@ -221,8 +237,8 @@ def register_referrer(request, payload: RegisterReferrerRequest):
 
         # Never audit the referral_link_token — it is a bearer credential.
         audit_record(
-            action="referrer.registered", tenant_id=tenant.id,
-            resource_type="referrer", resource_id=referrer.id,
+            action=AUDIT_ACTION_REFERRER_REGISTERED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_REFERRER, resource_id=referrer.id,
             metadata={"customer_id": str(referrer.customer_id),
                       "referral_code": referrer.referral_code})
 
@@ -286,7 +302,7 @@ def list_referrers(request, cursor: str = None, limit: int = 50):
 
 @referrals_router.post("/attribute", response=AttributeResponse)
 @role_floor(WRITE)
-@records_audit("referral.attributed")
+@records_audit(AUDIT_ACTION_REFERRAL_ATTRIBUTED)
 def attribute_referral(request, payload: AttributeRequest):
     _product_check(request)
     tenant = request.auth.tenant
@@ -320,7 +336,7 @@ def attribute_referral(request, payload: AttributeRequest):
 
     # Get active program
     program = ReferralProgram.objects.filter(
-        tenant=tenant, status="active",
+        tenant=tenant, status=REFERRAL_PROGRAM_STATUS_ACTIVE,
     ).first()
     if not program:
         raise Problem("validation_error", "No active referral program")
@@ -393,8 +409,8 @@ def attribute_referral(request, payload: AttributeRequest):
         # Audit alongside the outbox event, in the same transaction. The
         # code/token used to attribute is deliberately NOT captured.
         audit_record(
-            action="referral.attributed", tenant_id=tenant.id,
-            resource_type="referral", resource_id=referral.id,
+            action=AUDIT_ACTION_REFERRAL_ATTRIBUTED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_REFERRAL, resource_id=referral.id,
             metadata={"referrer_id": str(referrer.id),
                       "referred_customer_id": str(customer.id),
                       "snapshot_reward_type": referral.snapshot_reward_type})
@@ -432,7 +448,7 @@ def get_referrer_earnings(request, customer_id: UUIDIdentifier):
         "total_earned_micros": totals["total_earned"] or 0,
         "total_referred_spend_micros": totals["total_spend"] or 0,
         "total_referrals": referrals.count(),
-        "active_referrals": referrals.filter(status="active").count(),
+        "active_referrals": referrals.filter(status=REFERRAL_STATUS_ACTIVE).count(),
     }
 
 
@@ -524,22 +540,22 @@ def get_referral_ledger(request, referral_id: UUIDIdentifier, cursor: str = None
 
 @referrals_router.delete("/referrals/{referral_id}", response=StatusResponse)
 @role_floor(ADMIN)
-@records_audit("referral.revoked")
+@records_audit(AUDIT_ACTION_REFERRAL_REVOKED)
 def revoke_referral(request, referral_id: UUIDIdentifier):
     _product_check(request)
     tenant = request.auth.tenant
 
     referral = get_object_or_404(Referral, id=referral_id, tenant=tenant)
 
-    if referral.status == "revoked":
+    if referral.status == REFERRAL_STATUS_REVOKED:
         raise Problem("conflict", "Referral is already revoked")
 
     with transaction.atomic():
-        referral.status = "revoked"
+        referral.status = REFERRAL_STATUS_REVOKED
         referral.save(update_fields=["status", "updated_at"])
         audit_record(
-            action="referral.revoked", tenant_id=tenant.id,
-            resource_type="referral", resource_id=referral.id,
+            action=AUDIT_ACTION_REFERRAL_REVOKED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_REFERRAL, resource_id=referral.id,
             metadata={"status": "revoked"})
     return {"status": "revoked"}
 
@@ -570,7 +586,7 @@ def payout_export(request):
             continue
 
         ref_count = Referral.objects.filter(referrer=referrer).count()
-        active_count = Referral.objects.filter(referrer=referrer, status="active").count()
+        active_count = Referral.objects.filter(referrer=referrer, status=REFERRAL_STATUS_ACTIVE).count()
 
         data.append({
             "referrer_customer_id": str(referrer.customer_id),
@@ -603,7 +619,7 @@ def analytics_summary(request):
     total_referrers = Referrer.objects.filter(tenant=tenant).count()
     referrals_qs = Referral.objects.filter(tenant=tenant)
     total_referrals = referrals_qs.count()
-    active_referrals = referrals_qs.filter(status="active").count()
+    active_referrals = referrals_qs.filter(status=REFERRAL_STATUS_ACTIVE).count()
 
     totals = ReferralRewardAccumulator.objects.filter(
         referral__tenant=tenant,

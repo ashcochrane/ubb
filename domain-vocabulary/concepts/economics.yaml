@@ -686,6 +686,33 @@ measurements_status:
     - surface: openapi
       path: openapi/v1.json
 
+markup_rung:
+  kind: closed
+  # DECLARED IN R10-W4 (the owner's review of #620). Until #558 this was a
+  # module constant, deliberately not a concept, because the receipt was
+  # published as an untyped record and nothing advertised the value to a
+  # consumer who could switch on it. #558 typed the receipt, so the value set
+  # reached the contract on `PricingReceiptProvenanceMarkup.rung` and takes one
+  # authority here — a one-value set is still a value set. ONE value: the
+  # customer-override and plan rungs named themselves here before #369 deleted
+  # the records they read, and only version-0/1 receipts on development
+  # databases carry those words, which are not product history (ruling 3).
+  # ADR-0006: the glossary's own words ("markup provenance … which rung
+  # supplied a percentage"); `rung` alone is the receipt's key, not the
+  # concept, and no other concept spends the name.
+  summary: >-
+    Which rung of the price ladder supplied a markup percentage, as a Pricing
+    Receipt's provenance names it: the tenant's own declared default markup,
+    the last rung, which prices what no rule in the books in play matched.
+  values:
+    - tenant_default
+  label_key_prefix: markup_rung
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/pricing/services/markup_service.py
+    - surface: openapi
+      path: openapi/v1.json
+
 pricing_receipt_subject_type:
   kind: closed
   summary: >-
@@ -737,6 +764,18 @@ analytics_measure:
     # event is one provider call, so a second noun for it would create a second
     # public name for one concept (ADR-0006 §2).
     - recorded_operations
+    # One generic name for three living senses, so a reader could not tell
+    # from the name which rows were counted. R10-W4 ruling 1 gave each sense
+    # its own: `recorded_events` on a Task and on a billing period (this
+    # measure, at those scopes); `posting_count` on the posting-count reads —
+    # an episode's itemised events, a family's totals, a seat's and a
+    # business's margin — and on the monthly cost accumulator, each of which
+    # can include a Task Charge's projected posting; and `count` on an
+    # economic measure's figure slot, where `measure` beside it says what is
+    # counted. The referral accumulator's, which counts only the postings that
+    # earned a reward, is `rewarded_posting_count`. The old spelling survives
+    # only in historical migrations, which must name the column they rename.
+    - event_count
   retired_senses:
     - term: operation
       retired_as: >-
@@ -1299,6 +1338,34 @@ grouping_field_value:
       path: ubb-platform/apps/platform/grouping_fields/models.py
     - surface: openapi
       path: openapi/v1.json
+
+grouping_field_value_status:
+  kind: closed
+  # DECLARED IN R10-W4 (#550). The economic query computed the three in
+  # `apps/metering/queries.py` and published them as a bare list of strings,
+  # so no gate saw a closed set reach the wire. The wire key was already this
+  # concept's name, and ADR-0006 offers no better one: the field says, per
+  # grouping axis, what happened to the value.
+  summary: >-
+    What an economic row says about its value on each grouping axis, one
+    entry per axis: recorded, where the value beside it is the axis's value;
+    not_recorded, where these events could have carried one and did not; or
+    not_applicable, where this kind of row never carries one (a Task Charge
+    names no supplier and no Event Type). Both absences leave the axis
+    without a value, and they read differently on purpose: only the first
+    has a remedy.
+  values:
+    - recorded
+    - not_recorded
+    - not_applicable
+  label_key_prefix: grouping_field_value_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/queries.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/grouping-field-value-status.ts
 
 grouping_field_scope:
   kind: closed

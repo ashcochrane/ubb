@@ -7,6 +7,7 @@ from ubb.exceptions import (
 )
 from unittest.mock import patch, MagicMock
 from ubb.retry import is_retryable, backoff_delay, request_with_retry
+from tests._receipt import A_RECEIPT
 
 
 class TestRetryAfterAttribute(unittest.TestCase):
@@ -361,7 +362,7 @@ class TestBranchSurfaceRetry(unittest.TestCase):
             resp_fail.headers = {}
             resp_ok = MagicMock(status_code=200)
             resp_ok.json.return_value = {"event_id": "evt_1", "suspended": False,
-                                         "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None,
+                                         "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
                                          "trigger_source": None, "stop_bound_micros": None,
                                          "stop_measured_micros": None,
                                          "new_balance_micros": 100}

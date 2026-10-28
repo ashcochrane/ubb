@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { MarginThreshold, TenantConfig } from "../api/types";
 import {
   admissionControlSchema,
-  auditActionLabel,
   buildAdmissionPatch,
   buildSpendPatch,
   configToAdmissionValues,
@@ -177,18 +176,6 @@ describe("margin-alert form helpers", () => {
         providerCostSpikePct: "40",
       }).success,
     ).toBe(true);
-  });
-});
-
-describe("auditActionLabel", () => {
-  it("humanizes noun.verb actions", () => {
-    expect(auditActionLabel("config.updated")).toBe("Config updated");
-    expect(auditActionLabel("member.role_updated")).toBe("Member role updated");
-  });
-
-  it("special-cases API key and tolerates undotted actions", () => {
-    expect(auditActionLabel("api_key.rotated")).toBe("API key rotated");
-    expect(auditActionLabel("login")).toBe("Login");
   });
 });
 

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ubb._models import token
+
 if TYPE_CHECKING:  # the annotations only; this module stays free of the core
     from ubb._core.models.record_usage_response import RecordUsageResponse
     from ubb.metering import StartedTask
@@ -185,7 +187,10 @@ class UBBStopRequested(BaseException):
 
     @property
     def stop_scope(self) -> str | None:
-        return self.result.stop_scope
+        # The acknowledgement types the scope as the registry's closed
+        # `stop_scope` since R10-W4, so the core holds an enum member; this
+        # answers its token, as it always has.
+        return token(self.result.stop_scope)
 
     @property
     def stop_reason(self) -> str | None:

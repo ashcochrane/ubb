@@ -111,84 +111,20 @@ export type BillingMode = CustomerBillingMode;
 export const PRODUCTS = TENANT_PRODUCT_VALUES;
 export type Product = TenantProduct;
 
-export const enforcementModeLabel = legacyLabelMap({
-  off: "Off",
-  enforcing: "Enforcing",
-});
-
-// ---------------------------------------------------------------------------
-// Team
-
-export const roleLabel = legacyLabelMap({ admin: "Admin", write: "Write", read: "Read" });
-export const ROLES = ["read", "write", "admin"] as const;
-export type Role = (typeof ROLES)[number];
-
-/** Rank a role for floor comparisons; unknown roles rank lowest (fail closed). */
-export function roleRank(role: string | null | undefined): number {
-  return role === "admin" ? 2 : role === "write" ? 1 : role === "read" ? 0 : -1;
-}
-
-export const memberStatusLabel = legacyLabelMap({ pending: "Pending", active: "Active" });
-export const invitationStatusLabel = legacyLabelMap({
-  pending: "Pending",
-  accepted: "Accepted",
-  revoked: "Revoked",
-});
-
-// ---------------------------------------------------------------------------
-// Billing / wallet
-
-export const transactionTypeLabel = legacyLabelMap({
-  TOP_UP: "Top up",
-  USAGE_DEDUCTION: "Usage deduction",
-  WITHDRAWAL: "Withdrawal",
-  REFUND: "Refund",
-  ADJUSTMENT: "Adjustment",
-  DISPUTE_DEDUCTION: "Dispute deduction",
-  STRIPE_REFUND: "Stripe refund",
-  DEBIT: "Debit",
-  GRANT: "Credit grant",
-  GRANT_EXPIRY: "Grant expiry",
-  GRANT_VOID: "Grant void",
-});
-
-export const grantKindLabel = legacyLabelMap({ paid: "Paid", promo: "Promo" });
-export const grantStatusLabel = legacyLabelMap({
-  active: "Active",
-  depleted: "Depleted",
-  expired: "Expired",
-  voided: "Voided",
-});
-export const grantSourceLabel = legacyLabelMap({
-  checkout: "Checkout",
-  auto_topup: "Auto top-up",
-  api: "API",
-  other: "Other",
-});
-
-export const usageInvoiceStatusLabel = legacyLabelMap({
-  pending: "Pending",
-  pushing: "Pushing",
-  pushed: "Pushed",
-  skipped: "Skipped",
-  failed: "Failed",
-  failed_permanent: "Failed permanently",
-});
-
-export const tenantInvoiceStatusLabel = legacyLabelMap({
-  draft: "Draft",
-  finalized: "Finalized",
-  paid: "Paid",
-  void: "Void",
-  uncollectible: "Uncollectible",
-});
-
-export const billingPeriodStatusLabel = legacyLabelMap({
-  open: "Open",
-  closed: "Closed",
-  invoicing: "Invoicing",
-  invoiced: "Invoiced",
-});
+// ⚠ SLICE 8 PAID THE REST OF THIS FILE'S MAPS (R10-W4). The registry
+// declared each value set they worded — the enforcement mode, a principal's
+// role, a member's and an invitation's status, the wallet's transaction types
+// (lowercase since R10-W4), a credit grant's kind, status and source, the usage
+// and tenant invoices' statuses, the billing period's, a stop's scope, who
+// acted on the audit feed, and the referral programme's reward type and status
+// — and each now renders through its generated label keys in its own module:
+// `@/lib/role`, `@/lib/enforcement-mode`, `@/lib/stop-scope`,
+// `@/lib/usage-invoice`, and the settings, customers and referrals features'
+// `lib/`. Who acted is an OPEN concept and renders through
+// `components/shared/open-set-value.tsx`. The ingest-rejection map was deleted
+// outright: its values are error codes, owned by `openapi/error-codes.json`,
+// and nothing rendered it (ruling 8). What survives here is the two Stripe
+// maps below, permanent exceptions, and the value lists held by reference.
 
 // How a Customer Spend Pool is enforced — the registry's closed pair, held BY
 // REFERENCE (#468), on the same terms as the lists above. `domain-vocabulary/`
@@ -289,12 +225,6 @@ export const PRICING_STATUSES = PRICING_STATUS_VALUES;
 // leaves behind its value list and nothing else.
 export const PRICING_MODES = PRICING_MODE_VALUES;
 
-export const stopScopeLabel = legacyLabelMap({
-  task: "Task",
-  subtask: "Subtask",
-  customer: "Customer",
-});
-
 // ⚠ `stopReasonLabel` IS DELETED (#466), WHICH IS WHAT ITS LEDGER ENTRY ASKED
 // FOR: *"it becomes `labelMap(REASON_CODE_LABEL_KEYS)` in the slice that
 // rebuilds that vocabulary."* The concept is OPEN, so the binding is not a
@@ -315,16 +245,6 @@ export const stopScopeLabel = legacyLabelMap({
 // consumer of `reason_code`; `g3-console-reason_code` recorded that it held
 // none, and this line pays it off.
 export const REASON_CODES = REASON_CODE_KNOWN_VALUES;
-
-export const ingestRejectionLabel = legacyLabelMap({
-  billing_period_closed: "Billing period closed",
-  effective_at_in_future: "Timestamp in the future",
-  effective_at_naive: "Timestamp missing timezone",
-  effective_at_too_old: "Timestamp too old",
-  not_found: "Unknown customer or task",
-  provider_conflicts_with_event_type: "Provider differs from the Event Type's",
-  validation_error: "Validation failed",
-});
 
 // ⚠ `taskStatusLabel` IS DELETED (#424), WHICH IS WHAT ITS LEDGER ENTRY ASKED
 // FOR: *"it becomes `labelMap(TASK_STATUS_LABEL_KEYS)` in the slice that
@@ -502,31 +422,6 @@ export const REVENUE_BASES = REVENUE_BASIS_VALUES;
 // are what the census reads.
 export const ANALYTICS_MEASURES = ANALYTICS_MEASURE_VALUES;
 export const MEASURE_STATUSES = MEASURE_STATUS_VALUES;
-
-// ---------------------------------------------------------------------------
-// Audit
-
-export const actorKindLabel = legacyLabelMap({
-  member: "Team member",
-  api_key: "API key",
-  operator: "UBB operator",
-  end_customer: "End customer",
-  system: "System",
-});
-
-// ---------------------------------------------------------------------------
-// Referrals
-
-export const rewardTypeLabel = legacyLabelMap({
-  flat_fee: "Flat fee",
-  revenue_share: "Revenue share",
-  profit_share: "Profit share",
-});
-
-export const referralProgramStatusLabel = legacyLabelMap({
-  active: "Active",
-  deactivated: "Deactivated",
-});
 
 // ---------------------------------------------------------------------------
 // Subscriptions (Stripe mirror — Stripe's own vocabulary)

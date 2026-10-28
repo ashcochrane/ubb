@@ -66,6 +66,31 @@ concept_fields:
     - value_semantics
     # Per-concept override of the registry-wide `token_pattern` above.
     - token_pattern
+    # Values a `closed` concept still DECLARES but which can never occur: no
+    # producer may write one and the published contract does not advertise it.
+    #
+    # The case that forced it is `audit_action`'s cutover entry (R10-W4, #190
+    # ruling 6354381879): the ruling keeps the registration until the cutover
+    # retires it, and a closed public concept advertises only values that can
+    # occur. The exclusion has to live HERE rather than in the backend, because
+    # the Django-free contracts suite and the spec export must learn it from the
+    # same place the backend does. Every value listed must be one of `values`,
+    # and at least one value must remain.
+    #
+    # WHAT WITHHOLDING MEANS, AND WHAT IT IS NOT (the owner's review of #620),
+    # each held by `tests/contracts/test_end_state_vocabulary.py`:
+    #   * a withheld value is excluded from every enum the contract advertises;
+    #   * no ordinary writer can emit it — production code names its generated
+    #     constant only where a consumer filters it OUT;
+    #   * a value with a current legal production writer must not be withheld
+    #     — the first writer un-withholds it, in the same commit;
+    #   * it is never a compatibility alias — a retired spelling is a
+    #     `retired_aliases` entry, refused rather than kept answering;
+    #   * it is never a parking place for a planned value: each one is a
+    #     legitimate state with a recorded reachability proof beside it, and
+    #     the exact set is pinned with its reasons. The cutover audit action is
+    #     the temporary, W6-owned case; W6 removes it with its registration.
+    - withheld_values
 
 # One entry per kind in ADR-0008 §2's table. `requires` and `forbids` are the
 # whole of the per-kind shape rule; anything not listed in `concept_fields` or
@@ -91,6 +116,9 @@ kinds:
       - label_key_prefix
     forbids:
       - values
+      # Nothing is published as an enum for an open concept, so there is no
+      # advertised set for a withheld value to leave.
+      - withheld_values
 
   tenant_defined:
     summary: >-
@@ -109,6 +137,7 @@ kinds:
       # declares none has nothing for a rule to answer with, and a rule here
       # would be enumerating the tenant's set by the back door.
       - value_semantics
+      - withheld_values
 
   free_text:
     summary: >-
@@ -121,3 +150,4 @@ kinds:
       - allow_unknown
       - label_key_prefix
       - value_semantics
+      - withheld_values

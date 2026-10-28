@@ -39,7 +39,7 @@ from apps.billing.gating.models import RiskConfig
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingFieldValue
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import Task, TaskType
 from core.vocabulary import TASK_STATUS_ACTIVE, TASK_TYPE_KIND_TASK
@@ -76,8 +76,8 @@ class StartTestBase:
         for key in (A_KIND_OF_WORK, ANOTHER_KIND_OF_WORK):
             TaskType.objects.create(tenant=self.tenant, key=key,
                                     kind=TASK_TYPE_KIND_TASK, uncapped=True)
-        DimensionService.declare(self.tenant, key=A_GROUPING_KEY,
-                                 slot="grouping_field_1", scope="task")
+        GroupingFieldService.declare(self.tenant, key=A_GROUPING_KEY,
+                                     slot="grouping_field_1", scope="task")
 
     def _auth(self):
         return {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}
@@ -342,8 +342,8 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
         self._start(idempotency_key="k1", task_cogs_ceiling_micros=5_000_000)
         unit = Task.objects.get(tenant=self.tenant)
         unit.total_provider_cost_micros = 7
-        unit.event_count = 1
-        unit.save(update_fields=["total_provider_cost_micros", "event_count"])
+        unit.recorded_events = 1
+        unit.save(update_fields=["total_provider_cost_micros", "recorded_events"])
 
         self._start(idempotency_key="k1", task_cogs_ceiling_micros=5_000_000)
 
@@ -351,7 +351,7 @@ class TestTheKeyIsClaimedPermanently(StartTestBase):
         unit.refresh_from_db()
         assert unit.task_cogs_ceiling_micros == 5_000_000
         assert unit.total_provider_cost_micros == 7
-        assert unit.event_count == 1
+        assert unit.recorded_events == 1
 
     def test_a_repeat_adds_nothing_to_the_wallet_the_first_call_did_not(self):
         """THE MONEY-CRITICAL HALF, AND IT IS INVISIBLE IN THE RESPONSE.

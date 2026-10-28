@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.audit_record_out_action import AuditRecordOutAction
+from ..models.audit_record_out_resource_type import AuditRecordOutResourceType
 from typing import cast
 
 if TYPE_CHECKING:
@@ -25,7 +27,7 @@ T = TypeVar("T", bound="AuditRecordOut")
 class AuditRecordOut:
     """ 
         Attributes:
-            action (str):
+            action (AuditRecordOutAction):
             actor_display (str):
             actor_id (str):
             actor_kind (str):
@@ -34,10 +36,10 @@ class AuditRecordOut:
             id (str):
             metadata (AuditRecordOutMetadata):
             resource_id (str):
-            resource_type (str):
+            resource_type (AuditRecordOutResourceType):
      """
 
-    action: str
+    action: AuditRecordOutAction
     actor_display: str
     actor_id: str
     actor_kind: str
@@ -46,7 +48,7 @@ class AuditRecordOut:
     id: str
     metadata: AuditRecordOutMetadata
     resource_id: str
-    resource_type: str
+    resource_type: AuditRecordOutResourceType
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -55,7 +57,7 @@ class AuditRecordOut:
 
     def to_dict(self) -> dict[str, Any]:
         from ..models.audit_record_out_metadata import AuditRecordOutMetadata
-        action = self.action
+        action = self.action.value
 
         actor_display = self.actor_display
 
@@ -73,7 +75,7 @@ class AuditRecordOut:
 
         resource_id = self.resource_id
 
-        resource_type = self.resource_type
+        resource_type = self.resource_type.value
 
 
         field_dict: dict[str, Any] = {}
@@ -99,7 +101,10 @@ class AuditRecordOut:
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.audit_record_out_metadata import AuditRecordOutMetadata
         d = dict(src_dict)
-        action = d.pop("action")
+        action = AuditRecordOutAction(d.pop("action"))
+
+
+
 
         actor_display = d.pop("actor_display")
 
@@ -120,7 +125,10 @@ class AuditRecordOut:
 
         resource_id = d.pop("resource_id")
 
-        resource_type = d.pop("resource_type")
+        resource_type = AuditRecordOutResourceType(d.pop("resource_type"))
+
+
+
 
         audit_record_out = cls(
             action=action,

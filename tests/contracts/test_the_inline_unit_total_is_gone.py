@@ -29,6 +29,7 @@ actually proves the field left the contract, the console's snapshot and every
 client generated from either.
 """
 
+import ast
 import json
 import re
 
@@ -147,6 +148,22 @@ FIELD = re.compile(
 SURVIVING_SENSE = ("ubb-platform/apps/metering/pricing/services/"
                    "pricing_service.py")
 
+#: THE ONE PLACE THE SURVIVING SENSE IS PUBLISHED, and the only admission this
+#: gate makes. R10-W4 (#558) published the Pricing Receipt as a typed schema,
+#: and a receipt component's stored per-key quantity — the rate-arithmetic
+#: sense `SURVIVING_SENSE` writes, the key #366 ruled stays — reached the
+#: contract with it: one property on one component schema, declared once in
+#: `api/v1/schemas.py`. That is not the retired inline total coming back, and
+#: renaming a key of a STORED record to dodge this gate would be the change
+#: #366 refused. So the admission is a location, never a word: one class's
+#: one annotated field in one reader, and one JSON pointer per document.
+#: `test_the_admission_is_used_exactly_where_it_says` fails the day either
+#: stops existing, so the admission cannot outlive its subject and quietly
+#: admit the next thing to land there.
+RECEIPT_COMPONENT = "PricingReceiptComponent"
+RECEIPT_READER = "ubb-platform/api/v1/schemas.py"
+RECEIPT_POINTER = f"/components/schemas/{RECEIPT_COMPONENT}/properties/{NAMES[0]}"
+
 #: The singular. Slice 2's own canonical concept, and the reason the plural
 #: could be retired as a sense at all — the sweep matches whole tokens, and `_`
 #: is an identifier character.
@@ -155,6 +172,27 @@ SINGULAR = "unit"
 
 def _read(relative):
     return (REPO_ROOT / relative).read_text(encoding="utf-8")
+
+
+def _admitted_lines(relative, source):
+    """The receipt component's own declaration of its quantity, by line.
+
+    Located by the AST, not by text: an annotated field of one of `NAMES`
+    directly in the body of `RECEIPT_COMPONENT`, and only in
+    `RECEIPT_READER`. Any other spelling in that module — a comment, another
+    class, a serializer — is still a hit.
+    """
+    if relative != RECEIPT_READER:
+        return set()
+    return {
+        statement.lineno
+        for node in ast.parse(source).body
+        if isinstance(node, ast.ClassDef) and node.name == RECEIPT_COMPONENT
+        for statement in node.body
+        if isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+        and statement.target.id in NAMES
+    }
 
 
 def _schema_properties(node, path=""):
@@ -178,9 +216,11 @@ def test_no_named_reader_still_reads_the_inline_total(relative):
     id: this list is long enough that a single failure listing fifteen paths
     would be read as "the gate is broken" rather than "this file is".
     """
+    source = _read(relative)
+    admitted = _admitted_lines(relative, source)
     hits = [f"{number}: {line.strip()}"
-            for number, line in enumerate(_read(relative).splitlines(), 1)
-            if FIELD.search(line)]
+            for number, line in enumerate(source.splitlines(), 1)
+            if FIELD.search(line) and number not in admitted]
 
     assert not hits, (
         f"`{relative}` still reads the retired inline total ({READERS[relative]}"
@@ -200,11 +240,41 @@ def test_no_published_schema_still_carries_the_field(relative):
     """
     document = json.loads(_read(relative))
     carried = [pointer for pointer in _schema_properties(document)
-               if pointer.rsplit("/", 1)[-1] in NAMES]
+               if pointer.rsplit("/", 1)[-1] in NAMES
+               and pointer != RECEIPT_POINTER]
 
     assert not carried, (
         f"`{relative}` still publishes the retired inline total:\n"
         + "\n".join(f"  {pointer}" for pointer in carried))
+
+
+@pytest.mark.parametrize("relative", DOCUMENTS)
+def test_the_admission_is_used_exactly_where_it_says(relative):
+    """The admission's own vacuity guard, both halves.
+
+    Each document carries the receipt component's quantity at exactly
+    `RECEIPT_POINTER`, and the reader declares it on exactly one line inside
+    `RECEIPT_COMPONENT` — so an admission whose subject left (the receipt
+    re-typed, the key renamed, the class moved) fails here rather than staying
+    on as a hole nothing fills.
+    """
+    document = json.loads(_read(relative))
+    carried = [pointer for pointer in _schema_properties(document)
+               if pointer.rsplit("/", 1)[-1] in NAMES]
+    source = _read(RECEIPT_READER)
+    admitted = _admitted_lines(RECEIPT_READER, source)
+
+    assert RECEIPT_POINTER in carried, (
+        f"`{relative}` no longer publishes the receipt component's quantity at "
+        f"{RECEIPT_POINTER}, so the admission above admits nothing — delete it")
+    assert len(admitted) == 1, (
+        f"`{RECEIPT_READER}` declares the receipt component's quantity on "
+        f"{len(admitted)} lines inside `{RECEIPT_COMPONENT}`; the admission is "
+        f"for exactly one")
+    assert all(FIELD.search(source.splitlines()[number - 1])
+               for number in admitted), (
+        "the admitted line is not one the matcher would have condemned, so "
+        "admitting it proves nothing about the gate")
 
 
 def test_the_column_is_gone_from_the_posting():

@@ -15,7 +15,7 @@ def test_reconcile_repairs_uncredited_succeeded_pi():
     # attempt was charged at Stripe but never credited locally (left pending, no WalletTransaction)
     a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
                                     amount_micros=20_000_000,
-                                    trigger="auto_topup", status="pending")
+                                    trigger="auto_top_up", status="pending")
     pi = MagicMock(id="pi_1", status="succeeded", latest_charge=MagicMock(id="ch_1"),
                    metadata={"topup_attempt_id": str(a.id)})
     listing = MagicMock()
@@ -25,6 +25,6 @@ def test_reconcile_repairs_uncredited_succeeded_pi():
          patch("apps.billing.connectors.stripe.tasks.stripe.Charge.retrieve", return_value=mock_charge):
         reconcile_topups_with_stripe()
     assert Wallet.objects.get(customer=c).balance_micros == 20_000_000
-    assert WalletTransaction.objects.filter(idempotency_key="auto_topup:pi_1").count() == 1
+    assert WalletTransaction.objects.filter(idempotency_key="auto_top_up:pi_1").count() == 1
     a.refresh_from_db()
     assert a.status == "succeeded"

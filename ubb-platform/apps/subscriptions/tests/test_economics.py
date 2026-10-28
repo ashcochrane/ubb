@@ -35,7 +35,7 @@ class MarginServiceTest(RailActivated, TestCase):
         """
         CustomerCostAccumulator.objects.create(
             tenant=self.tenant, customer=self.customer, period_start=self.ps, period_end=self.pe,
-            total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, event_count=2)
+            total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, posting_count=2)
         econ = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
         assert econ.subscription_revenue_micros == 0
         assert econ.usage_billed_micros == 1_000_000
@@ -72,7 +72,7 @@ class MarginServiceTest(RailActivated, TestCase):
         CustomerCostAccumulator.objects.create(
             tenant=tenant, customer=customer, period_start=self.ps, period_end=self.pe,
             total_provider_cost_micros=3_000_000, total_billed_cost_micros=5_000_000,
-            event_count=1)
+            posting_count=1)
 
         econ = MarginService.snapshot_customer(tenant.id, customer.id, self.ps, self.pe)
 
@@ -100,7 +100,7 @@ class MarginServiceTest(RailActivated, TestCase):
         self.supply()
         CustomerCostAccumulator.objects.create(
             tenant=self.tenant, customer=self.customer, period_start=self.ps, period_end=self.pe,
-            total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, event_count=2)
+            total_provider_cost_micros=800_000, total_billed_cost_micros=1_000_000, posting_count=2)
         econ = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
         assert econ.supplied_revenue_micros == 500_000_000
         # The billed usage is still recorded in its own column, as a fact —
@@ -172,7 +172,7 @@ class MarginServiceTest(RailActivated, TestCase):
         CustomerCostAccumulator.objects.create(
             tenant=self.tenant, customer=self.customer, period_start=self.ps, period_end=self.pe,
             total_provider_cost_micros=800_000, total_billed_cost_micros=0,
-            unpriced_event_count=2, event_count=2)
+            unpriced_event_count=2, posting_count=2)
         econ = MarginService.snapshot_customer(self.tenant.id, self.customer.id, self.ps, self.pe)
 
         assert not TenantSuppliedRevenue.objects.exists()

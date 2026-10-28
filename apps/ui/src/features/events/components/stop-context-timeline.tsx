@@ -14,7 +14,7 @@
 import { OpenSetValue } from "@/components/shared/open-set-value";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/format";
-import { stopScopeLabel } from "@/lib/labels";
+import { stopScopeLabel } from "@/lib/stop-scope";
 import { REASON_CODE_LABEL_KEYS } from "@/lib/vocabulary";
 
 import { shortId } from "../lib/search";

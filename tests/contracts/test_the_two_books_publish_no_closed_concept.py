@@ -107,6 +107,15 @@ THE_BASIS_MARKER = "ceiling_basis"
 #: already appear, spelled, in the set above.
 THE_PRICE_REASON_MARKERS = {("usage.recorded", "pricing_status_reason")}
 
+#: R10-W4 (slice 8): three closed concepts the registry declared from their
+#: backends' own sets, on the payloads that already carried their values as
+#: bare strings — a teammate's role, a credit grant's kind, and the customer
+#: stop pair's scope (a field the payload calls `scope`). Field name -> the
+#: concept its marker names; the events are DERIVED from the payload classes,
+#: on `THE_MECHANISM_MARKER`'s footing.
+THE_DECLARED_IN_R10_W4 = {"role": "role", "kind": "grant_kind",
+                          "scope": "stop_scope"}
+
 
 @pytest.fixture(scope="module")
 def spec():
@@ -218,10 +227,18 @@ def test_the_webhook_block_carries_exactly_the_markers_it_did_before(spec):
         event for event, _ in arrived_since}, (
         "the basis rides the four terminal stops and no customer-wide stop "
         "(#458): only a unit's stop can be a ceiling's")
+    arrived_in_r10_w4 = {
+        (event, concept) for field, concept in THE_DECLARED_IN_R10_W4.items()
+        for event in events_whose_payload_declares(field)}
+    assert len(arrived_in_r10_w4) == 6, (
+        "two payloads each carry a role, a grant's kind and a customer stop's "
+        "scope (R10-W4); a seventh is a deliberate act that owes this module a "
+        "sentence")
     assert seen == (THE_WEBHOOK_MARKERS_THAT_PREDATE_THE_SPLIT
                     | arrived_since | arrived_with_the_pool
                     | arrived_with_the_cause | arrived_with_the_family
-                    | arrived_with_the_basis | THE_PRICE_REASON_MARKERS)
+                    | arrived_with_the_basis | THE_PRICE_REASON_MARKERS
+                    | arrived_in_r10_w4)
 
 
 def test_no_webhook_marker_names_a_book(spec):

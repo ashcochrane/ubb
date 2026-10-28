@@ -13,8 +13,13 @@ customer. (`apps/billing/wallets/models.py:Wallet`)
 
 **Ledger entry**:
 An append-only row recording one balance movement (its signed amount and resulting balance), made
-exactly-once per idempotency key. (`apps/billing/wallets/models.py:WalletTransaction`)
-_Avoid_: mutating a balance without writing a ledger entry.
+exactly-once per idempotency key. Its **transaction type** is the registry's closed
+`wallet_transaction_type`, in lowercase since R10-W4 (ruling 7): `wallets/0014` moved every stored
+row, `ck_wallet_transaction_type_known` admits only the registry's set, and no other spelling is
+accepted anywhere — no per-concept exception, no dual acceptance.
+(`apps/billing/wallets/models.py:WalletTransaction`)
+_Avoid_: mutating a balance without writing a ledger entry; the upper-case spellings the column held
+until R10-W4.
 
 **Movement reason**:
 Why money moved through a wallet BY HAND — the registry's closed `movement_reason`: `correction`,
@@ -55,7 +60,15 @@ base money is the non-grant remainder, derived not stored.
 
 **Grant kind**:
 Whether a lot is `paid` (from a top-up, withdrawable) or `promo` (never withdrawable); promo is
-consumed before paid.
+consumed before paid. The registry's closed `grant_kind`.
+
+**Grant source**:
+Where a lot came from — `checkout`, `auto_top_up`, `api` or `other` — the registry's closed
+`grant_source` (R10-W4). `ck_credit_grant_source_known` refuses any other value.
+(`apps/billing/wallets/models.py:CreditGrant.source`)
+_Avoid_: the run-together spelling the column held until `wallets/0014` moved it — one concept, one
+spelling (ADR-0006 §2). A top-up attempt's trigger, the wallet idempotency key's prefix, the outbox
+handler, the charge task, the SDK method and the `usage.recorded` field moved with it (`topups/0006`).
 
 **Consumption order**:
 The deterministic order lots are drawn down — soonest expiry first, promo before paid — with the
@@ -491,6 +504,15 @@ A postpaid customer's usage for one calendar month, pushed to Stripe as line ite
 (customer, month). (`apps/billing/invoicing/models.py:CustomerUsageInvoice`)
 _Avoid_: confusing it with a Stripe invoice — UBB pushes the lines; Stripe owns the invoice.
 
+**Skip reason**:
+Why a usage invoice was skipped rather than pushed — the registry's closed `skip_reason`: two
+terminal truths about the period (`no_usage`, `nothing_to_bill`), one supersession
+(`seat_superseded`), and three recoverable states (`no_stripe_customer`, `not_charge_ready`,
+`payment_rail_closed`). Present only on a skipped invoice and STORED as null on every other — since
+R10-W4 (`invoicing/0011`) the column holds null or one of the six, `ck_usage_invoice_skip_reason_known`
+refuses anything else, and the read publishes what is stored rather than translating a blank.
+(`apps/billing/invoicing/models.py:CustomerUsageInvoice.skip_reason`)
+
 **Line-item push**:
 The claim → Stripe → record flow that aggregates usage into lines and finalizes the Stripe invoice.
 
@@ -548,10 +570,11 @@ Every metered usage event recorded in the period, whatever it was priced at — 
 zero-priced included — and never a Task Charge, which is synthetic revenue rather than an event
 the tenant recorded (#563). So the period's money INCLUDES what its count EXCLUDES. Both writers —
 the live accumulator and the close's reconcile — decide it from the posting's kind and nothing
-else. Published as `recorded_events`, the registry's measure; `event_count` is only the column's
-internal name. (`TenantBillingPeriod.event_count`)
+else. Published as `recorded_events`, the registry's measure, and the column carries the same
+name since R10-W4 (ruling 1). (`TenantBillingPeriod.recorded_events`)
 _Avoid_: deciding what counts from a price, a pricing status or a Task link — metered usage under
-a running unit of work carries a Task too.
+a running unit of work carries a Task too; and a second, generic name for the count — the one it
+had before R10-W4 is a retired alias of the measure in `economics.yaml`.
 
 **Platform fee**:
 UBB's own charge to the tenant, computed per-product at the tenant's own period close. The

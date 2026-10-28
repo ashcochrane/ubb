@@ -9,6 +9,11 @@ from apps.referrals.rewards.models import ReferralRewardAccumulator, ReferralRew
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.cost_totals import counts_as_unresolved
 from apps.referrals.rewards.services import RewardService
+from core.vocabulary import (
+    REFERRAL_STATUS_ACTIVE,
+    REFERRAL_STATUS_EXPIRED,
+    REWARD_TYPE_FLAT_FEE,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +97,7 @@ def reconcile_referral(referral, period_start, period_end):
 
     if has_actual_cost:
         calc_method = "actual_cost"
-    elif referral.snapshot_reward_type == "flat_fee":
+    elif referral.snapshot_reward_type == REWARD_TYPE_FLAT_FEE:
         calc_method = "flat_fee"
     else:
         calc_method = "estimated_cost"
@@ -118,7 +123,7 @@ def reconcile_all_referrals(tenant_id, period_start, period_end):
     """Reconcile all active referrals for a tenant."""
     referrals = Referral.objects.filter(
         tenant_id=tenant_id,
-        status="active",
+        status=REFERRAL_STATUS_ACTIVE,
     )
 
     results = {"reconciled": 0, "skipped": 0, "errors": 0}
@@ -165,7 +170,7 @@ def expire_referrals():
 
     now = timezone.now()
     expired_referrals = Referral.objects.filter(
-        status="active",
+        status=REFERRAL_STATUS_ACTIVE,
         reward_window_ends_at__isnull=False,
         reward_window_ends_at__lt=now,
     )
@@ -173,7 +178,7 @@ def expire_referrals():
     count = 0
     for referral in expired_referrals:
         with transaction.atomic():
-            referral.status = "expired"
+            referral.status = REFERRAL_STATUS_EXPIRED
             referral.save(update_fields=["status", "updated_at"])
 
             try:

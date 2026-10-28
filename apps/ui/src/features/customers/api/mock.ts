@@ -16,7 +16,11 @@ import {
   spreadsAcrossItsSpan,
   wholeDaysBetween,
 } from "@/lib/supplied-revenue";
-import type { AffordabilityReasonKnown, RevenueBasis } from "@/lib/vocabulary";
+import type {
+  AffordabilityReasonKnown,
+  RevenueBasis,
+  WalletTransactionType,
+} from "@/lib/vocabulary";
 
 import {
   MOCK_BALANCES,
@@ -163,7 +167,7 @@ function balanceOf(customerId: string): BalanceResponse {
 
 function pushTransaction(
   customerId: string,
-  type: string,
+  type: WalletTransactionType,
   amountMicros: number,
   description: string,
   referenceId: string,
@@ -455,7 +459,7 @@ export async function createTopUp(
   // The mock "completes" the checkout instantly so the balance moves.
   pushTransaction(
     customerId,
-    "TOP_UP",
+    "top_up",
     body.amount_micros,
     "Stripe Checkout top-up (mock)",
     body.idempotency_key,
@@ -481,7 +485,7 @@ export async function withdraw(
   }
   const row = pushTransaction(
     customerId,
-    "WITHDRAWAL",
+    "withdrawal",
     -body.amount_micros,
     body.description || "Withdrawal",
     body.idempotency_key,
@@ -500,7 +504,7 @@ export async function creditWallet(body: CreditRequest): Promise<DebitCreditResp
   const customer = findByExternalId(body.customer_id);
   const row = pushTransaction(
     customer.id,
-    "ADJUSTMENT",
+    "adjustment",
     body.amount_micros,
     `Manual credit — ${body.reference}`,
     body.reference,
@@ -525,7 +529,7 @@ export async function debitWallet(body: DebitRequest): Promise<DebitCreditRespon
   }
   const row = pushTransaction(
     customer.id,
-    "DEBIT",
+    "debit",
     -body.amount_micros,
     `Manual debit — ${body.reference}`,
     body.reference,
@@ -591,7 +595,7 @@ export async function createGrant(
       : null);
   pushTransaction(
     customerId,
-    "GRANT",
+    "grant",
     body.amount_micros,
     body.description || "Credit grant",
     body.idempotency_key,
@@ -623,7 +627,7 @@ export async function voidGrant(customerId: string, grantId: string): Promise<Gr
   if (!grant) throw notFound("Unknown grant.");
   if (grant.status === "voided") return grant;
   const clawback = Math.min(grant.remaining_micros, balanceOf(customerId).balance_micros);
-  pushTransaction(customerId, "GRANT_VOID", -clawback, "Grant voided", grant.id);
+  pushTransaction(customerId, "grant_void", -clawback, "Grant voided", grant.id);
   grant.voided_micros = grant.remaining_micros;
   grant.remaining_micros = 0;
   grant.status = "voided";

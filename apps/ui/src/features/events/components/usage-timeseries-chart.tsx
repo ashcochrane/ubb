@@ -13,7 +13,7 @@ import {
 
 import { MeasureTooltip } from "@/components/shared/measure-value";
 import { RECORDED_EVENTS } from "@/lib/economic-query";
-import { formatCostMicros, formatEventCount, formatShortDate } from "@/lib/format";
+import { formatCostMicros, formatCount, formatShortDate } from "@/lib/format";
 import type { AnalyticsMeasure } from "@/lib/vocabulary";
 
 import type { ChartSeries } from "../lib/timeseries";
@@ -42,7 +42,7 @@ export default function UsageTimeseriesChart({
   const axisLabel = (value: unknown) => {
     const number = typeof value === "number" ? value : 0;
     return plotted === RECORDED_EVENTS
-      ? formatEventCount(number)
+      ? formatCount(number)
       : formatCostMicros(number, currency);
   };
   return (

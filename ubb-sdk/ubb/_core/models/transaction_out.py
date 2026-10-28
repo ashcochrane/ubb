@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.transaction_out_transaction_type import TransactionOutTransactionType
 
 
 
@@ -27,7 +28,7 @@ class TransactionOut:
             created_at (str):
             description (str):
             id (str):
-            transaction_type (str):
+            transaction_type (TransactionOutTransactionType):
      """
 
     amount_micros: int
@@ -35,7 +36,7 @@ class TransactionOut:
     created_at: str
     description: str
     id: str
-    transaction_type: str
+    transaction_type: TransactionOutTransactionType
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -53,7 +54,7 @@ class TransactionOut:
 
         id = self.id
 
-        transaction_type = self.transaction_type
+        transaction_type = self.transaction_type.value
 
 
         field_dict: dict[str, Any] = {}
@@ -84,7 +85,10 @@ class TransactionOut:
 
         id = d.pop("id")
 
-        transaction_type = d.pop("transaction_type")
+        transaction_type = TransactionOutTransactionType(d.pop("transaction_type"))
+
+
+
 
         transaction_out = cls(
             amount_micros=amount_micros,

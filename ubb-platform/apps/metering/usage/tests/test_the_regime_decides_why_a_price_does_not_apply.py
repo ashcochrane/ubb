@@ -169,25 +169,36 @@ class TestTheRemovedReasonIsRewrittenOnceUnderALiftedTrigger(
             assert (historical.not_applicable_reason
                     == NOT_APPLICABLE_REASON_FIXED_TASK_PRICING)
 
-    def _reads_as_history(self, schema):
+    def _reads_as_history(self, schema, *, through_the_route=True):
         """RESOLVE_ONCE: the receipt is not rewritten, and nothing reading it
         checks its detail against today's value set — so it reads as history,
-        beside a column that says the reason that was always true."""
+        beside a column that says the reason that was always true.
+
+        ⚠ ONLY THE CURRENT SHAPE IS READ THROUGH THE ROUTE SINCE R10-W4. The
+        owner's ruling 3 made the public receipt version 2 only: an older
+        record exists only on a development database and fails the typed
+        response rather than widening it. A schema-1 record is therefore read
+        by its READERS here, and shown unchanged on the row, until W6 removes
+        those readers at the cutover."""
         historical = self._a_historical_posting(schema)
         sealed = getattr(historical, Posting.RECEIPT_COLUMN)
         assert schema_version_of(sealed) == schema
 
-        response = self.client.get(f"/api/v1/metering/usage/{historical.id}",
-                                   **self._auth())
+        if through_the_route:
+            response = self.client.get(
+                f"/api/v1/metering/usage/{historical.id}", **self._auth())
 
-        assert response.status_code == 200, response.content
-        body = response.json()
-        assert body["not_applicable_reason"] == \
+            assert response.status_code == 200, response.content
+            body = response.json()
+            assert body["not_applicable_reason"] == \
+                NOT_APPLICABLE_REASON_FIXED_TASK_PRICING
+            # Returned exactly as it was sealed: the historical text unchanged.
+            assert body["pricing_receipt"] == sealed
+        historical.refresh_from_db()
+        assert getattr(historical, Posting.RECEIPT_COLUMN) == sealed
+        assert historical.not_applicable_reason == \
             NOT_APPLICABLE_REASON_FIXED_TASK_PRICING
-        # Returned exactly as it was sealed: the historical text unchanged.
-        assert body["pricing_receipt"] == sealed
-        assert (body["pricing_receipt"]["pricing"]["detail"]
-                ["not_applicable_reason"]) == REMOVED
+        assert sealed["pricing"]["detail"]["not_applicable_reason"] == REMOVED
         # Every reader that dispatches on the shape reads it — the same bag of
         # quantities as the receipt it was copied from, whichever shape.
         now = getattr(self.recorded, Posting.RECEIPT_COLUMN)
@@ -210,8 +221,10 @@ class TestTheRemovedReasonIsRewrittenOnceUnderALiftedTrigger(
     def test_a_sealed_schema_one_receipt_keeps_the_value_and_still_reads(self):
         """`validate_receipt` is the WRITER's check, of the one shape written
         today, so it is not asked of a schema-1 receipt; the readers above,
-        which know every readable shape, are what read it."""
-        self._reads_as_history(SECTIONED_SCHEMA_VERSION)
+        which know every readable shape, are what read it — and not the public
+        route, which publishes version 2 only (R10-W4, ruling 3)."""
+        self._reads_as_history(SECTIONED_SCHEMA_VERSION,
+                               through_the_route=False)
 
 
 @pytest.mark.django_db

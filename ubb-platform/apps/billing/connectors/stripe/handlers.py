@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def handle_balance_low_stripe(event_id, payload):
-    """When balance is low and tenant has Stripe, create auto-topup attempt
+    """When balance is low and tenant has Stripe, create auto top-up attempt
     and dispatch charge task."""
     evt = WalletBalanceLow.from_payload(payload)
     tenant_id = evt.tenant_id
@@ -31,10 +31,10 @@ def handle_balance_low_stripe(event_id, payload):
     if not Tenant.objects.filter(id=tenant_id, charges_enabled=True).exists():
         return  # Connected account is not charge-ready -- never charge it
 
-    from apps.billing.connectors.stripe.tasks import charge_auto_topup_task
+    from apps.billing.connectors.stripe.tasks import charge_auto_top_up_task
 
     with transaction.atomic():
         wallet, customer = lock_for_billing(customer_id)
         attempt = AutoTopUpService.create_pending_attempt(customer, wallet)
         if attempt:
-            transaction.on_commit(lambda aid=attempt.id: charge_auto_topup_task.delay(str(aid)))
+            transaction.on_commit(lambda aid=attempt.id: charge_auto_top_up_task.delay(str(aid)))

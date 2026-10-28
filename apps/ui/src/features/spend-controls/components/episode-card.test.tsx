@@ -91,3 +91,18 @@ describe("EpisodeCard — money the wire left null", () => {
     expect(screen.getByText("Episode 4").parentElement).toHaveTextContent("still open");
   });
 });
+
+// R10-W4, ruling 1: what an episode itemises is its POSTINGS — a Charge's
+// projection among them — so the count is never worded as events, which is
+// the recorded-events measure's word.
+describe("EpisodeCard — what it itemises", () => {
+  it("counts postings, never events", async () => {
+    const known = REASON_CODE_KNOWN_VALUES[0];
+    renderWithProviders(<EpisodeCard row={floorRow(known)} currency="usd" />);
+
+    const card = await screen.findByRole("article");
+    expect(card).toHaveTextContent(/1 posting landed past the stop/);
+    expect(card).not.toHaveTextContent(/events? landed/);
+    expect(screen.getByRole("button", { name: /Show postings/ })).toBeInTheDocument();
+  });
+});

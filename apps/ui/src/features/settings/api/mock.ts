@@ -7,7 +7,11 @@ import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
 import { mockDelay } from "@/lib/api-provider";
 import { PRODUCTS } from "@/lib/labels";
-import { CUSTOMER_BILLING_MODE_VALUES } from "@/lib/vocabulary";
+import {
+  CUSTOMER_BILLING_MODE_VALUES,
+  ROLE_VALUES,
+  type Role,
+} from "@/lib/vocabulary";
 import {
   applyMockUndeclaredWorkCeilings,
   readMockTenantConfig,
@@ -239,11 +243,11 @@ export async function listMembers(cursor?: string): Promise<CursorPage<Member>> 
   return page(members.map((m) => ({ ...m })), cursor);
 }
 
-export async function updateMemberRole(memberId: string, role: string): Promise<Member> {
+export async function updateMemberRole(memberId: string, role: Role): Promise<Member> {
   await mockDelay(350);
   const member = members.find((m) => m.id === memberId);
   if (!member) throw problem(404, "not_found", "Not found", "Unknown member.");
-  if (!["read", "write", "admin"].includes(role)) {
+  if (!ROLE_VALUES.includes(role)) {
     throw problem(422, "validation_error", "Validation error", `Unknown role: ${role}`);
   }
   if (
@@ -285,11 +289,11 @@ export async function listInvitations(cursor?: string): Promise<CursorPage<Invit
 
 export async function createInvitation(input: {
   email: string;
-  role: string;
+  role: Role;
 }): Promise<Invitation> {
   await mockDelay(400);
   const email = input.email.trim().toLowerCase();
-  if (!["read", "write", "admin"].includes(input.role)) {
+  if (!ROLE_VALUES.includes(input.role)) {
     throw problem(422, "validation_error", "Validation error", `Unknown role: ${input.role}`);
   }
   const alreadyMember = members.some((m) => m.email.toLowerCase() === email);

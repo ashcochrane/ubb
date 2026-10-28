@@ -426,14 +426,18 @@ def test_the_gate_owes_nothing_and_the_family_is_declared_empty():
         f"rather than a debt this ledger quietly absorbs.")
 
     # Vacuity guard: the assertion above is satisfied by a ledger with no G17
-    # entries AND by a ledger this reader failed to parse at all. Reading a
-    # sibling family that is NOT empty separates the two — it fails on an
-    # unparsed document and passes only where entries really were read.
-    # The sibling was G7 until R10-W3 paid its last five (slice 8's ledger);
-    # G6 is the largest family still owed.
-    assert any(entry["gate"] == "G6" for entry in ledger["entries"]), (
-        "no G6 entry was read either, so the emptiness above is a statement "
-        "about this reader rather than about the ledger")
+    # entries AND by a ledger this reader failed to parse at all. Reading
+    # something in the same document that is NOT empty separates the two — it
+    # fails on an unparsed document and passes only where entries really were
+    # read. The sibling was G7 until R10-W3 paid its last five, then G6 until
+    # R10-W4 paid its last twenty-three; the one family still owed is G9's,
+    # which the cutover pays, so any debt family goes vacuous here in turn.
+    # The seeding authorisations do not: they are the ledger's audit trail of
+    # every reviewed addition (`gates/README.md`), history rather than debt,
+    # and nothing pays them down.
+    assert ledger.get("seeding_authorisations"), (
+        "no seeding authorisation was read either, so the emptiness above is "
+        "a statement about this reader rather than about the ledger")
 
 
 def test_no_hand_written_call_resolves_to_a_route_the_contract_omits(shipped):

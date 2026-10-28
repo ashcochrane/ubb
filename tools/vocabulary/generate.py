@@ -288,12 +288,22 @@ class _PythonConstants(_Target):
         """
         return _identifier(f"{concept.name}_{value}")
 
+    def withheld_name(self, concept):
+        """The set of a closed concept's values that can never occur
+        (`withheld_values`). Bound only where the concept withholds one, and
+        never a handle: a consumer naming it holds the exclusion, not the
+        values."""
+        return _identifier(f"{concept.name}_withheld_values")
+
     def _claims(self, concept):
         if not concept.declared_values:
             return []
         claims = [(self.set_name(concept), f"{concept.name}'s value set")]
         claims += [(self.value_name(concept, value), f"{concept.name}.{value}")
                    for value in concept.declared_values]
+        if concept.withheld_values:
+            claims.append((self.withheld_name(concept),
+                           f"{concept.name}'s withheld values"))
         return claims
 
     def handles(self, concept):
@@ -322,6 +332,15 @@ class _PythonConstants(_Target):
         lines.append(f"{self.set_name(concept)} = frozenset({{")
         lines += [f"    {name}," for name in names]
         lines.append("})")
+        if concept.withheld_values:
+            # Declared, and never written or published (`withheld_values` in
+            # `domain-vocabulary/schema.yaml`). A producer refuses these; the
+            # spec export leaves them out of the published enum.
+            lines.append("")
+            lines.append(f"{self.withheld_name(concept)} = frozenset({{")
+            lines += [f"    {self.value_name(concept, value)},"
+                      for value in concept.withheld_values]
+            lines.append("})")
         return lines
 
 

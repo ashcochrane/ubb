@@ -90,6 +90,7 @@ describe("sortCustomers", () => {
 describe("topWithOther", () => {
   const rows: BreakdownRow[] = Array.from({ length: 10 }, (_, i) => ({
     group_value: `group-${i}`,
+    group_value_status: "recorded",
     cost: fig(SUPPLIER_COGS, 5_000_000),
     revenue: fig(CUSTOMER_REVENUE, (10 - i) * 1_000_000),
   }));
@@ -129,11 +130,21 @@ describe("topWithOther", () => {
     expect(drawableMeasure(rows)).toBe(CUSTOMER_REVENUE);
   });
 
-  it("labels an absent group value as unattributed", () => {
+  // #550: the two absences read differently, and neither reads as the old
+  // shared "(unattributed)" heading. The rows are assembled here rather than
+  // taken from the mock, so the mock cannot narrow along with the module.
+  it("heads an absent value by which absence it is", () => {
     const bars = topWithOther([
-      { group_value: null, cost: fig(SUPPLIER_COGS, 0), revenue: fig(CUSTOMER_REVENUE, 1) },
+      { group_value: null, group_value_status: "not_recorded",
+        cost: fig(SUPPLIER_COGS, 0), revenue: fig(CUSTOMER_REVENUE, 2) },
+      { group_value: null, group_value_status: "not_applicable",
+        cost: fig(SUPPLIER_COGS, 0), revenue: fig(CUSTOMER_REVENUE, 1) },
+      { group_value: "openai", group_value_status: "recorded",
+        cost: fig(SUPPLIER_COGS, 0), revenue: fig(CUSTOMER_REVENUE, 3) },
     ]);
-    expect(bars[0]?.name).toBe("(unattributed)");
+    expect(bars.map((bar) => bar.name)).toEqual([
+      "openai", "Not recorded", "Does not apply",
+    ]);
   });
 });
 

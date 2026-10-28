@@ -33,6 +33,14 @@ from datetime import timedelta
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Case, F, IntegerField, Sum, When
 from django.utils import timezone
+from core.vocabulary import (
+    GRANT_KIND_PROMO,
+    GRANT_STATUS_ACTIVE,
+    GRANT_STATUS_DEPLETED,
+    GRANT_STATUS_EXPIRED,
+    GRANT_STATUS_VOIDED,
+    WALLET_TRANSACTION_TYPE_GRANT_EXPIRY,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +51,9 @@ class GrantLedger:
         """Active grants in consumption order (see module docstring)."""
         from apps.billing.wallets.models import CreditGrant
 
-        return CreditGrant.objects.filter(wallet=wallet, status="active").order_by(
+        return CreditGrant.objects.filter(wallet=wallet, status=GRANT_STATUS_ACTIVE).order_by(
             F("expires_at").asc(nulls_last=True),
-            Case(When(kind="promo", then=0), default=1, output_field=IntegerField()),
+            Case(When(kind=GRANT_KIND_PROMO, then=0), default=1, output_field=IntegerField()),
             "created_at",
             "id",
         )
@@ -69,13 +77,13 @@ class GrantLedger:
         assert connection.in_atomic_block
         now = now or timezone.now()
         due = list(CreditGrant.objects.filter(
-            wallet=wallet, status="active",
+            wallet=wallet, status=GRANT_STATUS_ACTIVE,
             expires_at__isnull=False, expires_at__lte=now,
         ).order_by("expires_at", "id"))
         expired_count = 0
         for grant in due:
             if grant.remaining_micros <= 0:
-                grant.status = "expired"
+                grant.status = GRANT_STATUS_EXPIRED
                 grant.save(update_fields=["status", "updated_at"])
                 expired_count += 1
                 continue
@@ -86,7 +94,7 @@ class GrantLedger:
                 with transaction.atomic():  # savepoint: I2 exactly-once backstop
                     WalletTransaction.objects.create(
                         wallet=wallet,
-                        transaction_type="GRANT_EXPIRY",
+                        transaction_type=WALLET_TRANSACTION_TYPE_GRANT_EXPIRY,
                         amount_micros=-debit,
                         balance_after_micros=new_balance,
                         description=f"Credit grant expired ({grant.kind})",
@@ -104,7 +112,7 @@ class GrantLedger:
             # voided_micros; expiry must never clobber sibling buckets.
             grant.expired_micros += grant.remaining_micros
             grant.remaining_micros = 0
-            grant.status = "expired"
+            grant.status = GRANT_STATUS_EXPIRED
             grant.save(update_fields=[
                 "expired_micros", "remaining_micros", "status", "updated_at"])
             expired_count += 1
@@ -152,7 +160,7 @@ class GrantLedger:
             return 0
         grants = list(GrantLedger._active_grants(wallet))
         if exclude_promo:
-            grants = [g for g in grants if g.kind != "promo"]
+            grants = [g for g in grants if g.kind != GRANT_KIND_PROMO]
         if prefer_grant is not None:
             grants = [prefer_grant] + [g for g in grants if g.id != prefer_grant.id]
         left = amount
@@ -165,8 +173,8 @@ class GrantLedger:
                 continue
             grant.remaining_micros -= take
             fields = ["remaining_micros", "updated_at"]
-            if grant.remaining_micros == 0 and grant.status == "active":
-                grant.status = "depleted"
+            if grant.remaining_micros == 0 and grant.status == GRANT_STATUS_ACTIVE:
+                grant.status = GRANT_STATUS_DEPLETED
                 fields.append("status")
             grant.save(update_fields=fields)
             rows.append(GrantAllocation(
@@ -201,7 +209,7 @@ class GrantLedger:
             source=source,
             source_reference=source_reference,
             source_transaction=txn,
-            status="active",
+            status=GRANT_STATUS_ACTIVE,
         )
         # Pre-credit balance derived from the credit txn itself (robust to
         # whether the caller bumps wallet.balance_micros before or after).
@@ -211,7 +219,7 @@ class GrantLedger:
             grant.remaining_micros -= recoup
             fields = ["remaining_micros", "updated_at"]
             if grant.remaining_micros == 0:
-                grant.status = "depleted"
+                grant.status = GRANT_STATUS_DEPLETED
                 fields.append("status")
             grant.save(update_fields=fields)
             GrantAllocation.objects.create(
@@ -243,19 +251,19 @@ class GrantLedger:
         assert connection.in_atomic_block
         # 1. Source lot first.
         if source_grant is not None and source_grant.remaining_micros > 0 \
-                and source_grant.status == "active":
+                and source_grant.status == GRANT_STATUS_ACTIVE:
             take = min(source_grant.remaining_micros, amount)
             if take > 0:
                 source_grant.remaining_micros -= take
                 source_grant.voided_micros += take
                 fields = ["remaining_micros", "voided_micros", "updated_at"]
                 if source_grant.remaining_micros == 0:
-                    source_grant.status = "voided"
+                    source_grant.status = GRANT_STATUS_VOIDED
                     fields.append("status")
                 source_grant.save(update_fields=fields)
         # 2. Cascade until G1 holds again.
         active_sum = CreditGrant.objects.filter(
-            wallet=wallet, status="active",
+            wallet=wallet, status=GRANT_STATUS_ACTIVE,
         ).aggregate(total=Sum("remaining_micros"))["total"] or 0
         excess = active_sum - max(wallet.balance_micros, 0)
         if excess > 0:
@@ -302,7 +310,7 @@ class GrantLedger:
         if not allocations:
             return 0
         active_sum = CreditGrant.objects.filter(
-            wallet=wallet, status="active",
+            wallet=wallet, status=GRANT_STATUS_ACTIVE,
         ).aggregate(total=Sum("remaining_micros"))["total"] or 0
         headroom = max(wallet.balance_micros, 0) - active_sum
         total = 0
@@ -319,8 +327,8 @@ class GrantLedger:
                 continue
             grant.remaining_micros += take
             fields = ["remaining_micros", "updated_at"]
-            if grant.status == "depleted":
-                grant.status = "active"
+            if grant.status == GRANT_STATUS_DEPLETED:
+                grant.status = GRANT_STATUS_ACTIVE
                 fields.append("status")
             grant.save(update_fields=fields)
             alloc.refunded_micros += take
@@ -335,7 +343,7 @@ class GrantLedger:
         from apps.billing.wallets.models import CreditGrant
 
         return CreditGrant.objects.filter(
-            wallet=wallet, status="active", kind="promo",
+            wallet=wallet, status=GRANT_STATUS_ACTIVE, kind=GRANT_KIND_PROMO,
         ).aggregate(total=Sum("remaining_micros"))["total"] or 0
 
     @staticmethod
@@ -346,7 +354,7 @@ class GrantLedger:
         from apps.billing.wallets.models import CreditGrant
 
         agg = CreditGrant.objects.filter(
-            wallet=wallet, status="active",
+            wallet=wallet, status=GRANT_STATUS_ACTIVE,
             expires_at__isnull=False, remaining_micros__gt=0,
         ).aggregate(expiring=Sum("remaining_micros"), next_expiry=Min("expires_at"))
         return {

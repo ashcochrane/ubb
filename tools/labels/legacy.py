@@ -122,9 +122,6 @@ DECLARED_NON_LABEL_EXPORTS = {
     HUMANISER: (
         "the adapter's mechanism, not a use of it. Deleting it is the whole "
         "point of the ledger below reaching zero"),
-    "roleRank": (
-        "ranks a role for a floor comparison and returns a number. It carries "
-        "no words, so there is nothing for a catalogue to own"),
     "AFFORDABILITY_REASONS": _BY_REFERENCE,
     "BILLING_MODES": _VALUE_SET,
     "CEILING_STATUSES": _BY_REFERENCE,
@@ -137,7 +134,6 @@ DECLARED_NON_LABEL_EXPORTS = {
     "PRODUCTS": _BY_REFERENCE,
     "RATE_STRUCTURES": _BY_REFERENCE,
     "REASON_CODES": _BY_REFERENCE,
-    "ROLES": _VALUE_SET,
     "SPEND_POOL_ENFORCE_MODES": _BY_REFERENCE,
     "TASK_STATUSES": _BY_REFERENCE,
     "TRIGGER_SOURCES": _BY_REFERENCE,
@@ -151,7 +147,6 @@ DECLARED_NON_LABEL_EXPORTS = {
     "WEBHOOK_EVENT_TYPES": _BY_REFERENCE,
     "BillingMode": _DERIVED_TYPE,
     "Product": _BY_REFERENCE,
-    "Role": _DERIVED_TYPE,
 }
 
 _EXPORT = re.compile(

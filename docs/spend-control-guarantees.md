@@ -197,7 +197,7 @@ The wallet's database-level rules protect the books being **true**, and nothing 
 
 - **No event is ever billed twice.** Every credit and debit carries an idempotency key under
   a unique constraint (`uq_wallet_txn_idempotency`; usage debits keyed
-  `usage_deduction:{usage_event_id}`, top-ups keyed `auto_topup:{payment_intent_id}`).
+  `usage_deduction:{usage_event_id}`, top-ups keyed `auto_top_up:{payment_intent_id}`).
   Replays, retries, and race losers become silent no-ops — the database, not application
   discipline, is the guarantee.
 - **Granted credit is conserved.** A credit grant's remaining balance can never go below zero
@@ -231,14 +231,14 @@ can check them against a live database.
 | Invariant | Constraint | Where |
 |---|---|---|
 | A usage event is never debited twice | `uq_wallet_txn_idempotency` — partial unique on `(wallet, idempotency_key)` | `apps/billing/wallets/models.py:97` |
-| A top-up PaymentIntent is never credited twice | same constraint, key `auto_topup:{payment_intent_id}` | `apps/billing/topups/services.py:76` |
+| A top-up PaymentIntent is never credited twice | same constraint, key `auto_top_up:{payment_intent_id}` | `apps/billing/topups/services.py:13` |
 | A grant's remaining balance stays within `[0, granted]` | `ck_grant_remaining_bounds` | `apps/billing/wallets/models.py:190` |
 | A grant allocation is positive and never refunds more than it allocated | `ck_grant_allocation_positive`, `ck_grant_alloc_refund_bounds` | `apps/billing/wallets/models.py:233-238` |
 | A usage report is deduplicated per `(tenant, customer, idempotency_key)` | `uq_usage_event_idempotency_v2` | `apps/metering/usage/models.py:69` |
 | An outbox event is handled at most once per handler | `uq_checkpoint_event_handler` | `apps/platform/events/models.py:56` |
 | A Stripe webhook event is processed once | unique `stripe_event_id` | `apps/billing/stripe/models.py:21` |
 | One usage invoice per customer per period | `uq_usage_invoice_customer_period` | `apps/billing/invoicing/models.py:107` |
-| At most one pending auto-top-up per customer (no double charge) | `uq_one_pending_auto_topup_per_customer` | `apps/billing/topups/models.py:62` |
+| At most one pending auto top-up per customer (no double charge) | `uq_one_pending_auto_top_up_per_customer` | `apps/billing/topups/models.py:82` |
 
 ### Enforced by application code + a self-healing reconcile
 
@@ -281,7 +281,7 @@ The key namespace, so you can audit the ledger yourself:
 | Key format | Written by | Where |
 |---|---|---|
 | `usage_deduction:{usage_event_id}` | the live drawdown handler, and the reconcile repair — deliberately the **same key**, and literally the same line, so live and repair can race and one wins | `apps/billing/wallets/operations.py:478`, reached from `apps/billing/handlers.py:48` and `wallets/tasks.py:144` |
-| `auto_topup:{payment_intent_id}` | the charge task, the `payment_intent.succeeded` webhook, and the Stripe reconcile — three paths, one key, one credit | `apps/billing/topups/services.py:76` |
+| `auto_top_up:{payment_intent_id}` | the charge task, the `payment_intent.succeeded` webhook, and the Stripe reconcile — three paths, one key, one credit | `apps/billing/topups/services.py:13` |
 | `topup:{checkout_session_id}` | Stripe Checkout top-up webhook | `apps/billing/connectors/stripe/webhooks.py:95` |
 | `expiry:{grant_id}` | grant expiry | `apps/billing/wallets/grants.py:94` |
 | `dispute:{dispute_id}` | dispute deduction | `apps/billing/connectors/stripe/webhooks.py:305` |
@@ -345,7 +345,7 @@ its own.
 |---|---|---|---|
 | `sweep_outbox` | every 1 min | re-dispatches outbox events due for retry; reclaims rows stuck `processing` > 5 min; alerts on dead-letter | backoff 30s → 2m → 10m → 30m → 2h, max 5 attempts (`apps/platform/events/tasks.py:23,85`); per-handler dedup via `uq_checkpoint_event_handler`. The post-commit dispatch "doorbell" carries a broker-down guard — the row is the queue, the doorbell is a latency optimization *(delivery pin 12, `api/v1/tests/test_delivery_pins.py`)* |
 | `reconcile_usage_drawdowns` | hourly at :40 | any recorded usage event on a prepaid wallet whose debit never landed (e.g. outbox dead-lettered) — repairs the debit | anti-join on `WalletTransaction.usage_event_id` + key `usage_deduction:{id}`; **6h grace, deliberately > the ~2h43m outbox retry horizon** so live delivery always gets to finish first; 7-day lookback; repair-rate spike alarm (`apps/billing/wallets/tasks.py:110-158`) |
-| `reconcile_topups_with_stripe` | hourly at :20 | any *succeeded* Stripe PaymentIntent with no local wallet credit — credits it from Stripe's ledger (Stripe is the source of truth for money movement); secondary amount/refund audit | key `auto_topup:{pi_id}`; **4-day lookback, > Stripe's ~3-day webhook retry horizon**; 48h audit window (`apps/billing/connectors/stripe/tasks.py:118-208`) |
+| `reconcile_topups_with_stripe` | hourly at :20 | any *succeeded* Stripe PaymentIntent with no local wallet credit — credits it from Stripe's ledger (Stripe is the source of truth for money movement); secondary amount/refund audit | key `auto_top_up:{pi_id}`; **4-day lookback, > Stripe's ~3-day webhook retry horizon**; 48h audit window (`apps/billing/connectors/stripe/tasks.py:118-208`) |
 | `reconcile_wallet_balances` | hourly at :00 | **auditor, not repairer**: checks `balance == Σ ledger` and grant conservation on every wallet; any drift logs loud | detect-and-alarm by design — an automated "fix" would hide the bug that caused the drift (`apps/billing/wallets/tasks.py:11-96`) |
 | `reconcile_live_ledgers` → `reconcile_prepaid` | hourly at :25 | MIN-merges the fast-lane (Redis) prepaid balance toward the durable wallet balance; alarms on drift spikes; both **clears** stale stop flags for recovered customers and **sets** missed ones — the crossed-while-blind-then-went-quiet hole is closed (decision: [#11](https://github.com/ashcochrane/ubb/issues/11)) | conservative merge direction — the fast lane may only be *more* cautious than durable truth, never less (`apps/billing/gating/services/live_counter.py`); *(pin 5, `test_stop_resume_pins.py`)* |
 | the hourly patrol | rides the :25 pass | the signal suite's backstop, traffic-independent: drives missed stop/soft-floor transitions (both directions), re-aligns the fast `ubb:stop` flag to durable truth, **re-mints a fresh current-state announcement** for any signal that never reached you, sweeps any work still active at or above its COGS Ceiling and kills it idempotently — that last leg running for **every** tenant, because declaring a ceiling is the opt-in and the switch does not govern it | `apps/billing/gating/patrol.py:51`; announcement bookkeeping via `announce_outbox_id` stamps, re-mints marked `re_announcement: true` and NAMED FOR THE STATE THE ROW CARRIES NOW — a piece of work that expired re-announces the expiry and never the spend stop, the patrol having no memory of which event it first sent (`test_patrol_pins.py::TestTheRemintNamesTheStateTheRowCarries`, #420) — at most one in-flight announcement per signal row; `PatrolOutcome` counters surface as `patrol_*_7d` through `apps.billing.queries.get_patrol_stats` *(delivery pins 1–6, `test_patrol_pins.py`)* |

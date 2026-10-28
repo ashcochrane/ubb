@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.rate_out_pricing_method_type_0 import RateOutPricingMethodType0
 from ..models.rate_out_rate_structure import RateOutRateStructure
 from ..types import UNSET, Unset
 from typing import cast
@@ -42,6 +43,9 @@ class RateOut:
             id (str):
             lineage_id (str):
             measurement_key (str):
+            pricing_method (None | RateOutPricingMethodType0): How this rule derives a customer price: 'margin_over_cost' (a
+                percentage over what the call cost; its own terms are zero) or 'direct_event_price' (it charges its own terms).
+                Null only on a cost book's rate, which prices no customer.
             provider (str):
             rate_per_unit_micros (int):
             rate_structure (RateOutRateStructure):
@@ -69,6 +73,7 @@ class RateOut:
     id: str
     lineage_id: str
     measurement_key: str
+    pricing_method: None | RateOutPricingMethodType0
     provider: str
     rate_per_unit_micros: int
     rate_structure: RateOutRateStructure
@@ -119,6 +124,12 @@ class RateOut:
 
         measurement_key = self.measurement_key
 
+        pricing_method: None | str
+        if isinstance(self.pricing_method, RateOutPricingMethodType0):
+            pricing_method = self.pricing_method.value
+        else:
+            pricing_method = self.pricing_method
+
         provider = self.provider
 
         rate_per_unit_micros = self.rate_per_unit_micros
@@ -160,6 +171,7 @@ class RateOut:
             "id": id,
             "lineage_id": lineage_id,
             "measurement_key": measurement_key,
+            "pricing_method": pricing_method,
             "provider": provider,
             "rate_per_unit_micros": rate_per_unit_micros,
             "rate_structure": rate_structure,
@@ -218,6 +230,24 @@ class RateOut:
 
         measurement_key = d.pop("measurement_key")
 
+        def _parse_pricing_method(data: object) -> None | RateOutPricingMethodType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_method_type_0 = RateOutPricingMethodType0(data)
+
+
+
+                return pricing_method_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | RateOutPricingMethodType0, data)
+
+        pricing_method = _parse_pricing_method(d.pop("pricing_method"))
+
+
         provider = d.pop("provider")
 
         rate_per_unit_micros = d.pop("rate_per_unit_micros")
@@ -263,6 +293,7 @@ class RateOut:
             id=id,
             lineage_id=lineage_id,
             measurement_key=measurement_key,
+            pricing_method=pricing_method,
             provider=provider,
             rate_per_unit_micros=rate_per_unit_micros,
             rate_structure=rate_structure,

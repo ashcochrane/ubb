@@ -287,7 +287,7 @@ class AMarginThatLeftForeignRevenueOutConcludesNothingTest(_ForeignCurrencyCase)
             tenant=self.tenant, customer=self.customer, period_start=OPENS,
             period_end=CLOSES + timedelta(days=1),
             total_provider_cost_micros=30_000_000, total_billed_cost_micros=5_000_000,
-            event_count=3)
+            posting_count=3)
 
     def _evaluated(self):
         from apps.subscriptions.economics.services import MarginService

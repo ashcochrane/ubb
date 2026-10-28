@@ -31,7 +31,7 @@ function that answers it, and **Measurements status** reads it first — a charg
 `not_applicable`, never `pruned`.
 **What counts a charge posting and what does not is decided by the ECONOMIC FIELD each measure is
 about**: it is real revenue, so every monetary total includes it or a tenant under-reports what they
-sold; it is not a reported event, so `Task.event_count` and every count of events excludes it or a
+sold; it is not a reported event, so `Task.recorded_events` and every count of events excludes it or a
 per-event average gains a denominator nobody billed. G14's four pins hold it, installed by #511;
 ADR-0013's Consequences say which slice wrote which.
 **A compensating Charge is refused at the projection** — a negative posting would move nothing on
@@ -46,6 +46,18 @@ _Avoid_: the spelling #139 §4.3 gave the second value — it lives in `economic
 table for a migration to name, and nothing else spells it; and reading the kind as a pricing or
 costing method — it says what the row IS, and the **Pricing Receipt** says how its amounts were
 resolved.
+
+**Recorded events** and **posting count** — two counts over the same rows, kept apart by name
+(R10-W4 ruling 1). **Recorded events** counts metered usage events and never a Task Charge's
+projection: the registry's `recorded_events` measure, on the one economic query, on a Task and on
+a billing period. A **posting count** counts the postings a set of totals adds up, whatever their
+kind, so it CAN include a Charge's projection: the itemised events of a spend-control episode and
+their family totals, a seat's and a business's margin, and the monthly cost accumulator. An
+economic measure's figure slot is plain `count`, because the `measure` beside it says what is
+counted. (`apps/metering/queries.py:get_period_totals`, `get_customer_cost_totals`;
+`api/v1/schemas.py:ItemisedEventsOut`; `apps/subscriptions/api/margin_schemas.py:SeatMarginOut`)
+_Avoid_: reading a posting count as a number of reported events — it is a denominator for its own
+totals; and the generic name all of these shared before R10-W4, now a retired alias of the measure.
 
 **Posting measurement**:
 What was measured on a posting — the child record, one-to-one with its parent, holding the detail
@@ -341,7 +353,9 @@ and calling the percentage a "margin", which names only the derived figure above
 **Markup provenance**:
 Which rung supplied a percentage and which record held it, recorded on the Pricing Receipt beside the
 percentage itself (#357). The percentage rides BY VALUE and the record only as a pointer, because a
-markup record can be edited or withdrawn and the receipt is what a tenant shows a customer.
+markup record can be edited or withdrawn and the receipt is what a tenant shows a customer. The rung
+is the registry's closed `markup_rung` — one value today, `tenant_default` — declared once #558
+published the receipt typed (the owner's review of #620).
 (`apps/metering/pricing/services/markup_service.py:ResolvedMarkup`)
 
 ## Pricing — the books, the rules and the ladder
@@ -474,11 +488,20 @@ second check refuses the composed shape (#355), because both are true of a row a
 which is exactly what a check evaluates.
 Two values and not the four #148 §4.4 sketched: the registry is the oracle, and neither dropped value
 lost a distinction anything makes.
+**A selling rule states its method; nothing else states one** (R10-W4 ruling 4, ADR-0024 §5). A rule
+carries `pricing_method` if and only if it sits in a Pricing Book — `ck_rate_a_selling_rule_states_its_method`
+— so a cost book's rate carries null and a null never MEANS a method. Before W4 a selling rule with
+no method was read as `direct_event_price`; `pricing/0034` stored that reading on every such row, a
+publish writes it where a body is silent, and the resolver refuses a rule with none rather than
+defaulting. `RateOut` publishes it, required and nullable (#190 comment `5831552855`), so a margin
+rule — stored with zero terms — no longer reads as a price of zero.
 (`apps/metering/pricing/models.py:Rate.pricing_method`;
-`apps/metering/pricing/tests/test_a_rule_declares_one_method_and_never_composes.py`)
+`apps/metering/pricing/tests/test_a_rule_declares_one_method_and_never_composes.py`;
+`api/v1/tests/test_a_selling_rule_states_its_method.py`)
 _Avoid_: confusing it with `rate_structure` below, which says which ARITHMETIC produced the amount,
 not where the amount's authority came from; and reading a customer override as changing a number
-inside an inherited method — an override replaces the whole rule, method included.
+inside an inherited method — an override replaces the whole rule, method included; and reading a null as a
+method — it says the rate is a supplier cost, which derives no price.
 
 **rate_structure**:
 The arithmetic shape of a rate — `per_unit`, an amount for each unit of quantity, or
@@ -592,6 +615,14 @@ and the regime already say.
 is what explains a `not_applicable` price, and it is what a Resolution Run re-resolves against — by
 value, as it was on the day, never re-read from the piece of work's own row, because a tenant
 changing how a kind of work is sold must not reprice a backlog of history.
+**Published typed, version 2 only** (#558, ADR-0024 §4). `PricingReceipt` is a schema on the
+acknowledgement (required — every recording writes one), the batch item (null only when the item was
+rejected) and the event detail (required). Every level is closed except `detail` and `provenance`,
+which ADR-0020 §3's additive rule keeps open: each types the keys UBB writes, admits another, and
+publishes exactly what was stored — a typed key the record does not hold stays absent. A record older
+than version 2 exists only on a development database, does not validate on the public read, and is
+reset at the cutover rather than accommodated (§0.4 D); the internal readers of versions 0 and 1 stay
+until W6 removes them.
 The record had three names and #370 settled them. This one is what the registry ratified, as
 `pricing_receipt_subject_type`; the stored column's older spelling is a retired alias on that
 concept and is not written here; and so is "audit trail", which is the name **this entry itself

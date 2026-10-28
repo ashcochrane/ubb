@@ -49,7 +49,7 @@ export const INVOICE_LINES_SURFACE = "invoice_lines";
  * The mock workspace's own declared axis keys, in slot order.
  *
  * ⚠ **ONE LIST, READ BY BOTH MOCKS THAT NEED IT.** The pricing feature's rule
- * editor reads the declared registry and builds its own `GroupingFieldDef`
+ * editor reads the declared registry and builds its own `GroupingField`
  * rows from these same keys, so a mock tenant that declared `model` to one
  * surface and `dim1` to another would be two tenants wearing one name — which
  * is precisely the defect that let the group-by picker offer slot names for

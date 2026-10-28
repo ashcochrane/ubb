@@ -13,6 +13,6 @@ def test_columns_and_backfill_defaults():
                                   billing_owner_id=c.id)
     assert e.billing_owner_id == c.id
     w = Wallet.objects.create(customer=c, balance_micros=0)
-    tx = WalletTransaction.objects.create(wallet=w, transaction_type="TOP_UP",
+    tx = WalletTransaction.objects.create(wallet=w, transaction_type="top_up",
                                           amount_micros=1, balance_after_micros=1, usage_event_id=e.id)
     assert tx.usage_event_id == e.id

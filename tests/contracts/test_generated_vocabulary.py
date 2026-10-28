@@ -524,8 +524,15 @@ def test_a_kind_that_declares_no_values_is_accounted_for_not_omitted(registry,
                else set(namespace(source)))
     for concept_ in silent:
         assert concept_.name in source, f"{concept_.name} is unaccounted for"
+        # A LONGER concept name can extend this one — `grouping_field_value_
+        # status` (R10-W4) extends the tenant-defined `grouping_field_value` —
+        # and its constants are its own, not an enumeration of this one.
+        longer = tuple(f"{other.name.upper()}_" for other in
+                       registry.concepts.values()
+                       if other.name.startswith(f"{concept_.name}_"))
         assert not [name for name in emitted
-                    if name.startswith(f"{concept_.name.upper()}_")], (
+                    if name.startswith(f"{concept_.name.upper()}_")
+                    and not name.startswith(longer)], (
             f"{target.path} enumerates {concept_.name}, which UBB does not own"
         )
 
@@ -795,6 +802,33 @@ def test_a_structured_value_becomes_a_valid_name_in_every_language(tmp_path):
         ["task.completed", "invoice.finalized"]
     keys, _ = console_label_maps(source)["WEBHOOK_EVENT_LABEL_KEYS"]
     assert keys["task.completed"] == "webhook_event.task.completed"
+
+
+def test_a_withheld_value_is_bound_in_its_own_set_and_kept_in_the_whole(tmp_path):
+    """`withheld_values` (R10-W4): the backend and the SDK name the exclusion
+    from the registry, so no Django module is its only copy. The whole-set name
+    still carries every declared value — the census measures holding by it —
+    and the withheld set names exactly what may never be written."""
+    registry = load(tmp_path, concepts={"economics.yaml": {
+        "thing": concept(withheld_values=["beta"]),
+    }})
+    for target in PYTHON_TARGETS:
+        bound = namespace(target.render(registry))
+        assert bound["THING_VALUES"] == frozenset({"alpha", "beta"})
+        assert bound["THING_WITHHELD_VALUES"] == frozenset({"beta"})
+        assert "THING_WITHHELD_VALUES" not in target.handles(
+            registry.concepts["thing"])
+
+
+def test_a_concept_that_withholds_nothing_binds_no_withheld_set(registry):
+    """The name exists only where a concept withholds a value, so an empty
+    exclusion is never something a consumer could import by mistake."""
+    for target in PYTHON_TARGETS:
+        bound = namespace(target.render(registry))
+        withheld = {name for name in bound if name.endswith("_WITHHELD_VALUES")}
+        expected = {target.withheld_name(c) for c in registry.concepts.values()
+                    if c.withheld_values}
+        assert withheld == expected
 
 
 def test_a_value_that_needs_escaping_is_emitted_correctly(tmp_path):

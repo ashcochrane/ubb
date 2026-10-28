@@ -48,7 +48,7 @@ class TestUsageRecordedHandler:
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 100_000
         assert acc.total_referred_spend_micros == 1_000_000
-        assert acc.event_count == 1
+        assert acc.rewarded_posting_count == 1
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_accumulates_multiple_events(self, mock_task):
@@ -66,7 +66,7 @@ class TestUsageRecordedHandler:
 
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 150_000  # 3 * 50K
-        assert acc.event_count == 3
+        assert acc.rewarded_posting_count == 3
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_flat_fee_paid_once(self, mock_task):
@@ -255,7 +255,7 @@ class TestUsageRecordedHandler:
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 0
         assert acc.total_referred_spend_micros == 0
-        assert acc.event_count == 0
+        assert acc.rewarded_posting_count == 0
 
     def test_a_negative_known_price_is_refused_by_name_and_rewards_nothing(self):
         """UBB never writes one (a negative calculated price is `unknown`
@@ -278,4 +278,4 @@ class TestUsageRecordedHandler:
         acc = ReferralRewardAccumulator.objects.get(referral=referral)
         assert acc.total_earned_micros == 0
         assert acc.total_referred_spend_micros == 0
-        assert acc.event_count == 0
+        assert acc.rewarded_posting_count == 0

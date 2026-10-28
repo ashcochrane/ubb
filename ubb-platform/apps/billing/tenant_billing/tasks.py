@@ -8,6 +8,13 @@ from django.utils import timezone
 from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
 from apps.billing.tenant_billing.services import TenantBillingService
 from apps.platform.event_types.quarantine import PeriodHoldsUnresolvedValues
+from core.vocabulary import (
+    BILLING_PERIOD_STATUS_CLOSED,
+    BILLING_PERIOD_STATUS_INVOICED,
+    BILLING_PERIOD_STATUS_INVOICING,
+    BILLING_PERIOD_STATUS_OPEN,
+    TENANT_INVOICE_STATUS_FINALIZED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +40,7 @@ def close_tenant_billing_periods():
     first_of_month = today.replace(day=1)
 
     periods = TenantBillingPeriod.objects.filter(
-        status="open",
+        status=BILLING_PERIOD_STATUS_OPEN,
         period_end__lte=first_of_month,
     ).select_related("tenant")
 
@@ -80,7 +87,7 @@ def reconcile_tenant_billing_periods():
     Runs hourly — fast no-op when totals match.
     """
     periods = TenantBillingPeriod.objects.filter(
-        status="open",
+        status=BILLING_PERIOD_STATUS_OPEN,
     ).select_related("tenant")
 
     for period in periods:
@@ -112,9 +119,9 @@ def generate_tenant_platform_invoices():
 
     # Reclaim stale invoicing periods (worker crash recovery)
     stale_count = TenantBillingPeriod.objects.filter(
-        status="invoicing",
+        status=BILLING_PERIOD_STATUS_INVOICING,
         updated_at__lt=stale_cutoff,
-    ).update(status="closed")
+    ).update(status=BILLING_PERIOD_STATUS_CLOSED)
     if stale_count:
         logger.warning(
             "Reclaimed stale invoicing periods",
@@ -122,7 +129,7 @@ def generate_tenant_platform_invoices():
         )
 
     periods = TenantBillingPeriod.objects.filter(
-        status="closed",
+        status=BILLING_PERIOD_STATUS_CLOSED,
         invoice__isnull=True,
     ).select_related("tenant")
 
@@ -132,7 +139,7 @@ def generate_tenant_platform_invoices():
         # a usage total that sums known prices, and a known price is never
         # negative.
         if period.platform_fee_micros == 0:
-            period.status = "invoiced"
+            period.status = BILLING_PERIOD_STATUS_INVOICED
             period.save(update_fields=["status", "updated_at"])
             continue
 
@@ -160,15 +167,15 @@ def _create_tenant_invoice(period):
     # Phase 1 — Claim the period
     with transaction.atomic():
         period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
-        if period.status != "closed":
+        if period.status != BILLING_PERIOD_STATUS_CLOSED:
             return
 
         if TenantInvoice.objects.filter(billing_period=period).exists():
-            period.status = "invoiced"
+            period.status = BILLING_PERIOD_STATUS_INVOICED
             period.save(update_fields=["status", "updated_at"])
             return
 
-        period.status = "invoicing"
+        period.status = BILLING_PERIOD_STATUS_INVOICING
         period.save(update_fields=["status", "updated_at"])
 
     # Phase 2 — Call Stripe (no DB transaction held)
@@ -181,20 +188,20 @@ def _create_tenant_invoice(period):
     except Exception:
         # Stripe failed — revert to closed so next run retries
         TenantBillingPeriod.objects.filter(
-            id=period.id, status="invoicing"
-        ).update(status="closed")
+            id=period.id, status=BILLING_PERIOD_STATUS_INVOICING
+        ).update(status=BILLING_PERIOD_STATUS_CLOSED)
         raise
 
     if not stripe_invoice_id:
         TenantBillingPeriod.objects.filter(
-            id=period.id, status="invoicing"
-        ).update(status="closed")
+            id=period.id, status=BILLING_PERIOD_STATUS_INVOICING
+        ).update(status=BILLING_PERIOD_STATUS_CLOSED)
         return
 
     # Phase 3 — Record success
     with transaction.atomic():
         period = TenantBillingPeriod.objects.select_for_update().get(pk=period.pk)
-        if period.status != "invoicing":
+        if period.status != BILLING_PERIOD_STATUS_INVOICING:
             return  # Another process already handled it
 
         TenantInvoice.objects.create(
@@ -202,11 +209,11 @@ def _create_tenant_invoice(period):
             billing_period=period,
             stripe_invoice_id=stripe_invoice_id,
             total_amount_micros=period.platform_fee_micros,
-            status="finalized",
+            status=TENANT_INVOICE_STATUS_FINALIZED,
             finalized_at=timezone.now(),
         )
 
-        period.status = "invoiced"
+        period.status = BILLING_PERIOD_STATUS_INVOICED
         period.save(update_fields=["status", "updated_at"])
 
     logger.info(

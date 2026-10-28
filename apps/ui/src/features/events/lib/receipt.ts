@@ -23,6 +23,8 @@
 // parameter really is called that upstream, and the record's key is the only
 // place the other spelling belongs.
 
+import type { RateStructure } from "@/lib/vocabulary";
+
 /**
  * One line of an explanation: the quantity, the rule's terms, and the amount.
  *
@@ -41,15 +43,15 @@
  * The quantity is the canonical exact TEXT receipt schema 2 writes (#603,
  * ADR-0020) — "4200", "2.5", "-3" — never a number a reader would round.
  */
-export interface ReceiptComponent {
+export type ReceiptComponent = {
   readonly measurement_key: string;
   readonly units: string;
-  readonly rate_structure: string;
+  readonly rate_structure: RateStructure;
   readonly rate_per_unit_micros: number;
   readonly unit_quantity: number;
   readonly fixed_micros: number;
   readonly micros: number;
-}
+};
 
 /** Build one, from the terms a fixture states. */
 export function receiptComponent(terms: {
@@ -58,7 +60,7 @@ export function receiptComponent(terms: {
   rate_per_unit_micros: number;
   unit_quantity: number;
   micros: number;
-  rate_structure?: string;
+  rate_structure?: RateStructure;
   fixed_micros?: number;
 }): ReceiptComponent {
   return {

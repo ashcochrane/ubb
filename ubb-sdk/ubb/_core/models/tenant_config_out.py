@@ -9,6 +9,7 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 from ..models.tenant_config_out_billing_mode import TenantConfigOutBillingMode
+from ..models.tenant_config_out_enforcement_mode import TenantConfigOutEnforcementMode
 from ..models.tenant_config_out_products_item import TenantConfigOutProductsItem
 from ..models.tenant_config_out_tenant_posture import TenantConfigOutTenantPosture
 from ..types import UNSET, Unset
@@ -37,7 +38,7 @@ class TenantConfigOut:
             tenant_posture (TenantConfigOutTenantPosture):
             default_subtask_cogs_ceiling_micros (int | None | Unset):
             default_task_cogs_ceiling_micros (int | None | Unset):
-            enforcement_mode (str | Unset):  Default: 'off'.
+            enforcement_mode (TenantConfigOutEnforcementMode | Unset):  Default: TenantConfigOutEnforcementMode.OFF.
             live_counter_maintenance_enabled (bool | Unset):  Default: True.
             max_task_starts_per_minute (int | None | Unset):
             min_balance_micros (int | Unset):  Default: 0.
@@ -54,7 +55,7 @@ class TenantConfigOut:
     tenant_posture: TenantConfigOutTenantPosture
     default_subtask_cogs_ceiling_micros: int | None | Unset = UNSET
     default_task_cogs_ceiling_micros: int | None | Unset = UNSET
-    enforcement_mode: str | Unset = 'off'
+    enforcement_mode: TenantConfigOutEnforcementMode | Unset = TenantConfigOutEnforcementMode.OFF
     live_counter_maintenance_enabled: bool | Unset = True
     max_task_starts_per_minute: int | None | Unset = UNSET
     min_balance_micros: int | Unset = 0
@@ -99,7 +100,10 @@ class TenantConfigOut:
         else:
             default_task_cogs_ceiling_micros = self.default_task_cogs_ceiling_micros
 
-        enforcement_mode = self.enforcement_mode
+        enforcement_mode: str | Unset = UNSET
+        if not isinstance(self.enforcement_mode, Unset):
+            enforcement_mode = self.enforcement_mode.value
+
 
         live_counter_maintenance_enabled = self.live_counter_maintenance_enabled
 
@@ -202,7 +206,15 @@ class TenantConfigOut:
         default_task_cogs_ceiling_micros = _parse_default_task_cogs_ceiling_micros(d.pop("default_task_cogs_ceiling_micros", UNSET))
 
 
-        enforcement_mode = d.pop("enforcement_mode", UNSET)
+        _enforcement_mode = d.pop("enforcement_mode", UNSET)
+        enforcement_mode: TenantConfigOutEnforcementMode | Unset
+        if isinstance(_enforcement_mode,  Unset):
+            enforcement_mode = UNSET
+        else:
+            enforcement_mode = TenantConfigOutEnforcementMode(_enforcement_mode)
+
+
+
 
         live_counter_maintenance_enabled = d.pop("live_counter_maintenance_enabled", UNSET)
 

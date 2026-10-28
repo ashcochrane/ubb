@@ -43,7 +43,7 @@ def _committed_grant(wallet, tenant, *, kind="promo", amount=10_000_000,
         w, _c = lock_for_billing(wallet.customer_id)
         new_balance = w.balance_micros + amount
         txn = WalletTransaction.objects.create(
-            wallet=w, transaction_type="GRANT", amount_micros=amount,
+            wallet=w, transaction_type="grant", amount_micros=amount,
             balance_after_micros=new_balance, idempotency_key=key)
         grant = GrantLedger.create_grant(
             w, tenant.id, kind=kind, amount_micros=amount, expires_at=expires_at,

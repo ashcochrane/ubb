@@ -19,8 +19,15 @@ from core.money import assert_aligned
 from core.problems import Problem, ProblemOut
 from core.time_windows import REPORT_WINDOW_MAX_DAYS, closed_months
 from core.vocabulary import (
-    AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED, PRICING_STATUS_KNOWN,
-    PRICING_STATUS_UNKNOWN, RECOGNITION_METHOD_VALUES, REVENUE_BASIS_VALUES)
+    AUDIT_ACTION_MARGIN_THRESHOLD_SET,
+    AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED,
+    AUDIT_RESOURCE_TYPE_MARGIN_THRESHOLD,
+    AUDIT_RESOURCE_TYPE_TENANT_SUPPLIED_REVENUE,
+    PRICING_STATUS_KNOWN,
+    PRICING_STATUS_UNKNOWN,
+    RECOGNITION_METHOD_VALUES,
+    REVENUE_BASIS_VALUES,
+)
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
@@ -153,7 +160,7 @@ def get_threshold(request):
 
 @margin_router.put("/threshold", response=MarginThresholdOut)
 @role_floor(ADMIN)
-@records_audit("margin_threshold.set")
+@records_audit(AUDIT_ACTION_MARGIN_THRESHOLD_SET)
 def put_threshold(request, payload: MarginThresholdIn):
     _product_check(request)
     with transaction.atomic():
@@ -163,8 +170,8 @@ def put_threshold(request, payload: MarginThresholdIn):
                       "consecutive_periods": payload.consecutive_periods,
                       "provider_cost_spike_pct": payload.provider_cost_spike_pct})
         audit_record(
-            action="margin_threshold.set", tenant_id=request.auth.tenant.id,
-            resource_type="margin_threshold", resource_id=cfg.id,
+            action=AUDIT_ACTION_MARGIN_THRESHOLD_SET, tenant_id=request.auth.tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_MARGIN_THRESHOLD, resource_id=cfg.id,
             metadata={"min_margin_pct": float(cfg.min_margin_pct),
                       "consecutive_periods": cfg.consecutive_periods,
                       "provider_cost_spike_pct": float(cfg.provider_cost_spike_pct)})
@@ -301,7 +308,7 @@ def record_supplied_revenue(request, customer_id: UUID,
         audit_record(
             action=AUDIT_ACTION_TENANT_SUPPLIED_REVENUE_RECORDED,
             tenant_id=request.auth.tenant.id,
-            resource_type="tenant_supplied_revenue", resource_id=record.id,
+            resource_type=AUDIT_RESOURCE_TYPE_TENANT_SUPPLIED_REVENUE, resource_id=record.id,
             metadata={"customer_id": str(customer.id),
                       "amount_micros": record.amount_micros,
                       "currency": record.currency,

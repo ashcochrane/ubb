@@ -405,11 +405,10 @@ function fromInheritedRule(rule: InheritedPricingRule): RuleFormValues {
     task_type: rule.task_type,
     subtask_type: rule.subtask_type,
     grouping_fields: { ...(rule.grouping_fields ?? {}) },
-    // ⚠ THE METHOD IS PRESELECTED FROM THE RULE AND NOT DEFAULTED. A rule that
-    // declares none prices the event's own quantities by its own terms, which
-    // is what `direct_event_price` means — the same reading the resolver makes
-    // (`pricing_service._priced_by_rules`), rather than a console guess.
-    pricing_method: rule.pricing_method ?? "direct_event_price",
+    // ⚠ THE METHOD IS COPIED FROM THE RULE AND NEVER DEFAULTED. The inherited
+    // rule is a selling rule, which always states its method (R10-W4 ruling 4),
+    // and the contract publishes it as required and non-null.
+    pricing_method: rule.pricing_method,
     rate_structure: rule.rate_structure,
     rate: microsToUnitString(rule.rate_per_unit_micros),
     unit_choice: unitChoiceFor(rule.unit_quantity),

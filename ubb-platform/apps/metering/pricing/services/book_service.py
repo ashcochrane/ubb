@@ -11,8 +11,13 @@ from apps.platform.event_types.quantities import declaration_named
 from apps.platform.work.queries import task_type_policy
 from core.problems import Problem
 from core.vocabulary import (
-    DECLARATION_STATUS_PUBLISHED, PRICING_METHOD_VALUES, RATE_STRUCTURE_VALUES,
-    TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK)
+    DECLARATION_STATUS_PUBLISHED,
+    PRICING_METHOD_DIRECT_EVENT_PRICE,
+    PRICING_METHOD_VALUES,
+    RATE_STRUCTURE_VALUES,
+    TASK_TYPE_KIND_SUBTASK,
+    TASK_TYPE_KIND_TASK,
+)
 
 #: WHAT A REPRICE CARRIES FROM THE OUTGOING RULE TO ITS REPLACEMENT.
 #:
@@ -194,28 +199,23 @@ def _terms_of(rule):
     return {name: getattr(rule, name) for name in _RULE_FIELDS}
 
 
-def _default_terms():
+def _default_terms(book):
     """What an added rule charges where its change body said nothing.
 
     Read off the columns rather than restated, so a rule added through a publish
-    and a rule created any other way start from one set of values.
-
-    **THE METHOD'S IS `None`, WHICH IS WHAT THE COLUMN ANSWERS** — Django reads a
-    nullable field with no declared default as null rather than as the empty
-    string, and the empty string would be a value `ck_rate_pricing_method`
-    refuses. ⚠ This line first special-cased the method to `None` explicitly, on
-    exactly that worry; mutating the special case away reddened NOTHING, because
-    the generic read already gives null. The special case was dead and its
-    stated reason was false, so it is gone rather than left as a guard nobody
-    can tell is holding anything.
-
-    Null is not a third method: it says the rule derives no price of its own and
-    charges its own terms, which is what `direct_event_price` means at
-    resolution. The argument is made in full on the column
-    (`pricing/models.py`).
+    and a rule created any other way start from one set of values — except the
+    METHOD, which depends on the book (R10-W4, ruling 4). A rule in a Pricing
+    Book is a selling rule and STATES one: a body that names none adds a rule
+    that charges its own terms, which is `direct_event_price`, written as that
+    value rather than left as a null that means it. A cost book's rate states
+    none, because a selling method does not apply to a supplier's rate —
+    `ck_rate_a_selling_rule_states_its_method` holds both halves.
     """
-    return {name: Rate._meta.get_field(name).get_default()
-            for name in _RULE_FIELDS}
+    terms = {name: Rate._meta.get_field(name).get_default()
+             for name in _RULE_FIELDS}
+    terms[_METHOD_FIELD] = (PRICING_METHOD_DIRECT_EVENT_PRICE
+                            if isinstance(book, PricingBook) else None)
+    return terms
 
 
 def rules_in_force_at(book, instant):
@@ -655,6 +655,15 @@ def plan_changes(book, changes, effective_at):
                 raise ValueError(
                     f"change {position}: {field} must be one of "
                     f"{sorted(ratified)}; got {stated[field]!r}")
+        # A SUPPLIER'S RATE STATES NO SELLING METHOD (R10-W4, ruling 4). The
+        # method says how a customer price is derived, which a cost book's
+        # rate never is; the table refuses one there too, and this says so
+        # where a tenant can act on it rather than as a constraint name.
+        if isinstance(book, CostBook) and _METHOD_FIELD in stated:
+            raise ValueError(
+                f"change {position}: {_METHOD_FIELD} says how a customer price "
+                f"is derived, and a cost book's rate prices no customer; "
+                f"leave it out of a cost book's change")
 
         if kind == CHANGE_ADD:
             if matched:
@@ -716,7 +725,7 @@ def plan_changes(book, changes, effective_at):
             planned.append(PlannedChange(
                 kind=kind, measurement_key=measurement_key,
                 selectors=selectors, outgoing=None, declaration=declaration,
-                terms={**_default_terms(), **stated}))
+                terms={**_default_terms(book), **stated}))
             continue
 
         if len(matched) != 1:

@@ -32,7 +32,7 @@ from apps.metering.queries import get_waived_loss, grouping_axis
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import EventCategory, EventType
-from apps.platform.grouping_fields.services import DimensionService
+from apps.platform.grouping_fields.services import GroupingFieldService
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 from core.vocabulary import (
@@ -77,7 +77,7 @@ def grouped_by(tenant, axis):
 
 
 def a_declared_field(tenant, key, slot="grouping_field_1", **kwargs):
-    DimensionService.declare(tenant, key=key, slot=slot, scope="event", **kwargs)
+    GroupingFieldService.declare(tenant, key=key, slot=slot, scope="event", **kwargs)
     return grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, key)
 
 

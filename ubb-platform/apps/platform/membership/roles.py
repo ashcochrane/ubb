@@ -16,9 +16,14 @@ restricted. Binding floors across the rest of the tenant surface is identity
 build 2's job.
 """
 
-ADMIN = "admin"
-WRITE = "write"
-READ = "read"
+from core.vocabulary import ROLE_ADMIN, ROLE_READ, ROLE_VALUES, ROLE_WRITE
+
+# The registry's closed `role` (R10-W4), held by reference: this module is the
+# concept's declared backend consumer, and the names below are aliases so the
+# floor checks across the tree keep reading as they always have.
+ADMIN = ROLE_ADMIN
+WRITE = ROLE_WRITE
+READ = ROLE_READ
 
 ROLE_CHOICES = [
     (ADMIN, "Admin"),
@@ -30,6 +35,7 @@ ROLE_CHOICES = [
 _ROLE_RANK = {READ: 0, WRITE: 1, ADMIN: 2}
 
 VALID_ROLES = frozenset(_ROLE_RANK)
+assert VALID_ROLES == ROLE_VALUES, "the rank must cover exactly the registry's roles"
 
 
 def role_satisfies(role, floor):

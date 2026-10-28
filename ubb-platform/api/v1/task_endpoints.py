@@ -81,7 +81,7 @@ from apps.metering.pricing.services.pricing_service import (
     AgreedPriceRefused, bills_through_ubb, determine_the_agreed_price,
 )
 from apps.platform.customers.models import Customer
-from apps.platform.grouping_fields.services import DimensionError
+from apps.platform.grouping_fields.services import GroupingFieldError
 from apps.platform.work import admission
 from apps.platform.work.admission import AdmissionRefused
 from apps.platform.work.models import Task
@@ -215,7 +215,7 @@ def start(tenant, payload):
                     grouping_values=payload.grouping_fields,
                     task_cogs_ceiling_micros=payload.task_cogs_ceiling_micros,
                 ).conflicting_field_on(claimed, tenant)
-            except DimensionError as exc:
+            except GroupingFieldError as exc:
                 raise Problem("validation_error", str(exc))
             if differing is not None:
                 field = PINNED_FIELD_ON_THE_WIRE[differing]
@@ -349,7 +349,7 @@ def start(tenant, payload):
                 # announcements never re-resolve it.
                 billing_owner_id=customer.resolve_billing_owner().id,
                 task_type=policy.task_type,
-                dimension_slots=policy.grouping_slots,
+                grouping_slots=policy.grouping_slots,
                 pricing_mode=policy.pricing_mode,
                 # ALL THREE OR NONE — the number, the line that produced it and
                 # the version of the book that held that line are one record of
@@ -665,5 +665,5 @@ def close(tenant, task_id, payload):
         "total_provider_cost_micros": closed.total_provider_cost_micros,
         "unresolved_event_count": closed.unresolved_event_count,
         "unpriced_event_count": closed.unpriced_event_count,
-        "event_count": closed.event_count,
+        "recorded_events": closed.recorded_events,
     }

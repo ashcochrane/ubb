@@ -15,7 +15,7 @@ class StripeConnectorConfig(AppConfig):
 
         handler_registry.register(
             WalletBalanceLow.EVENT_TYPE,
-            "stripe_connector.auto_topup",
+            "stripe_connector.auto_top_up",
             handle_balance_low_stripe,
             requires_product="billing",
         )

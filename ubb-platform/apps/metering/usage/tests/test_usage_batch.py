@@ -267,7 +267,7 @@ class TestBatchOneRuleParity:
         assert task.reason_code == reasons.TASK_COGS_CEILING
         assert task.total_provider_cost_micros == 1_300
         assert task.total_billed_cost_micros == 1_300
-        assert task.event_count == 3
+        assert task.recorded_events == 3
 
     def test_kill_failure_does_not_500_batch(self, _mock):
         """A kill_task crash is contained by kill_and_announce (it swallows
@@ -293,7 +293,7 @@ class TestBatchOneRuleParity:
         assert r3["stop_reason"] == reasons.TASK_COGS_CEILING
         task.refresh_from_db()
         assert task.status == "active"
-        assert task.event_count == 3
+        assert task.recorded_events == 3
         assert body["accepted"] == 3 and body["rejected"] == 0
 
     def test_byte_equivalent_to_sequential_singles(self, _mock):

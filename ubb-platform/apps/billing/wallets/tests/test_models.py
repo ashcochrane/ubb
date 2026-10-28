@@ -37,7 +37,7 @@ class TestWalletInBillingApp:
             locked.save(update_fields=["balance_micros", "updated_at"])
             txn = WalletTransaction.objects.create(
                 wallet=locked,
-                transaction_type="USAGE_DEDUCTION",
+                transaction_type="usage_deduction",
                 amount_micros=-5_000_000,
                 balance_after_micros=locked.balance_micros,
                 description="Test deduction",
@@ -46,5 +46,5 @@ class TestWalletInBillingApp:
 
         wallet.refresh_from_db()
         assert wallet.balance_micros == 5_000_000
-        assert txn.transaction_type == "USAGE_DEDUCTION"
+        assert txn.transaction_type == "usage_deduction"
         assert txn.amount_micros == -5_000_000

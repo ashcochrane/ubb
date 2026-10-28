@@ -42,7 +42,7 @@ def _grant(w, t, *, kind="promo", amount=10_000_000, expires_at=None):
         wallet, _c = lock_for_billing(w.customer_id)
         new_balance = wallet.balance_micros + amount
         txn = WalletTransaction.objects.create(
-            wallet=wallet, transaction_type="GRANT", amount_micros=amount,
+            wallet=wallet, transaction_type="grant", amount_micros=amount,
             balance_after_micros=new_balance, idempotency_key=key)
         g = GrantLedger.create_grant(
             wallet, t.id, kind=kind, amount_micros=amount, expires_at=expires_at,
@@ -90,7 +90,7 @@ class TestExpiryBeat:
         with transaction.atomic():
             wallet, _c = lock_for_billing(w.customer_id)
             txn = WalletTransaction.objects.create(
-                wallet=wallet, transaction_type="DEBIT", amount_micros=-5_000_000,
+                wallet=wallet, transaction_type="debit", amount_micros=-5_000_000,
                 balance_after_micros=wallet.balance_micros - 5_000_000,
                 idempotency_key="debit:beatzero")
             wallet.balance_micros -= 5_000_000
@@ -271,7 +271,7 @@ class TestExpirySkipDupObservability:
         # Simulate a raced sibling: the expiry txn already exists but the
         # grant row was not yet flipped.
         WalletTransaction.objects.create(
-            wallet=w, transaction_type="GRANT_EXPIRY", amount_micros=0,
+            wallet=w, transaction_type="grant_expiry", amount_micros=0,
             balance_after_micros=w.balance_micros,
             idempotency_key=f"expiry:{g.pk}")
 

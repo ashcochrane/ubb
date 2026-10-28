@@ -21,7 +21,7 @@ import { formatMicros, formatPrice } from "@/lib/format";
 import { ubbAxisTitle, type UbbAxis } from "@/lib/grouping-axis";
 import { labelMap } from "@/lib/localisation";
 import { RATE_STRUCTURE_LABEL_KEYS } from "@/lib/vocabulary";
-import type { BookChangeIn, GroupingFieldDef, Rule } from "../api/types";
+import type { BookChangeIn, GroupingField, Rule } from "../api/types";
 
 /**
  * The catalogue's name for a rule's arithmetic shape.
@@ -123,7 +123,7 @@ export interface PinnedSelector {
  */
 export function pinnedGroupingFields(
   rule: Rule,
-  declared: readonly GroupingFieldDef[],
+  declared: readonly GroupingField[],
 ): PinnedSelector[] {
   const pins: PinnedSelector[] = [];
   for (const field of declared) {
@@ -149,7 +149,7 @@ function pinnedNamedSelectors(
 /** Every selector a rule pins, named and declared alike — or none at all. */
 export function pinnedSelectors(
   rule: Rule,
-  declared: readonly GroupingFieldDef[],
+  declared: readonly GroupingField[],
 ): PinnedSelector[] {
   return [...pinnedNamedSelectors(rule), ...pinnedGroupingFields(rule, declared)];
 }
@@ -163,8 +163,8 @@ export function pinnedSelectors(
  * still be able to read the rules they wrote when they did.
  */
 export function pinnableGroupingFields(
-  declared: readonly GroupingFieldDef[],
-): GroupingFieldDef[] {
+  declared: readonly GroupingField[],
+): GroupingField[] {
   return declared.filter((field) => !field.retired);
 }
 

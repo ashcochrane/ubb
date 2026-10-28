@@ -152,7 +152,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         body = response.json()
         from apps.billing.wallets.models import WalletTransaction
         txn = WalletTransaction.objects.get(id=body["transaction_id"])
-        self.assertEqual(txn.transaction_type, "DEBIT")
+        self.assertEqual(txn.transaction_type, "debit")
         self.assertEqual(txn.amount_micros, -2_000_000)
         self.assertEqual(txn.reference_id, "evt_789")
         self.assertEqual(txn.description, "External debit")
@@ -347,7 +347,7 @@ class BillingCreditEndpointTest(TestCase):
         body = response.json()
         from apps.billing.wallets.models import WalletTransaction
         txn = WalletTransaction.objects.get(id=body["transaction_id"])
-        self.assertEqual(txn.transaction_type, "ADJUSTMENT")
+        self.assertEqual(txn.transaction_type, "adjustment")
         self.assertEqual(txn.amount_micros, 3_000_000)
         self.assertEqual(txn.reference_id, "gw_001")
         self.assertEqual(txn.description, "Credit: goodwill")
@@ -553,7 +553,7 @@ class DebitCreditHardeningTest(TestCase):
         self.assertEqual(response.status_code, 200)
         from apps.billing.wallets.models import WalletTransaction
         txn = WalletTransaction.objects.get(wallet__customer=customer)
-        self.assertEqual(txn.transaction_type, "DEBIT")
+        self.assertEqual(txn.transaction_type, "debit")
         self.assertEqual(txn.balance_after_micros, 4_000_000)
 
     def test_debit_requires_idempotency_key(self):

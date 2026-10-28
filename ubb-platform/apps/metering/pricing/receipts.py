@@ -219,6 +219,7 @@ from apps.platform.event_types.exact_decimals import (
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
 from core.vocabulary import (
     COSTING_METHOD_VALUES,
+    MARKUP_RUNG_VALUES,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_VALUES,
     PRICING_METHOD_MARGIN_OVER_COST,
@@ -1007,6 +1008,17 @@ def _validate_provenance(provenance):
     if not isinstance(provenance, dict):
         raise ReceiptShapeError(
             f"provenance is a record of ids, not {provenance!r}")
+    # WHICH RUNG SUPPLIED A MARKUP is the registry's closed `markup_rung` (the
+    # owner's review of #620): refused here, at the one construction boundary,
+    # as the subject type is — the published enum alone marks the contract and
+    # checks nothing.
+    markup = provenance.get(MARKUP_TERMS_KEY)
+    if markup is not None:
+        rung = markup.get("rung") if isinstance(markup, dict) else markup
+        if rung not in MARKUP_RUNG_VALUES:
+            raise ReceiptShapeError(
+                f"provenance.{MARKUP_TERMS_KEY} names rung {rung!r}; a "
+                f"markup's rung is one of {sorted(MARKUP_RUNG_VALUES)}")
     for key, value in provenance.items():
         for leaf in _leaves(value):
             if not isinstance(leaf, str):

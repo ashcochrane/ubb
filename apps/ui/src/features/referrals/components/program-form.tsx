@@ -13,7 +13,7 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select";
-import { rewardTypeLabel } from "@/lib/labels";
+import { rewardTypeLabel } from "../lib/referral-vocabulary";
 import { cn } from "@/lib/utils";
 
 import {

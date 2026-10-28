@@ -383,7 +383,7 @@ class AClosedRailStartsNoNewMoneyTest(_TenantsTestCase):
             charge_saved_payment_method)
         attempt = TopUpAttempt.objects.create(
             customer=self.customer, billing_owner_id=self.customer.id,
-            amount_micros=20_000_000, trigger="auto_topup", status="pending")
+            amount_micros=20_000_000, trigger="auto_top_up", status="pending")
 
         with patch(self.STRIPE_CALL) as stripe_call:
             with self.assertRaisesRegex(PaymentRailClosed, "'live' environment"):
@@ -429,7 +429,7 @@ class AClosedRailStartsNoNewMoneyTest(_TenantsTestCase):
         self.activation.save()
         _recover_skipped_usage_invoices(CustomerUsageInvoice)
         row.refresh_from_db()
-        self.assertEqual((row.status, row.skip_reason), ("pending", ""))
+        self.assertEqual((row.status, row.skip_reason), ("pending", None))
 
     def test_resuming_a_subscription_is_refused_by_name(self):
         with patch("apps.subscriptions.orchestration.service.stripe_call") as stripe_call:

@@ -119,7 +119,7 @@ class TheLedgerHoldsTheSetTest(TestCase):
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
         wallet = Wallet.objects.create(customer=customer, balance_micros=0)
         self.txn = WalletTransaction.objects.create(
-            wallet=wallet, transaction_type="ADJUSTMENT", amount_micros=1,
+            wallet=wallet, transaction_type="adjustment", amount_micros=1,
             balance_after_micros=1, movement_reason="goodwill")
 
     def test_an_unknown_reason_is_refused_through_every_door(self):

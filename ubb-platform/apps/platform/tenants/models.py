@@ -19,6 +19,8 @@ from core.vocabulary import (
     CUSTOMER_BILLING_MODE_POSTPAID,
     CUSTOMER_BILLING_MODE_PREPAID,
     CUSTOMER_BILLING_MODE_VALUES,
+    ENFORCEMENT_MODE_ENFORCING,
+    ENFORCEMENT_MODE_OFF,
     PAYMENT_RAIL_ENVIRONMENT_LIVE,
     PAYMENT_RAIL_ENVIRONMENT_TEST,
     PAYMENT_RAIL_ENVIRONMENT_VALUES,
@@ -293,9 +295,12 @@ class PaymentRailActivation(BaseModel):
 #               refusals, soft-floor gate, suspension, reapers).
 # Read ONLY via apps.platform.tenants.flags (enforcement_mode/enforcing); no
 # other flag exists. See docs/plans/2026-07-15-one-rule-enforcement-spec.md §G.
+#
+# The two are the registry's closed `enforcement_mode` (R10-W4), held here by
+# reference — this file is the concept's declared backend consumer.
 ENFORCEMENT_MODE_CHOICES = [
-    ("off", "Off"),
-    ("enforcing", "Enforcing"),
+    (ENFORCEMENT_MODE_OFF, "Off"),
+    (ENFORCEMENT_MODE_ENFORCING, "Enforcing"),
 ]
 
 
@@ -329,7 +334,8 @@ class Tenant(BaseModel):
     automatic_tax_enabled = models.BooleanField(default=False)
     # Tier-2 spend-control kill switch (D1). Default "off" = unchanged behavior.
     enforcement_mode = models.CharField(
-        max_length=10, choices=ENFORCEMENT_MODE_CHOICES, default="off", db_index=True
+        max_length=10, choices=ENFORCEMENT_MODE_CHOICES,
+        default=ENFORCEMENT_MODE_OFF, db_index=True
     )
     # The live-counter-maintenance switch (#46, delivery spec §E;
     # NARROWED by #149 §6.5; renamed by #246):

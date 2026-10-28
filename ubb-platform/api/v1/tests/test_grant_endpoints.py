@@ -56,7 +56,7 @@ class GrantEndpointsTest(RailActivated, TestCase):
         self.assertEqual(self.wallet.balance_micros, 10_000_000)
         txn = WalletTransaction.objects.get(
             wallet=self.wallet, idempotency_key="grant:k1")
-        self.assertEqual(txn.transaction_type, "GRANT")
+        self.assertEqual(txn.transaction_type, "grant")
         self.assertEqual(txn.amount_micros, 10_000_000)
 
     def test_create_grant_idempotent_replay(self):
@@ -68,7 +68,7 @@ class GrantEndpointsTest(RailActivated, TestCase):
         self.assertEqual(self.wallet.balance_micros, 10_000_000)
         self.assertEqual(CreditGrant.objects.count(), 1)
         self.assertEqual(WalletTransaction.objects.filter(
-            wallet=self.wallet, transaction_type="GRANT").count(), 1)
+            wallet=self.wallet, transaction_type="grant").count(), 1)
 
     def test_create_grant_rejects_both_expiry_forms(self):
         resp = self._create_grant(
@@ -132,7 +132,7 @@ class GrantEndpointsTest(RailActivated, TestCase):
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 0)
         self.assertEqual(WalletTransaction.objects.filter(
-            wallet=self.wallet, transaction_type="GRANT_VOID").count(), 1)
+            wallet=self.wallet, transaction_type="grant_void").count(), 1)
 
     def test_void_clamps_debit_to_balance(self):
         """G3 semantics for void: even with a dented invariant (remaining >
@@ -354,7 +354,7 @@ class RefundLotAwareTest(RailActivated, TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(r2.json()["balance_micros"], 50_000_000)
         self.assertEqual(WalletTransaction.objects.filter(
-            wallet=self.wallet, transaction_type="REFUND").count(), 1)
+            wallet=self.wallet, transaction_type="refund").count(), 1)
         grant = CreditGrant.objects.get(pk=grant_id)
         self.assertEqual(grant.remaining_micros, 50_000_000)
         alloc = GrantAllocation.objects.get(grant=grant, allocation_type="usage")

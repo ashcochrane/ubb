@@ -8,6 +8,8 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.invitation_out_role import InvitationOutRole
+from ..models.invitation_out_status import InvitationOutStatus
 
 
 
@@ -25,15 +27,15 @@ class InvitationOut:
             created_at (str):
             email (str):
             id (str):
-            role (str):
-            status (str):
+            role (InvitationOutRole):
+            status (InvitationOutStatus):
      """
 
     created_at: str
     email: str
     id: str
-    role: str
-    status: str
+    role: InvitationOutRole
+    status: InvitationOutStatus
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
 
@@ -47,9 +49,9 @@ class InvitationOut:
 
         id = self.id
 
-        role = self.role
+        role = self.role.value
 
-        status = self.status
+        status = self.status.value
 
 
         field_dict: dict[str, Any] = {}
@@ -75,9 +77,15 @@ class InvitationOut:
 
         id = d.pop("id")
 
-        role = d.pop("role")
+        role = InvitationOutRole(d.pop("role"))
 
-        status = d.pop("status")
+
+
+
+        status = InvitationOutStatus(d.pop("status"))
+
+
+
 
         invitation_out = cls(
             created_at=created_at,

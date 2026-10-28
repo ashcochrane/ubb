@@ -13,7 +13,7 @@ import { useQuery } from "@tanstack/react-query";
 import { tenantApi } from "@/api/client";
 import { unwrap } from "@/api/problem";
 import { API_PROVIDER, mockDelay } from "@/lib/api-provider";
-import { roleRank } from "@/lib/labels";
+import { roleRank } from "@/lib/role";
 
 import { useAuthUser } from "./use-auth";
 

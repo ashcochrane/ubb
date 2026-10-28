@@ -295,6 +295,25 @@ HTTP_STATUS = "http_status"
 RAW_BODY = "raw_body"
 
 
+#: A version-2 Pricing Receipt for the recording acknowledgement (#558,
+#: R10-W4). A rendered module never reads it; the SDK's typed model requires
+#: it, so an acknowledgement without one fails to parse rather than reaching
+#: the module under test.
+A_RECEIPT = {
+    "receipt_schema_version": 2,
+    "pricing_engine_version": "3.0.0",
+    "subject_type": "usage_event",
+    "subject_id": "event_0",
+    "effective_at": "2026-09-02T09:00:00+00:00",
+    "currency": "usd",
+    "costing": {"method": "calculated", "status": "known", "detail": {}},
+    "pricing": {"method": "direct_event_price", "status": "known",
+                "detail": {"pricing_mode": "event_priced"}},
+    "totals": {"provider_cost_micros": 0, "billed_cost_micros": 0},
+    "provenance": {},
+}
+
+
 class Server:
     """A local HTTP server standing where UBB would: it keeps every request
     it is sent and answers each with the next body queued for its route, or
@@ -370,7 +389,12 @@ class Server:
                       "stop_measured_micros": None,
                       # The quantities as recorded: exact text (#603).
                       "measurements": body.get("measurements"),
-                      "task_id": body.get("task_id")}
+                      "task_id": body.get("task_id"),
+                      # Required since #558 (R10-W4): the typed record,
+                      # version 2 only, never null on the single route.
+                      "pricing_receipt": {
+                          **A_RECEIPT,
+                          "subject_id": f"event_{len(self.requests)}"}}
         elif path.endswith("/close"):
             answer = {
                 "task_id": path.split("/")[-2], "parent_task_id": None,
@@ -378,7 +402,7 @@ class Server:
                 "replayed": False, "charge_created": False,
                 "total_billed_cost_micros": 0, "total_provider_cost_micros": 0,
                 "unresolved_event_count": 0, "unpriced_event_count": 0,
-                "event_count": 0}
+                "recorded_events": 0}
         else:
             answer = {}
         answer.update(overrides)

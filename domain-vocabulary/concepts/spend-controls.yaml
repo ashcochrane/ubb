@@ -244,3 +244,52 @@ affordability_reason:
       path: apps/ui/src/lib/labels.ts
     - surface: openapi
       path: openapi/v1.json
+
+enforcement_mode:
+  kind: closed
+  # DECLARED IN R10-W4 (slice 8) from `apps/platform/tenants/models.py`'s own
+  # set. The console worded it through a hand-written legacy map with a
+  # humanising fallback (`g6-map-enforcement-mode-label`).
+  summary: >-
+    The tenant's one switch for real-time spend control: off, where no
+    signal is raised and no counter is kept, or enforcing, where the whole
+    signal suite and its state changes run. A mode in ADR-0006 §3's sense —
+    which operating regime applies — and a different concept from a
+    customer spend pool's own enforce mode.
+  # Quoted because YAML 1.1 reads a bare off as the boolean false.
+  values:
+    - "off"
+    - enforcing
+  label_key_prefix: enforcement_mode
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/platform/tenants/models.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/enforcement-mode.ts
+
+stop_scope:
+  kind: closed
+  # DECLARED IN R10-W4 (slice 8). The three were literals at every writer
+  # (the stop-context tagging, the live counter, the unit read) with no
+  # constant behind them; every writer now names a scope by reference to the
+  # generated constants. The declared backend consumer is the stop-context
+  # tagging, which writes the scope on every acknowledgement.
+  summary: >-
+    What a stop applies to: the Task the work runs under, the Subtask itself,
+    or the whole customer. Read off the stopped row's altitude, never off
+    which control fired (slice 6 §7), so a parent's ceiling crossing is the
+    Task's scope and a contained unit's own crossing is the Subtask's.
+  values:
+    - task
+    - subtask
+    - customer
+  label_key_prefix: stop_scope
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/metering/usage/services/stop_context.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/stop-scope.ts

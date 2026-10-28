@@ -15,7 +15,7 @@ class TestApplyTopupCredit:
         Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
                                         amount_micros=20_000_000,
-                                        trigger="auto_topup", status="pending")
+                                        trigger="auto_top_up", status="pending")
         pi = MagicMock(id="pi_1", latest_charge=MagicMock(id="ch_1"))
         return c, a, pi
 
@@ -24,12 +24,12 @@ class TestApplyTopupCredit:
         assert AutoTopUpService.apply_topup_credit(a, pi) is True
         w = Wallet.objects.get(customer=c)
         assert w.balance_micros == 20_000_000
-        txn = WalletTransaction.objects.get(idempotency_key="auto_topup:pi_1")
+        txn = WalletTransaction.objects.get(idempotency_key="auto_top_up:pi_1")
         assert txn.amount_micros == 20_000_000
         a.refresh_from_db()
         assert a.status == "succeeded" and a.stripe_payment_intent_id == "pi_1" and a.stripe_charge_id == "ch_1"
         assert AutoTopUpService.apply_topup_credit(a, pi) is False  # second call no-ops
-        assert WalletTransaction.objects.filter(idempotency_key="auto_topup:pi_1").count() == 1
+        assert WalletTransaction.objects.filter(idempotency_key="auto_top_up:pi_1").count() == 1
         w.refresh_from_db()
         assert w.balance_micros == 20_000_000
 
@@ -40,7 +40,7 @@ class TestApplyTopupCreditBillingOwnerRouting:
     never attempt.customer_id. Covers all three topologies; the manual/
     widget-triggered attempt shape (customer=seat, billing_owner_id=owner)
     is realistic here too since handle_payment_intent_succeeded routes ANY
-    trigger through this same method, not just auto_topup."""
+    trigger through this same method, not just auto_top_up."""
 
     def _seat_and_owner(self, topology, external_prefix):
         t = Tenant.objects.create(name=f"T_{external_prefix}")

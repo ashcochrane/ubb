@@ -92,7 +92,7 @@ describe("StopsAndBreaches — the three shapes", () => {
 
     // The events after the stop, itemised: the unlearned cost is NAMED, and
     // the row still shows what it billed.
-    fireEvent.click(within(row).getByRole("button", { name: /Show events/ }));
+    fireEvent.click(within(row).getByRole("button", { name: /Show postings/ }));
     const table = within(row).getByRole("table");
     const rows = within(table).getAllByRole("row").slice(1);
     expect(rows).toHaveLength(2);
@@ -155,7 +155,7 @@ describe("StopsAndBreaches — the three shapes", () => {
 
     const soft = articleFor("wallet_policy", (a) => within(a).queryByText("Soft floor") !== null);
     expect(soft).toHaveTextContent(SOFT_FLOOR_MARKER);
-    expect(within(soft).queryByRole("button", { name: /Show events/ })).not.toBeInTheDocument();
+    expect(within(soft).queryByRole("button", { name: /Show postings/ })).not.toBeInTheDocument();
   });
 
   it("totals each family over exactly the events of the rows shown", async () => {

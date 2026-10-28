@@ -1422,3 +1422,73 @@ GET /api/v1/tenant/billing-periods removed the required property `data/items/tot
 # predates `api-v1-launch`, so the authoring comparison and the cumulative gate
 # report the same finding, reviewed and deliberate, pasted from `--emit`.
 GET /api/v1/tenant/billing-periods removed the required property `data/items/event_count` from the response with the `200` status
+
+# 2026-10-28 - R10-W4 (#190 spec part 2; the owner's rulings of 2026-10-27,
+# §0.3 points 1-8 and amendments §0.4 A-E; ADR-0024): every domain value set
+# UBB publishes has one vocabulary authority. Twenty value sets are declared in
+# `domain-vocabulary/` and their fields reach the contract as enums with their
+# markers; a usage invoice's `skip_reason` is null unless it was skipped (it was
+# the empty string); four webhook payloads require the field they always
+# carried; and ruling 1 renames the eight count fields that shared one name to
+# what each counts (`recorded_events`, `count`, `posting_count`).
+#
+# LICENCE: ADR-0007 §5 - the pre-live lane is open, and #190 owns the rulings.
+# Both known consumers move in this same commit: the SDK core and the
+# console's snapshot are regenerated here.
+#
+# THE ELEVEN LINES BELOW ARE THE CUMULATIVE GATE'S, pasted from `--emit`: each
+# is a break on a surface the launch contract published. Seven restrict a
+# request to the registry's set (a grant's kind, a programme's reward type -
+# the update now refuses an unknown one as the create always did - the
+# enforcement mode, a member's and an invitee's role, the role on the two
+# membership webhooks), two widen `skip_reason` to null, and two make the
+# role required on the membership webhooks.
+#
+# TWENTY MORE FINDINGS ARE THIS WINDOW'S AND ARE NOT ENTRIES, because the
+# surfaces they sit on postdate `api-v1-launch` at the path the gate compares:
+# the published contract never promised them, so an entry would suppress
+# nothing and the gate would call it inert. The authoring comparison against
+# `origin/main` reports them, and they are reviewed here, deliberately:
+#
+#   Ruling 1's renames, every one a `removed the required property
+#   ...event_count` on a 200 response - `GET /api/v1/margin/business/
+#   {external_id}` (`seats/items/`, `totals/`), `GET /api/v1/spend-controls/
+#   stops-and-breaches` (the three episode rows' `itemised/`, and `totals/
+#   items/`), `GET /api/v1/tasks` (`data/items/`), `GET /api/v1/tasks/
+#   {task_id}` (the task and `subtasks/items/`), `GET /api/v1/tasks/{task_id}/
+#   subtasks` (`data/items/`), `POST /api/v1/tasks/{task_id}/close`, and the
+#   two `CloseTaskResponse` slots inside `POST /api/v1/code-builder/blueprints/
+#   {configuration_fingerprint}/verify`. `CloseTaskResponse` itself predates
+#   the tag, but the close route the launch contract published was
+#   `/api/v1/metering/tasks/{task_id}/close`, whose removal is already
+#   recorded (#409), so no cumulative finding reaches the schema.
+#   Webhook payloads added after the tag - `credit_grant.expiring` and
+#   `credit_grant.expired` (`data/kind` restricted to the registry's set and
+#   made required: both writers always set it) and `customer.stopped` and
+#   `customer.stop_cleared` (`data/scope` restricted to `stop_scope`).
+#
+# WHAT THE GATE DOES NOT SEE AT ALL, recorded so the PR's reviewer does not
+# have to discover it. oasdiff raises no finding for a response gaining an
+# enum, for a schema renamed while its shape is kept, or for an open object
+# becoming a typed one. So these breaks are reviewed in the PR and here rather
+# than by a line: the wallet's transaction types answer lowercase and a
+# grant's source answers `auto_top_up` (ruling 7); the Grouping Field's four
+# components take its own name (#541: `GroupingFieldIn`/`Out`,
+# `GroupingFieldRegistryIn`/`Out`, all four added after the tag); the Pricing
+# Receipt is a typed schema, version 2 only, on the acknowledgement, the batch
+# item and the event detail (#558, ruling 3); `RateOut` publishes
+# `pricing_method`, required and nullable (ruling 4); and the audit feed's
+# `action` advertises the registry's catalogue less the withheld
+# `system.preproduction_model_cutover`, with the eight registrations nothing
+# ever wrote deleted (ADR-0024 §2-§3).
+GET /api/v1/billing/customers/{customer_id}/usage-invoices response property `data/items/skip_reason` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+GET /api/v1/billing/tenant/usage-invoices response property `data/items/skip_reason` list-of-types was widened by adding types `null` to media type `application/json` of response `200`
+PATCH /api/v1/referrals/program request property `reward_type/anyOf[subschema #1]/` was restricted to a list of enum values
+PATCH /api/v1/tenant/config request property `enforcement_mode/anyOf[subschema #1]/` was restricted to a list of enum values
+PATCH /api/v1/tenant/members/{member_id} request property `role` was restricted to a list of enum values
+POST /api/v1/billing/customers/{customer_id}/grants request property `kind` was restricted to a list of enum values
+POST /api/v1/tenant/invitations request property `role` was restricted to a list of enum values
+POST webhook:invitation.created request property `data/role` was restricted to a list of enum values
+POST webhook:invitation.created the request property `data/role` became required
+POST webhook:member.activated request property `data/role` was restricted to a list of enum values
+POST webhook:member.activated the request property `data/role` became required

@@ -232,7 +232,9 @@ export function formatParsedMicros(micros: number, currency: string): string {
  * Format large numbers with abbreviations.
  * 84219 → "84.2k"   1247000 → "1.25M"
  */
-export function formatEventCount(count: number): string {
+/** A count, compacted: "1.2k", "3.40M". Whatever is counted — recorded
+ * events, postings — is the caller's word to say beside it. */
+export function formatCount(count: number): string {
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(2)}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1)}k`;
   return count.toLocaleString();

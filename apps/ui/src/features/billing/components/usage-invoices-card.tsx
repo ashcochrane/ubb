@@ -24,7 +24,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
-import { humanize, usageInvoiceStatusLabel } from "@/lib/labels";
+import { skipReasonLabel, usageInvoiceStatusLabel } from "@/lib/usage-invoice";
 import { formatCalendarDate, formatMicros } from "@/lib/format";
 
 import { useTenantUsageInvoices } from "../api/queries";
@@ -146,7 +146,7 @@ function InvoiceRow({
       <TableCell>
         <Badge
           variant={failed ? "destructive" : invoice.status === "pushed" ? "secondary" : "outline"}
-          title={invoice.skip_reason ? humanize(invoice.skip_reason) : undefined}
+          title={invoice.skip_reason ? skipReasonLabel(invoice.skip_reason) : undefined}
         >
           {usageInvoiceStatusLabel(invoice.status)}
         </Badge>

@@ -101,7 +101,7 @@ class TestPricing:
         assert (costing.pricing_receipt["pricing"]["method"]
                 == PRICING_METHOD_DIRECT_EVENT_PRICE)
 
-    def test_most_specific_dimension_wins_and_wildcard_fallback(self):
+    def test_most_specific_grouping_field_wins_and_wildcard_fallback(self):
         t = self._t(); c = Customer.objects.create(tenant=t, external_id="c1")
         cost_rate_in_default_book(t, provider="o", event_type="e",
             measurement_key="tok", rate_per_unit_micros=1_000, unit_quantity=1_000_000)
@@ -191,7 +191,8 @@ def test_a_customer_with_no_book_of_their_own_uses_the_tenants_default(db):
     book = PricingBook.objects.create(tenant=t, key="gemini", is_default=True)
     r = Rate.objects.create(tenant=t, provider="gemini",
                             measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
-                            rate_per_unit_micros=10, pricing_book=book)
+                            rate_per_unit_micros=10, pricing_book=book,
+                            pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)
     got = PricingService.resolve_the_price_rule(
         t, c, {"provider": "gemini"}, "input_tokens", "usd", timezone.now())
     assert got is not None and got.id == r.id
@@ -223,13 +224,16 @@ def test_a_customers_own_book_shadows_the_default_then_falls_back_to_it(db):
     theirs = PricingBook.objects.create(tenant=t, key="ent", customer=c)
     theirs_in = Rate.objects.create(tenant=t, provider="gemini",
                                     measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
-                                    rate_per_unit_micros=5, pricing_book=theirs)
+                                    rate_per_unit_micros=5, pricing_book=theirs,
+                                    pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)
     def_out = Rate.objects.create(tenant=t, provider="gemini",
                                   measurement=declares_a_quantity(t, "output_tokens"), currency="usd",
-                                  rate_per_unit_micros=30, pricing_book=default)
+                                  rate_per_unit_micros=30, pricing_book=default,
+                                  pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)
     Rate.objects.create(tenant=t, provider="gemini",
                         measurement=declares_a_quantity(t, "input_tokens"), currency="usd",
-                        rate_per_unit_micros=99, pricing_book=default)
+                        rate_per_unit_micros=99, pricing_book=default,
+                        pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)
     now = timezone.now()
     selectors = {"provider": "gemini"}
     assert PricingService.resolve_the_price_rule(

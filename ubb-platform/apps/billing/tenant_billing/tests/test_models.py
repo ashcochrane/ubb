@@ -20,7 +20,7 @@ class TenantBillingPeriodTest(TestCase):
         )
         self.assertEqual(period.status, "open")
         self.assertEqual(period.total_billed_cost_micros, 0)
-        self.assertEqual(period.event_count, 0)
+        self.assertEqual(period.recorded_events, 0)
         self.assertEqual(period.platform_fee_micros, 0)
 
     def test_only_one_open_period_per_tenant(self):

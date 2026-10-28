@@ -1,6 +1,19 @@
 {
   "@generated": "from domain-vocabulary/ — do not edit by hand. Regenerate with `python -m tools.vocabulary --write`.",
   "concepts": {
+    "actor_kind": {
+      "advertised": true,
+      "backend_serves": "5 of 5 values",
+      "kind": "open",
+      "representation": "known_values",
+      "values": [
+        "member",
+        "api_key",
+        "operator",
+        "end_customer",
+        "system"
+      ]
+    },
     "affordability_reason": {
       "advertised": true,
       "backend_serves": "9 of 9 values",
@@ -62,10 +75,134 @@
       ]
     },
     "audit_action": {
-      "advertised": false,
-      "backend_serves": "0 of 78 values",
+      "advertised": true,
+      "backend_serves": "70 of 70 values",
       "kind": "closed",
-      "representation": "enum"
+      "representation": "enum",
+      "values": [
+        "api_key.created",
+        "api_key.rotated",
+        "api_key.revoked",
+        "invitation.created",
+        "invitation.revoked",
+        "member.role_changed",
+        "member.removed",
+        "tenant.config_changed",
+        "sandbox.created",
+        "sandbox.reset",
+        "connect.started",
+        "billing_profile.set",
+        "auto_top_up.configured",
+        "postpaid_config.set",
+        "customer_spend_pool.set",
+        "margin_threshold.set",
+        "wallet.credited",
+        "wallet.debited",
+        "wallet.withdrawn",
+        "top_up.requested",
+        "usage.refunded",
+        "grant.created",
+        "grant.voided",
+        "tenant_default_markup.declared",
+        "tenant_default_markup.withdrawn",
+        "pricing_book_publish.declared",
+        "pricing_book_publish.published",
+        "pricing_book_publish.discarded",
+        "pricing_book.declared",
+        "pricing_book.withdrawn",
+        "cost_book.declared",
+        "cost_book.withdrawn",
+        "customer_pricing_override.declared",
+        "customer_pricing_override.withdrawn",
+        "resolution_run.executed",
+        "event_type.declared",
+        "measurement.declared",
+        "grouping_field.declared",
+        "task_type.declared",
+        "tenant_supplied_revenue.recorded",
+        "event_type.published",
+        "measurement.withdrawn",
+        "reported_cost_mapping.declared",
+        "reported_cost_mapping.withdrawn",
+        "provider.declared",
+        "provider.retired",
+        "event_category.declared",
+        "event_category.withdrawn",
+        "customer.created",
+        "plan.created",
+        "plan.updated",
+        "plan.archived",
+        "plan.assigned",
+        "subscription.created",
+        "subscription.canceled",
+        "subscription.paused",
+        "subscription.resumed",
+        "subscription.seats_changed",
+        "referral_program.created",
+        "referral_program.updated",
+        "referral_program.deactivated",
+        "referral_program.reactivated",
+        "referrer.registered",
+        "referral.attributed",
+        "referral.revoked",
+        "webhook_config.created",
+        "webhook_config.updated",
+        "webhook_config.deleted",
+        "webhook_config.secret_rotated"
+      ]
+    },
+    "audit_resource_type": {
+      "advertised": true,
+      "backend_serves": "33 of 33 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "api_key",
+        "sandbox",
+        "tenant",
+        "connect",
+        "wallet",
+        "auto_top_up",
+        "grant",
+        "customer_spend_pool",
+        "billing_profile",
+        "postpaid_config",
+        "plan",
+        "customer",
+        "subscription",
+        "margin_threshold",
+        "tenant_supplied_revenue",
+        "tenant_default_markup",
+        "pricing_book",
+        "cost_book",
+        "pricing_book_publish",
+        "resolution_run",
+        "grouping_field_registry",
+        "task_type_registry",
+        "provider",
+        "event_category",
+        "event_type",
+        "measurement",
+        "reported_cost_mapping",
+        "invitation",
+        "member",
+        "referral_program",
+        "referrer",
+        "referral",
+        "webhook_config"
+      ]
+    },
+    "billing_period_status": {
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "open",
+        "closed",
+        "invoicing",
+        "invoiced"
+      ]
     },
     "binding_class": {
       "advertised": true,
@@ -76,6 +213,17 @@
         "platform_known",
         "runtime_bound",
         "secret_reference"
+      ]
+    },
+    "calculation_method": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "actual_cost",
+        "estimated_cost",
+        "flat_fee"
       ]
     },
     "ceiling_basis": {
@@ -216,6 +364,16 @@
         "blocking"
       ]
     },
+    "enforcement_mode": {
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "off",
+        "enforcing"
+      ]
+    },
     "event_type_key": {
       "advertised": false,
       "backend_serves": null,
@@ -227,6 +385,40 @@
       "backend_serves": null,
       "kind": "free_text",
       "representation": "none"
+    },
+    "grant_kind": {
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "paid",
+        "promo"
+      ]
+    },
+    "grant_source": {
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "checkout",
+        "auto_top_up",
+        "api",
+        "other"
+      ]
+    },
+    "grant_status": {
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "active",
+        "depleted",
+        "expired",
+        "voided"
+      ]
     },
     "grouping_field_scope": {
       "advertised": true,
@@ -245,6 +437,17 @@
       "kind": "tenant_defined",
       "representation": "none"
     },
+    "grouping_field_value_status": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "recorded",
+        "not_recorded",
+        "not_applicable"
+      ]
+    },
     "idempotency_key": {
       "advertised": false,
       "backend_serves": null,
@@ -262,11 +465,31 @@
         "complete"
       ]
     },
+    "invitation_status": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "pending",
+        "accepted",
+        "revoked"
+      ]
+    },
     "live_counter_maintenance_enabled": {
       "advertised": false,
       "backend_serves": null,
       "kind": "free_text",
       "representation": "none"
+    },
+    "markup_rung": {
+      "advertised": true,
+      "backend_serves": "1 of 1 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "tenant_default"
+      ]
     },
     "measure_status": {
       "advertised": true,
@@ -306,6 +529,16 @@
         "available",
         "pruned",
         "not_applicable"
+      ]
+    },
+    "member_status": {
+      "advertised": true,
+      "backend_serves": "2 of 2 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "pending",
+        "active"
       ]
     },
     "metadata_key": {
@@ -472,6 +705,27 @@
         "on_receipt"
       ]
     },
+    "referral_program_status": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "active",
+        "deactivated"
+      ]
+    },
+    "referral_status": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "active",
+        "expired",
+        "revoked"
+      ]
+    },
     "reserved_grouping_axis": {
       "advertised": false,
       "backend_serves": "5 of 5 values",
@@ -492,6 +746,42 @@
       "values": [
         "recorded",
         "recognised"
+      ]
+    },
+    "reward_type": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "flat_fee",
+        "revenue_share",
+        "profit_share"
+      ]
+    },
+    "role": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "read",
+        "write",
+        "admin"
+      ]
+    },
+    "skip_reason": {
+      "advertised": true,
+      "backend_serves": "6 of 6 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "no_usage",
+        "nothing_to_bill",
+        "seat_superseded",
+        "no_stripe_customer",
+        "not_charge_ready",
+        "payment_rail_closed"
       ]
     },
     "source_kind": {
@@ -540,6 +830,17 @@
       "kind": "closed",
       "representation": "none"
     },
+    "stop_scope": {
+      "advertised": true,
+      "backend_serves": "3 of 3 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "task",
+        "subtask",
+        "customer"
+      ]
+    },
     "task_outcome": {
       "advertised": true,
       "backend_serves": "3 of 3 values",
@@ -579,6 +880,17 @@
       "values": [
         "task",
         "subtask"
+      ]
+    },
+    "tenant_invoice_status": {
+      "advertised": true,
+      "backend_serves": "5 of 5 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "draft",
+        "finalized",
+        "paid"
       ]
     },
     "tenant_posture": {
@@ -655,6 +967,39 @@
       "values": [
         "metered_usage",
         "task_charge"
+      ]
+    },
+    "usage_invoice_status": {
+      "advertised": true,
+      "backend_serves": "6 of 6 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "pending",
+        "pushing",
+        "pushed",
+        "skipped",
+        "failed",
+        "failed_permanent"
+      ]
+    },
+    "wallet_transaction_type": {
+      "advertised": true,
+      "backend_serves": "11 of 11 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "top_up",
+        "usage_deduction",
+        "withdrawal",
+        "refund",
+        "adjustment",
+        "dispute_deduction",
+        "stripe_refund",
+        "debit",
+        "grant",
+        "grant_expiry",
+        "grant_void"
       ]
     },
     "webhook_event_type": {

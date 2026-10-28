@@ -36,6 +36,7 @@ from ubb.exceptions import (
 from ubb.metering import MeteringClient, StartedTask, TERMINAL_TASK_STATUSES
 from ubb._core.models.close_task_response import CloseTaskResponse
 from ubb._core.models.start_task_response import StartTaskResponse
+from tests._receipt import A_RECEIPT
 
 
 START_ROUTE = "/api/v1/tasks"
@@ -62,7 +63,7 @@ def _closed(**overrides) -> dict:
         "task_id": "task_1", "parent_task_id": None, "status": "completed",
         "outcome": "delivered", "replayed": False, "charge_created": False,
         "total_billed_cost_micros": 0, "total_provider_cost_micros": 0,
-        "unresolved_event_count": 0, "unpriced_event_count": 0, "event_count": 0,
+        "unresolved_event_count": 0, "unpriced_event_count": 0, "recorded_events": 0,
     }
     body.update(overrides)
     return body
@@ -73,7 +74,7 @@ def _stopped_ack() -> dict:
     landed on work that is no longer active."""
     return {
         "event_id": "e1", "suspended": False, "costing_status": "known",
-        "pricing_status": "known", "pricing_status_reason": None, "stop": True, "stop_reason": "task_not_active",
+        "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "stop": True, "stop_reason": "task_not_active",
         "stop_scope": "task", "task_id": "task_1",
         # Not a bound: no mechanism applied it and no figure was measured.
         "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,

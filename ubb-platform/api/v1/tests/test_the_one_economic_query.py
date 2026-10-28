@@ -49,6 +49,7 @@ from core.vocabulary import (
     TENANT_PRODUCT_METERING,
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
     ANALYTICS_MEASURE_RECORDED_EVENTS, ANALYTICS_MEASURE_SUPPLIER_COGS,
+    ANALYTICS_MEASURE_VALUES,
     COSTING_STATUS_KNOWN, COSTING_STATUS_UNRESOLVED, MEASURE_STATUS_INCOMPLETE,
     MEASURE_STATUS_KNOWN, MEASURE_STATUS_UNAVAILABLE_AT_REQUESTED_GRAIN,
     MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON,
@@ -825,7 +826,7 @@ class TestASuppliedFigureIsTheWholeRevenueForThePeriodItCovers:
                                            for p in postings),
             total_billed_cost_micros=sum(p.billed_cost_micros
                                          for p in postings),
-            event_count=len(postings))
+            posting_count=len(postings))
 
     def test_the_unprofitable_alert_states_the_same_revenue_as_the_query(self):
         """ONE ECONOMIC TRUTH PER CUSTOMER AND PERIOD (#537's review).
@@ -1030,7 +1031,7 @@ class TestTheCountAndTheChargeItMustNotCount:
         return {row["grouping_field_value"][0]: (
             row["grouping_field_value_status"][0],
             {entry["measure"]: (entry["amount_micros"] if entry["amount_micros"]
-                                is not None else entry["event_count"])
+                                is not None else entry["count"])
              for entry in row["measures"]})
             for row in body["rows"]}
 
@@ -1045,6 +1046,27 @@ class TestTheCountAndTheChargeItMustNotCount:
         from the money, or a Task's price would vanish from the answer."""
         rows = self._rows()
         assert rows[None][1][ANALYTICS_MEASURE_CUSTOMER_REVENUE] == 5_000_000
+
+    def test_every_measure_states_its_count_and_none_invents_a_zero(self):
+        """The owner's review of #620: `count` is REQUIRED AND NULLABLE on every
+        measure — the count measure's figure, and null on a money measure — so
+        "the field is missing" and "a count does not apply" never read the
+        same. A producer that omits it fails the contract rather than
+        defaulting."""
+        body = ask(self.key, measures=sorted(ANALYTICS_MEASURE_VALUES),
+                   group_by=["field:event_type"], basis=MARGIN_REVENUE_BASIS,
+                   **self.window).json()
+        # The contract the spec is generated from: required, and nullable.
+        assert EconomicMeasureOut.model_fields["count"].is_required()
+        measures = [entry for row in body["rows"] for entry in row["measures"]]
+        assert {entry["measure"] for entry in measures} == set(
+            ANALYTICS_MEASURE_VALUES), "every measure is read, money and count"
+        for entry in measures:
+            assert "count" in entry, entry
+            if entry["measure"] == ANALYTICS_MEASURE_RECORDED_EVENTS:
+                assert isinstance(entry["count"], int), entry
+            else:
+                assert entry["count"] is None, entry
 
     def test_its_absent_event_type_says_the_question_does_not_apply(self):
         """Not `(unattributed)`, which is what the surfaces this replaces put
@@ -1326,7 +1348,7 @@ class TestTheTwoHorizonsOnTheWire:
                 MEASURE_STATUS_UNAVAILABLE_OUTSIDE_RETENTION_HORIZON), measure
             assert entry["available_from"] == self.horizon().isoformat()
             assert entry["amount_micros"] is None
-            assert entry["event_count"] is None
+            assert entry["count"] is None
 
     def test_the_state_is_published_as_one_of_the_registry_s_five(self):
         """The contract half of the same payment: the field carries the concept

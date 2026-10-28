@@ -27,7 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTenantConfig } from "@/hooks/use-tenant-config";
 import { datetimeWindow, resolveRange } from "@/lib/date-range";
-import { enforcementModeLabel } from "@/lib/labels";
+import { enforcementModeLabel } from "@/lib/enforcement-mode";
 
 import {
   DEFAULT_REPORT,

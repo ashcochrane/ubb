@@ -71,7 +71,7 @@ class TestBillingOutboxHandler:
         handle_usage_recorded_billing(str(event.id), event.payload)
 
         txn = WalletTransaction.objects.get(wallet=wallet)
-        assert txn.transaction_type == "USAGE_DEDUCTION"
+        assert txn.transaction_type == "usage_deduction"
         assert txn.amount_micros == -3_000_000
         assert txn.balance_after_micros == 7_000_000
         assert txn.reference_id == event_id
@@ -398,11 +398,11 @@ class TestBillingOutboxHandler:
         bw.refresh_from_db()
         assert bw.balance_micros == 8_000_000  # the BUSINESS pool was debited
         assert not Wallet.objects.filter(customer=seat).exists()  # seat has no wallet
-        assert WalletTransaction.objects.filter(wallet=bw, transaction_type="USAGE_DEDUCTION").count() == 1
+        assert WalletTransaction.objects.filter(wallet=bw, transaction_type="usage_deduction").count() == 1
 
 
 class TestBillingHandlerEmitsWalletBalanceLow:
-    """After wallet deduction, if balance drops below auto-topup threshold,
+    """After wallet deduction, if balance drops below auto top-up threshold,
     emit a balance.low event instead of dispatching a Stripe task."""
 
     @pytest.mark.django_db
@@ -487,7 +487,7 @@ class TestBillingHandlerEmitsWalletBalanceLow:
         ).exists()
 
     @pytest.mark.django_db
-    def test_does_not_emit_when_no_auto_topup_config(self):
+    def test_does_not_emit_when_no_auto_top_up_config(self):
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
@@ -638,7 +638,7 @@ class TestAKnownZeroPriceIsAPrice:
         self._handle(tenant, customer, cost_micros=0, billed_cost_micros=0)
 
         period = TenantBillingPeriod.objects.get(tenant=tenant)
-        assert period.event_count == 1
+        assert period.recorded_events == 1
         assert period.total_billed_cost_micros == 0
         wallet.refresh_from_db()
         assert wallet.balance_micros == 10_000_000
@@ -651,7 +651,7 @@ class TestAKnownZeroPriceIsAPrice:
                      billed_cost_micros=None, pricing_status="unknown")
 
         period = TenantBillingPeriod.objects.get(tenant=tenant)
-        assert (period.event_count, period.total_billed_cost_micros) == (1, 0)
+        assert (period.recorded_events, period.total_billed_cost_micros) == (1, 0)
         assert not WalletTransaction.objects.filter(wallet=wallet).exists()
 
     def test_a_negative_known_price_is_refused_by_name_and_moves_nothing(self):

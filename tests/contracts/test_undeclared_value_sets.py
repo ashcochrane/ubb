@@ -90,7 +90,9 @@ from tools.vocabulary import load_registry
 #: to a reader skimming a diff, so both come past one.
 VALUE_SETS = {
     "ubb-platform/apps/billing/gating/models.py": 5,
-    "ubb-platform/apps/billing/invoicing/models.py": 4,
+    # 4 -> 5 in R10-W4: the skip reason gained `choices=` when the registry
+    # declared `skip_reason`; it was a bare string written as literals.
+    "ubb-platform/apps/billing/invoicing/models.py": 5,
     "ubb-platform/apps/billing/stripe/models.py": 1,
     "ubb-platform/apps/billing/tenant_billing/models.py": 2,
     "ubb-platform/apps/billing/topups/models.py": 2,

@@ -185,7 +185,7 @@ def test_usage_invoice_pushed_contract():
     assert asdict(e)["line_item_count"] == 2
 
 
-def test_auto_topup_requires_action_contract():
+def test_auto_top_up_requires_action_contract():
     from dataclasses import asdict
     from apps.platform.events.schemas import AutoTopUpRequiresAction
     e = AutoTopUpRequiresAction(tenant_id="t", customer_id="c", attempt_id="a",

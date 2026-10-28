@@ -1946,6 +1946,10 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
         EIGHT SINCE #569: the batch item is typed, and it IS the
         acknowledgement — so it publishes the price a recording resolved, on
         the response side of the line like the single route's answer.
+
+        NINE SINCE R10-W4 (#558): the Pricing Receipt is typed, so its totals
+        are a schema node — the price the pricing section resolved, read back
+        inside the record that explains it.
         """
         self.assertNotIn("billed_cost_micros", THE_WHOLE_RECORDING_REQUEST)
         self.assertNotIn(
@@ -1957,7 +1961,7 @@ class TheWholeRequestIsPublishedTest(SimpleTestCase):
             "RecordUsageResponse", "UsageBatchItemResponse",
             "UnresolvedQueueRow", "UsageEventDetailOut",
             "UsageEventOut", "ItemisedEventRow", "ItemisedEventsOut",
-            "SpendControlFamilyTotalsRow"})
+            "SpendControlFamilyTotalsRow", *RECEIPT_TOTALS})
 
 
 #: What each published meaning must say (#570 ruling 2), held here rather
@@ -2014,6 +2018,17 @@ PER_EVENT_CARRIERS = frozenset({
 TOTAL_CARRIERS = frozenset({
     "UnresolvedQueueTotals", "WaivedLossRow", "ItemisedEventsOut",
     "SpendControlFamilyTotalsRow", "SeatMarginOut", "BusinessMarginTotals"})
+#: The Pricing Receipt's totals, a node since R10-W4 typed the record (#558).
+#: Its own category: one subject's amounts like a per-event carrier, but the
+#: status that governs each sits in the sibling section (`costing.status`,
+#: `pricing.status`) rather than beside it, so its wording names that.
+RECEIPT_TOTALS = frozenset({"PricingReceiptTotals"})
+SAYS_A_RECEIPT_TOTAL = (
+    "The supplier cost (COGS) the costing section resolved",
+    "present exactly when `costing.status` is `known`")
+SAYS_A_RECEIPT_PRICE = (
+    "The customer price the pricing section resolved",
+    "present exactly when `pricing.status` is `known`")
 
 
 class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
@@ -2148,7 +2163,7 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
         carriers = self.carriers()
 
         self.assertEqual(set(carriers), PER_EVENT_CARRIERS | TOTAL_CARRIERS
-                         | set(RECORDING_REQUESTS))
+                         | RECEIPT_TOTALS | set(RECORDING_REQUESTS))
         for name in PER_EVENT_CARRIERS:
             said, beside = carriers[name]
             with self.subTest(carrier=name):
@@ -2166,17 +2181,28 @@ class EachSupplierCostFieldPublishesItsOwnMeaningTest(SimpleTestCase):
                     self.assertIn(phrase, said)
                 self.assertIn("unresolved_event_count", beside,
                               "the wording names a count the schema lacks")
+        for name in RECEIPT_TOTALS:
+            with self.subTest(carrier=name):
+                for phrase in SAYS_A_RECEIPT_TOTAL:
+                    self.assertIn(phrase, carriers[name][0])
         for name in RECORDING_REQUESTS:
             with self.subTest(carrier=name):
                 self.assertIn(SAYS_SUPPLIED_BY_THE_CALLER[0],
                               carriers[name][0])
 
-    def test_the_untyped_container_says_what_its_amount_means(self):
-        """One published container can hold a `provider_cost_micros` that no
-        schema node declares, so neither walk above can see it: the Pricing
-        Receipt's totals, which say on the container what the amount inside
-        means. An accepted batch item was the second until #569 typed it — its
-        cost is a node now, which the carriers walk reads like any other."""
+    def test_the_receipt_says_what_each_amount_inside_it_means(self):
+        """The Pricing Receipt's totals, on the container AND on the node.
+
+        Until R10-W4 the receipt was an untyped container, so its
+        `provider_cost_micros` was a field no schema node declared and only
+        the container's description could say what it meant — this test was
+        that statement's only reader. #558 typed it: the totals are a node the
+        carriers walk above reads like any other, and each amount carries its
+        own description. The container keeps its summary, and the price — which
+        no carriers walk reads — is held here on the node."""
+        totals = self.schemas["PricingReceiptTotals"]["properties"]
+        for phrase in SAYS_A_RECEIPT_PRICE:
+            self.assertIn(phrase, totals["billed_cost_micros"]["description"])
         items = self.schemas["UsageBatchResponse"]["properties"]["results"]
         self.assertEqual(items["items"],
                          {"$ref": "#/components/schemas/UsageBatchItemResponse"})

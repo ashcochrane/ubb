@@ -3,10 +3,12 @@ from uuid import UUID
 from typing import Annotated, Any, List, Literal, Optional, Union
 
 from ninja import Schema, Field
-from pydantic import ConfigDict, field_validator, model_validator
+from pydantic import BaseModel as PydanticBaseModel
+from pydantic import ConfigDict, field_validator, model_serializer, model_validator
 
 from api.v1.pagination import Paginated
 from apps.metering.pricing.models import LINE_AGREED_PRICE, LINE_RATE
+from apps.metering.pricing.receipts import RECEIPT_SCHEMA_VERSION
 from apps.platform.event_types.exact_decimals import (
     ACCEPTED, CANONICAL, anchored, canonical_quantities)
 from apps.platform.event_types.models import REPORTED_COST_MAPPING
@@ -22,10 +24,16 @@ from core.exceptions import MisalignedAmount
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units
 from core.problems import ProblemOut
 from core.vocabulary import (
-    GROUPING_FIELD_SCOPE_EVENT, MOVEMENT_REASON_VALUES,
-    PRICING_MODE_EVENT_PRICED, RATE_STRUCTURE_PER_UNIT,
-    SPEND_POOL_ENFORCE_MODE_ALERT_ONLY, SPEND_POOL_ENFORCE_MODE_VALUES,
-    TASK_TYPE_KIND_TASK)
+    ENFORCEMENT_MODE_OFF,
+    GRANT_KIND_VALUES,
+    GROUPING_FIELD_SCOPE_EVENT,
+    MOVEMENT_REASON_VALUES,
+    PRICING_MODE_EVENT_PRICED,
+    RATE_STRUCTURE_PER_UNIT,
+    SPEND_POOL_ENFORCE_MODE_ALERT_ONLY,
+    SPEND_POOL_ENFORCE_MODE_VALUES,
+    TASK_TYPE_KIND_TASK,
+)
 
 #: WHAT A PRICING RECEIPT IS, ON THE PUBLISHED DOCUMENT (#349, ADR-0006).
 #:
@@ -698,6 +706,39 @@ ReasonCode = Annotated[
 TriggerSource = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "trigger_source"})]
 
+
+def _concept(name):
+    """A string field carrying the registry's concept ``name`` — the marker the
+    spec export turns into an `enum` (closed) or `x-ubb-known-values` (open)."""
+    return Annotated[str, Field(json_schema_extra={"x-ubb-concept": name})]
+
+
+#: THE VALUE SETS R10-W4 DECLARED (slice 8). Each was published as a bare
+#: string while its backend kept the set as a private list; the registry now
+#: declares each one, its backend consumer holds it by reference, and so the
+#: contract may advertise it. One alias per concept, and a carrier decides
+#: `Optional` for itself — the marker lands in the string member either way.
+#: The products' own payloads (referrals, the webhook catalogue) spell theirs
+#: again, because a product may not import this layer.
+AuditAction = _concept("audit_action")
+AuditResourceType = _concept("audit_resource_type")
+ActorKind = _concept("actor_kind")
+Role = _concept("role")
+MemberStatus = _concept("member_status")
+InvitationStatus = _concept("invitation_status")
+EnforcementMode = _concept("enforcement_mode")
+StopScope = _concept("stop_scope")
+WalletTransactionType = _concept("wallet_transaction_type")
+GrantKind = _concept("grant_kind")
+GrantStatus = _concept("grant_status")
+GrantSource = _concept("grant_source")
+UsageInvoiceStatus = _concept("usage_invoice_status")
+SkipReason = _concept("skip_reason")
+TenantInvoiceStatus = _concept("tenant_invoice_status")
+BillingPeriodStatus = _concept("billing_period_status")
+GroupingFieldValueStatus = _concept("grouping_field_value_status")
+MarkupRung = _concept("markup_rung")
+
 #: WHICH OF THE FOUR SPEND CONTROLS A STOP CAME FROM — the registry's closed
 #: `control_family`, spelled here again because a product may not import this
 #: layer (`events/schemas.py::ControlFamily` is the payloads'; the
@@ -761,6 +802,167 @@ STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT = (
     "the figure the stop opened on, not where the counter stands now. Null "
     "when nothing stopped and for `task_not_active`. On an idempotent "
     "replay, the original acknowledgement's.")
+
+
+# ---------------------------------------------------------------------------
+# THE PRICING RECEIPT, TYPED (#558, R10-W4). Version 2 only.
+#
+# The acknowledgement, the batch item and the event detail published the record
+# as an untyped object, so the eleven closed concepts riding inside it — the
+# subject's type, each section's method and status, the cost section's
+# unresolved reason and reported-cost source kind, the price section's regime,
+# not-applicable reason and status reason, and each component's rate structure
+# — reached the wire advertised nowhere (#349's recorded residual: marking
+# needs a typed node). This is that node.
+#
+# **VERSION 2 ONLY (§0.3 ruling 3).** Writers write 2 and nothing else
+# (`receipts.RECEIPT_SCHEMA_VERSION`); the readers that still take 0 and 1 are
+# internal, for development databases older than 2, which are not product
+# history and are reset at the cutover rather than accommodated here. A v0 or
+# v1 record does not validate against this type, and no legacy branch is
+# published beside it.
+#
+# **THE `detail` AND `provenance` CONTAINERS STAY OPEN, BY ADR-0020's ADDITIVE
+# RULE AND ONLY BY IT.** A key arriving inside one moves no receipt version
+# (`receipts.py`, the open-detail rule), so a reader must tolerate one it has
+# not met: each container types the keys UBB writes today and admits any
+# other. Each publishes exactly what was stored — a key the record does not
+# carry stays absent rather than arriving as null — because a stored receipt
+# is published as stored. Every other level is closed.
+# ---------------------------------------------------------------------------
+
+
+class _StoredRecord(PydanticBaseModel):
+    """An open container of a stored record: the keys typed below, any key
+    ADR-0020's additive rule lets a later writer add, and nothing invented —
+    a typed key the record does not hold is left out of what is published."""
+    model_config = ConfigDict(extra="allow")
+
+    @model_serializer(mode="wrap")
+    def _as_stored(self, handler):
+        published = handler(self)
+        held = set(self.model_fields_set) | set(self.model_extra or {})
+        return {key: value for key, value in published.items() if key in held}
+
+
+class PricingReceiptComponent(_StoredRecord):
+    """One priced quantity, with the terms that priced it, BY VALUE — the
+    measured detail behind it expires and this record does not
+    (`receipts.REQUIRED_COMPONENT_KEYS`, a minimum)."""
+    measurement_key: str
+    #: The quantity as its canonical exact decimal text (receipt schema 2).
+    units: CanonicalDecimal
+    rate_structure: RateStructure
+    rate_per_unit_micros: int
+    unit_quantity: int
+    fixed_micros: int
+    micros: int
+
+
+class PricingReceiptMarkupTerms(Schema):
+    """What a margin over cost was, by value: the percentage and the basis it
+    was taken over. Exactly these two (`receipts.REQUIRED_MARKUP_KEYS`)."""
+    micro_percent: int
+    basis_micros: int
+
+
+class PricingReceiptCostingDetail(_StoredRecord):
+    """Why the supplier cost is what it is. Absent keys stay absent: a Task
+    Charge's receipt holds none, because no supplier stands behind a Charge."""
+    components: Optional[list[PricingReceiptComponent]] = None
+    uncosted_measurement_keys: Optional[list[str]] = None
+    uncosted_quantities: Optional[dict[str, CanonicalDecimal]] = None
+    undeclared_quantities: Optional[dict[str, CanonicalDecimal]] = None
+    unresolved_reason: Optional[UnresolvedReason] = None
+    # `PricingMode`, `CostingMethod` and `SourceKind` are bound further down
+    # this module, beside the schemas that first published them; the receipt
+    # names the same concepts through the helper rather than move them.
+    reported_cost_source_kind: Optional[_concept("source_kind")] = None
+
+
+class PricingReceiptPricingDetail(_StoredRecord):
+    """Why the customer price is what it is — the regime the subject was
+    priced under, and the reason beside a status that needs one."""
+    components: Optional[list[PricingReceiptComponent]] = None
+    pricing_mode: Optional[_concept("pricing_mode")] = None
+    not_applicable_reason: Optional[NotApplicableReason] = None
+    pricing_status_reason: Optional[PricingStatusReason] = None
+    markup: Optional[PricingReceiptMarkupTerms] = None
+
+
+class PricingReceiptCosting(Schema):
+    """The supplier side: how the cost was derived (null where no method
+    derived it), whether it is settled, and the detail that explains it."""
+    method: Optional[_concept("costing_method")]
+    status: CostingStatus
+    detail: PricingReceiptCostingDetail
+
+
+class PricingReceiptPricing(Schema):
+    """The customer side, on the cost side's terms."""
+    method: Optional[PricingMethod]
+    status: PricingStatus
+    detail: PricingReceiptPricingDetail
+
+
+#: What each receipt total is, on the field itself rather than only on the
+#: container (the owner's review of #607: no public money field is left
+#: undescribed). `receipts._validate_section` holds the rule: an amount is
+#: present exactly when its section's status is the settled one.
+RECEIPT_COST_TOTAL_MEANING = (
+    "The supplier cost (COGS) the costing section resolved for this "
+    "receipt's subject, in micros: present exactly when `costing.status` is "
+    "`known`, and null otherwise.")
+RECEIPT_PRICE_TOTAL_MEANING = (
+    "The customer price the pricing section resolved for this receipt's "
+    "subject, in micros: present exactly when `pricing.status` is `known`, "
+    "and null otherwise.")
+
+
+class PricingReceiptTotals(Schema):
+    """The amount each section resolved; null where it is not settled."""
+    provider_cost_micros: Optional[int] = Field(
+        description=RECEIPT_COST_TOTAL_MEANING)
+    billed_cost_micros: Optional[int] = Field(
+        description=RECEIPT_PRICE_TOTAL_MEANING)
+
+
+class PricingReceiptProvenanceMarkup(Schema):
+    """The rung the margin came from and the record that declared it."""
+    rung: MarkupRung
+    record_id: str
+
+
+class PricingReceiptProvenance(_StoredRecord):
+    """Cross-reference ids and nothing else (`receipts._validate_provenance`
+    refuses a figure here). Absent keys stay absent: a usage event names the
+    rules it read, a Charge names its agreed price line, and a completion names
+    the Resolution Run or the held name that completed it (#363, #568)."""
+    #: Each priced quantity's key -> the id of the rule that priced it.
+    cost_rate_ids: Optional[dict[str, str]] = None
+    price_rate_ids: Optional[dict[str, str]] = None
+    markup: Optional[PricingReceiptProvenanceMarkup] = None
+    agreed_price_line_id: Optional[str] = None
+    book_version: Optional[str] = None
+    resolution_run_id: Optional[str] = None
+    held_name_id: Optional[str] = None
+
+
+class PricingReceipt(Schema):
+    """The Pricing Receipt, version 2 — see `RECEIPT_DESCRIPTION`."""
+    #: The one shape this contract publishes (§0.3 ruling 3), held in the
+    #: type: a record declaring any other version does not validate, whatever
+    #: else it holds.
+    receipt_schema_version: Literal[RECEIPT_SCHEMA_VERSION]
+    pricing_engine_version: str
+    subject_type: PricingReceiptSubjectType
+    subject_id: str
+    effective_at: str
+    currency: str
+    costing: PricingReceiptCosting
+    pricing: PricingReceiptPricing
+    totals: PricingReceiptTotals
+    provenance: PricingReceiptProvenance
 
 
 class RecordUsageResponse(Schema):
@@ -838,7 +1040,7 @@ class RecordUsageResponse(Schema):
     stop: bool = False
     stop_reason: Optional[ReasonCode] = Field(
         default=None, description=STOP_REASON_ON_AN_ACKNOWLEDGEMENT)
-    stop_scope: Optional[str] = None
+    stop_scope: Optional[StopScope] = None
     # HOW THE STOP WAS APPLIED AND WHAT IT WAS MEASURED ON (#569; #179 §1.3):
     # the mechanism, the bound `stop_reason` names as it stood when the stop
     # was established, and the amount measured against it then — so a
@@ -905,8 +1107,10 @@ class RecordUsageResponse(Schema):
         default=None, description=(
             "The quantities as recorded, keyed as sent. "
             "Each is the canonical exact decimal text UBB stored."))
-    pricing_receipt: Optional[dict] = Field(
-        None, description=RECEIPT_DESCRIPTION)
+    # TYPED SINCE #558 (R10-W4), version 2 only. Required and never null on
+    # this route: every recording writes one, and a replay answers with the one
+    # it wrote. Only a REJECTED batch item has none — see the override there.
+    pricing_receipt: PricingReceipt = Field(description=RECEIPT_DESCRIPTION)
     # WHAT THAT RECEIPT EXPLAINS — one usage row, or one canonical Charge
     # (#370). Read off the record rather than derived from whichever column is
     # populated: the receipt is the authority, and a subject inferred at read
@@ -971,6 +1175,11 @@ class UsageBatchItemResponse(RecordUsageResponse):
     suspended: Optional[bool] = None
     costing_status: Optional[CostingStatus] = None
     pricing_status: Optional[PricingStatus] = None
+    # The receipt is null on a REJECTED item and on nothing else: a rejected
+    # item recorded nothing, so nothing was resolved (#558, R10-W4). Required
+    # and nullable, on `pricing_status_reason`'s footing — never absent.
+    pricing_receipt: Optional[PricingReceipt] = Field(
+        description=RECEIPT_DESCRIPTION)
 
 
 class UsageBatchResponse(Schema):
@@ -1234,7 +1443,10 @@ class UsageEventDetailOut(Schema):
     # empty bag shows an end customer "no usage" for detail that was removed on
     # schedule. Required rather than optional: every posting has an answer.
     measurements_status: MeasurementsStatus
-    pricing_receipt: dict = Field({}, description=RECEIPT_DESCRIPTION)
+    # TYPED SINCE #558 (R10-W4), version 2 only, and required: every posting
+    # is written with its receipt — the recording path and the Charge
+    # projection both build one — so a read has one to publish.
+    pricing_receipt: PricingReceipt = Field(description=RECEIPT_DESCRIPTION)
     # WHAT THE RECEIPT ABOVE EXPLAINS (#370) — see `RecordUsageResponse`, which
     # publishes the same record and therefore the same field.
     pricing_receipt_subject_type: Optional[PricingReceiptSubjectType] = None
@@ -1316,7 +1528,7 @@ class RefundResponse(Schema):
 
 class WalletTransactionOut(Schema):
     id: UUID
-    transaction_type: str
+    transaction_type: WalletTransactionType
     amount_micros: int
     balance_after_micros: int
     description: str
@@ -1461,7 +1673,7 @@ class DebitCreditResponse(Schema):
 
 
 class CreateGrantRequest(Schema):
-    kind: str  # "paid" | "promo"
+    kind: GrantKind
     amount_micros: int = Field(gt=0, le=999_999_999_999)
     expires_at: Optional[datetime] = None
     expires_in_days: Optional[int] = Field(default=None, gt=0, le=3650)
@@ -1471,8 +1683,8 @@ class CreateGrantRequest(Schema):
     @field_validator("kind")
     @classmethod
     def kind_valid(cls, v):
-        if v not in ("paid", "promo"):
-            raise ValueError("kind must be 'paid' or 'promo'")
+        if v not in GRANT_KIND_VALUES:
+            raise ValueError(f"kind must be one of {sorted(GRANT_KIND_VALUES)}")
         return v
 
     @field_validator("amount_micros")
@@ -1483,14 +1695,14 @@ class CreateGrantRequest(Schema):
 
 class GrantOut(Schema):
     id: str
-    kind: str
+    kind: GrantKind
     granted_micros: int
     remaining_micros: int
     expired_micros: int
     voided_micros: int
     currency: str
-    status: str
-    source: str
+    status: GrantStatus
+    source: GrantSource
     expires_at: Optional[str] = None
     warning_sent_at: Optional[str] = None
     created_at: str
@@ -1641,14 +1853,24 @@ class CloseTaskRequest(Schema):
 #: carry it (#553 A9, ADR-0021 §3). A unit sold at one agreed price earns its
 #: revenue as ONE Charge when it delivers, projected onto one posting under
 #: the unit; that posting reaches this total and nothing else — never the
-#: provider-cost total, the event count or the unpriced count.
+#: provider-cost total, `recorded_events` or the unpriced count.
 TASK_BILLED_TOTAL_MEANING = (
     "What this unit billed, in micros: the sum of the customer prices UBB "
     "has resolved for its events and, for a unit sold at one agreed price "
     "that delivered, its Charge — included from the close that created it. "
     "`unpriced_event_count` says how many events it does not include. The "
-    "Charge is never in `total_provider_cost_micros`, `event_count` or "
+    "Charge is never in `total_provider_cost_micros`, `recorded_events` or "
     "`unpriced_event_count`.")
+
+#: WHAT A UNIT'S COUNT HOLDS, published once for the two schemas that carry it
+#: (R10-W4 ruling 1: the registry's measure, under its canonical name). The
+#: column behind it is `Task.recorded_events`, which the metered recording
+#: path increments and the Charge's projection never does (G14 pin 2).
+TASK_RECORDED_EVENTS_MEANING = (
+    "How many metered usage events were recorded under this unit of work, "
+    "its contained work's included, whatever each was priced at. It never "
+    "counts the Charge of a unit sold at one agreed price: that Charge is "
+    "revenue, in `total_billed_cost_micros`, not an event anybody reported.")
 
 
 class CloseTaskResponse(Schema):
@@ -1688,7 +1910,7 @@ class CloseTaskResponse(Schema):
     #: And the price half (#351), on the same terms; closing a unit prices
     #: nothing that was never resolved.
     unpriced_event_count: int
-    event_count: int
+    recorded_events: int = Field(description=TASK_RECORDED_EVENTS_MEANING)
 
 
 class TaskOut(Schema):
@@ -1776,7 +1998,7 @@ class TaskOut(Schema):
     #: A `waived` price and a `not_applicable` one are not counted: neither is
     #: missing information, and a caveat that is always on is one nobody reads.
     unpriced_event_count: int
-    event_count: int
+    recorded_events: int = Field(description=TASK_RECORDED_EVENTS_MEANING)
     task_cogs_ceiling_micros: Optional[int] = None
     #: THE AGREED PRICE THIS UNIT OF WORK PINNED WHEN IT STARTED, where its
     #: kind of work is sold at one agreed price rather than per event (#415).
@@ -1845,7 +2067,7 @@ def task_out(t, keys):
         "unresolved_event_count": t.unresolved_event_count,
         "total_billed_cost_micros": t.total_billed_cost_micros,
         "unpriced_event_count": t.unpriced_event_count,
-        "event_count": t.event_count,
+        "recorded_events": t.recorded_events,
         "task_cogs_ceiling_micros": t.task_cogs_ceiling_micros,
         "agreed_price_micros": t.agreed_price_micros,
         # Derived on the row, read here — one derivation, not a second.
@@ -2260,14 +2482,22 @@ class CustomerSpendPoolStatusOut(Schema):
     blocking_occurred: bool
 
 
+#: What `skip_reason` says, and when it is absent. Null on every invoice that
+#: was not skipped — the reason does not apply there — and one of the
+#: registry's six on every invoice that was (R10-W4).
+SKIP_REASON_MEANING = (
+    "Why this invoice was skipped rather than pushed; null unless status is "
+    "'skipped'.")
+
+
 class UsageInvoiceOut(Schema):
     period_start: str
     period_end: str
     total_billed_micros: int
     currency: str
-    status: str
+    status: UsageInvoiceStatus
     stripe_invoice_id: str = ""
-    skip_reason: str = ""
+    skip_reason: Optional[SkipReason] = Field(description=SKIP_REASON_MEANING)
     push_attempts: Optional[int] = None
     last_attempt_error: Optional[str] = None
 
@@ -2299,9 +2529,9 @@ class TenantUsageInvoiceOut(Schema):
     external_id: str
     period_start: str
     total_billed_micros: int
-    status: str
+    status: UsageInvoiceStatus
     stripe_invoice_id: str = ""
-    skip_reason: str = ""
+    skip_reason: Optional[SkipReason] = Field(description=SKIP_REASON_MEANING)
     push_attempts: Optional[int] = None
     last_attempt_error: Optional[str] = None
 
@@ -2472,6 +2702,16 @@ class RateOut(Schema):
     grouping_field_8: str
     grouping_field_9: str
     grouping_field_10: str
+    #: HOW THIS RULE DERIVES A CUSTOMER PRICE (#190 comment 5831552855;
+    #: R10-W4, ruling 4) — `margin_over_cost` or `direct_event_price` on every
+    #: rule in a Pricing Book, and null only on a cost book's rate, which
+    #: prices no customer. Required and nullable. Without it a margin rule,
+    #: stored with zero terms, read here exactly as a price of zero.
+    pricing_method: Optional[PricingMethod] = Field(description=(
+        "How this rule derives a customer price: 'margin_over_cost' (a "
+        "percentage over what the call cost; its own terms are zero) or "
+        "'direct_event_price' (it charges its own terms). Null only on a cost "
+        "book's rate, which prices no customer."))
     rate_structure: RateStructure
     rate_per_unit_micros: int
     unit_quantity: int
@@ -2585,6 +2825,7 @@ def rate_out(r):
         # where a map walk would drop it silently (#361's lesson, one schema
         # over).
         **{slot: getattr(r, slot) for slot in SLOTS},
+        "pricing_method": r.pricing_method,
         "rate_structure": r.rate_structure,
         "rate_per_unit_micros": r.rate_per_unit_micros,
         "unit_quantity": r.unit_quantity,
@@ -2682,11 +2923,14 @@ class BookRateChangeIn(Schema):
     #: HOW THE RULE DERIVES ITS PRICE — a margin over what the call cost, or an
     #: amount attached to the event regardless of cost (#361, #147 §2).
     #:
-    #: Nullable, and null is not a third method: it says the rule derives no
-    #: price of its own and charges its own terms. An `add` that omits it takes
-    #: that null; a `reprice` that omits it keeps the method of the rule it
-    #: supersedes, exactly as it keeps every term it does not restate; a
-    #: `retire` may not state it at all, because it opens no rule.
+    #: Optional in the body, never null on the rule it opens (R10-W4, ruling
+    #: 4): an `add` to a Pricing Book that omits it opens a rule stating
+    #: `direct_event_price` — a rule that charges its own terms — written as
+    #: that value rather than as a null meaning it; a `reprice` that omits it
+    #: keeps the method of the rule it supersedes, exactly as it keeps every
+    #: term it does not restate; a `retire` may not state it at all, because it
+    #: opens no rule; and a cost book's change may not state it, because a
+    #: supplier's rate prices no customer.
     #:
     #: **THIS IS WHAT MAKES A CUSTOMER OVERRIDE A WHOLE RULE** (#151 §6): a
     #: customer moved from cost-plus onto a flat price is a method change, and
@@ -2794,8 +3038,14 @@ class RuleTermsOut(Schema):
     rate_per_unit_micros: int
     unit_quantity: int
     fixed_micros: int
-    #: Null where the rule derives no price of its own — see `BookChangeIn`.
-    pricing_method: Optional[PricingMethod] = None
+    #: REQUIRED, and null exactly where the rule is a cost book's rate: a
+    #: selling rule always states its method (R10-W4 ruling 4,
+    #: `ck_rate_a_selling_rule_states_its_method`), and a cost book's diff
+    #: publishes through this same row with no selling method to state.
+    pricing_method: Optional[PricingMethod] = Field(description=(
+        "How the rule derives a customer price. Present on every row; null "
+        "exactly where the rule is a cost book's rate, which derives no "
+        "customer price. A Pricing Book rule always states one."))
     #: Never null: every rule has an arithmetic shape, and this row is a rule's
     #: terms rather than a statement of what a body said.
     rate_structure: RateStructure
@@ -2908,7 +3158,7 @@ class BookPublishOut(Schema):
     #: the moment of the publish (ADR-004 §4). Empty on a draft: whose decision
     #: put a price in force is a question with an answer only once one is in
     #: force, and who declared the draft is the audit ledger's.
-    actor_kind: str
+    actor_kind: ActorKind
     actor_id: str
     actor_display: str
     #: The rule versions this publish opened and closed. Empty on a draft,
@@ -3140,7 +3390,10 @@ class InheritedPricingRule(Schema):
     task_type: str
     subtask_type: str
     grouping_fields: dict[str, str] = {}
-    pricing_method: Optional[PricingMethod] = None
+    #: Never null: the rule a customer is priced from is a SELLING rule, and a
+    #: selling rule always states its method (R10-W4 ruling 4,
+    #: `ck_rate_a_selling_rule_states_its_method`), so the copy is exact.
+    pricing_method: PricingMethod
     #: Never null: this is a rule, and every rule has an arithmetic shape. It
     #: joins with #366 because the override body it seeds now states one, and a
     #: starting point missing a field the destination requires makes "copy
@@ -3277,7 +3530,7 @@ class ResolutionRunOut(Schema):
     #: An immutable snapshot of the principal who ran it, taken at the moment of
     #: the act (ADR-004 §4), because a run cannot be undone and this is the only
     #: place the answer survives.
-    actor_kind: str
+    actor_kind: ActorKind
     actor_id: str
     actor_display: str
     selector: ResolutionRunSelectorOut
@@ -3492,7 +3745,7 @@ class PaginatedRates(Paginated[RateOut]):
 #: request field is a promise that the server refuses anything else, and until
 #: this marker arrived a declaration stored whatever scope it was sent — which
 #: would have let the representation answer a value its own `enum` refuses.
-#: `DimensionService.declare` is where the refusal lives.
+#: `GroupingFieldService.declare` is where the refusal lives.
 #:
 #: ⚠ `GroupingOptionOut.source_grain` BELOW IS NOT THIS CONCEPT AND IS
 #: DELIBERATELY UNMARKED. It answers these three plus a fourth that no declared
@@ -3502,7 +3755,7 @@ GroupingFieldScope = Annotated[
     str, Field(json_schema_extra={"x-ubb-concept": "grouping_field_scope"})]
 
 
-class DimensionDefIn(Schema):
+class GroupingFieldIn(Schema):
     key: str = Field(max_length=64)
     # Both bounds are read off the registry's own vocabulary rather than typed,
     # so a future widening cannot ship a contract that refuses the slots it just
@@ -3515,12 +3768,12 @@ class DimensionDefIn(Schema):
     max_cardinality: int = Field(default=100, ge=1, le=100_000)
 
 
-class DimensionRegistryIn(Schema):
-    grouping_fields: list[DimensionDefIn] = Field(
+class GroupingFieldRegistryIn(Schema):
+    grouping_fields: list[GroupingFieldIn] = Field(
         min_length=1, max_length=len(SLOT_CHOICES))
 
 
-class DimensionDefOut(Schema):
+class GroupingFieldOut(Schema):
     key: str
     slot: str
     scope: GroupingFieldScope
@@ -3528,8 +3781,8 @@ class DimensionDefOut(Schema):
     retired: bool
 
 
-class DimensionRegistryOut(Schema):
-    grouping_fields: list[DimensionDefOut]
+class GroupingFieldRegistryOut(Schema):
+    grouping_fields: list[GroupingFieldOut]
 
 
 class GroupingFieldValuesOut(Schema):
@@ -3808,8 +4061,18 @@ class EconomicMeasureOut(Schema):
     #:
     #: ⚠ A SEPARATE FIELD RATHER THAN A SHARED ONE, because a count carried in a
     #: field whose name ends `_micros` would read as a hundredth of a cent. The
-    #: measure's own name says which of the two is filled.
-    event_count: Optional[int] = None
+    #: measure's own name says which of the two is filled — which is why this
+    #: slot is plain `count` (R10-W4 ruling 1): `measure` beside it already
+    #: says what is being counted.
+    #:
+    #: REQUIRED AND NULLABLE since the owner's review of #620: present on every
+    #: measure, so "the field is missing" and "a count does not apply" are
+    #: never the same reading. Null is never a stand-in for zero.
+    count: Optional[int] = Field(description=(
+        "The count measure's figure: under `recorded_events`, how many metered "
+        "usage events this row covers, never a Task Charge. Present on every "
+        "measure; null on the three measures denominated in money, and "
+        "wherever no figure can be stated — never a zero standing in."))
     status: MeasureStatus
     #: How many postings the supplier-cost total could not include. Present on
     #: the cost measure and on nothing else, because the two counts in this
@@ -3850,7 +4113,7 @@ class EconomicRowOut(Schema):
     #: where the axis has no value on these rows — read the entry in the same
     #: position of the list below to learn which of the two absences it is.
     grouping_field_value: list[Optional[str]]
-    grouping_field_value_status: list[str] = Field(
+    grouping_field_value_status: list[GroupingFieldValueStatus] = Field(
         description=GROUPED_VALUE_STATUS_MEANING)
     measures: list[EconomicMeasureOut]
 
@@ -4164,7 +4427,7 @@ class TenantConfigOut(Schema):
     is_active: bool
     automatic_tax_enabled: bool
     # Tier-2 spend-control mode (read-only here; two positions: off|enforcing).
-    enforcement_mode: str = "off"
+    enforcement_mode: EnforcementMode = ENFORCEMENT_MODE_OFF
     # Live-counter-maintenance switch (#46; narrowed by #149 §6.5, renamed by
     # #246): whether real-time counter maintenance (the synchronous
     # live-counter write and its crossing check, the reconciles' counter jobs,
@@ -4200,7 +4463,7 @@ class TenantConfigIn(Schema):
     products: Optional[list[TenantProduct]] = None
     automatic_tax_enabled: Optional[bool] = None
     # Tier-2 spend-control mode: two positions, off | enforcing (#42).
-    enforcement_mode: Optional[str] = None
+    enforcement_mode: Optional[EnforcementMode] = None
     # Live-counter-maintenance switch (#46, renamed by #246): flipping either
     # way enqueues an immediate per-tenant reconcile (OFF→ON re-seeds honest
     # counters from durable truth within minutes; ON→OFF has nothing to drain,
@@ -4285,7 +4548,7 @@ class TenantBillingPeriodOut(Schema):
     id: str
     period_start: str
     period_end: str
-    status: str
+    status: BillingPeriodStatus
     total_billed_cost_micros: int = Field(description=(
         "What the tenant's customers were billed in this period: the sum of "
         "`billed_cost_micros` over the period's postings, placed by when UBB "
@@ -4295,8 +4558,8 @@ class TenantBillingPeriodOut(Schema):
         "meaning as the stop payload's sum over one unit of work. UBB's "
         "platform fee is a percentage of it."))
     #: The registry's measure, by its canonical name (`analytics_measure`'s
-    #: `recorded_events`; the owner's review of #619): the column behind it
-    #: keeps the internal name `event_count`.
+    #: `recorded_events`; the owner's review of #619). The column behind it
+    #: took the same name in R10-W4 (ruling 1).
     recorded_events: int = Field(description=(
         "Every metered usage event recorded in this period, whatever it was "
         "priced at — unpriced and zero-priced events included. It EXCLUDES "
@@ -4313,7 +4576,7 @@ def tenant_billing_period_out(p):
         "period_end": p.period_end.isoformat(),
         "status": p.status,
         "total_billed_cost_micros": p.total_billed_cost_micros,
-        "recorded_events": p.event_count,
+        "recorded_events": p.recorded_events,
         "platform_fee_micros": p.platform_fee_micros,
     }
 
@@ -4327,7 +4590,7 @@ class TenantInvoiceOut(Schema):
     billing_period_id: str
     stripe_invoice_id: str
     total_amount_micros: int
-    status: str
+    status: TenantInvoiceStatus
     created_at: str
 
 
@@ -4777,7 +5040,10 @@ class ItemisedEventsOut(Schema):
     — each total adding what is resolved and counting what is not, so a row
     can never read complete while its own events read partial."""
     events: list[ItemisedEventRow]
-    event_count: int
+    posting_count: int = Field(description=(
+        "How many postings `events` lists — the rows the totals beside it add "
+        "up. A delivered fixed-price unit's Charge projects onto one posting, "
+        "and the set can include it."))
     billed_cost_micros: int
     unpriced_event_count: int
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(
@@ -4803,7 +5069,7 @@ class CeilingEpisodeRow(Schema):
     parent_task_id: Optional[UUID] = None
     customer_id: UUID
     task_type: str
-    stop_scope: str
+    stop_scope: StopScope
     task_cogs_ceiling_micros: int
     opened_at: datetime
     #: The pair the ceiling fired on, as the kill announced it; null where the
@@ -4874,7 +5140,9 @@ class SpendControlFamilyTotalsRow(Schema):
     """One family's totals over exactly the itemised events of the episodes
     shown, each event counted once per family, both denominations."""
     control_family: ControlFamily
-    event_count: int
+    posting_count: int = Field(description=(
+        "How many distinct postings this family's episodes itemise, each "
+        "counted once. The set can include a Task Charge's projected posting."))
     billed_cost_micros: int
     unpriced_event_count: int
     provider_cost_micros: int = Field(description=supplier_cost_total_meaning(

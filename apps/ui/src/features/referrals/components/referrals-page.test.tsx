@@ -87,3 +87,8 @@ describe("ProgramSection empty state", () => {
     expect(screen.getByLabelText("Reward percentage")).toBeInTheDocument();
   });
 });
+
+// A programme's status is the registry's `referral_program_status`. `paused`
+// is declared but WITHHELD since the owner's review of #620 — nothing can
+// pause a programme — so the contract never publishes it and no rendering
+// test of it is owed (the case that stood here was removed with it).

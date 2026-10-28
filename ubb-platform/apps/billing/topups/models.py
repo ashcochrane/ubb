@@ -4,9 +4,16 @@ from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 
 
+# An automatic top-up's trigger, held once and read by the writer
+# (`AutoTopUpService.create_pending_attempt`), the stale sweep and the
+# one-pending constraint below. The run-together spelling it carried until
+# R10-W4 is retired: one concept, one spelling (ADR-0006 §2), the same token
+# the grant source, the route and the webhook already use.
+TRIGGER_AUTO_TOP_UP = "auto_top_up"
+
 TOP_UP_ATTEMPT_TRIGGERS = [
     ("manual", "Manual"),
-    ("auto_topup", "Auto Top-Up"),
+    (TRIGGER_AUTO_TOP_UP, "Auto Top-Up"),
     ("widget", "Widget"),
 ]
 
@@ -74,8 +81,8 @@ class TopUpAttempt(BaseModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["customer"],
-                condition=models.Q(status="pending", trigger="auto_topup"),
-                name="uq_one_pending_auto_topup_per_customer",
+                condition=models.Q(status="pending", trigger=TRIGGER_AUTO_TOP_UP),
+                name="uq_one_pending_auto_top_up_per_customer",
             ),
             models.UniqueConstraint(
                 fields=["customer", "idempotency_key"],

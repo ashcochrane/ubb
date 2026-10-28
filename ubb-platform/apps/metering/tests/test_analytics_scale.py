@@ -69,21 +69,21 @@ class BoundaryEquivalenceTest(TestCase):
 
     def test_period_totals_counts_exactly_the_half_open_window(self):
         totals = queries.get_period_totals(self.tenant.id, date(2026, 6, 1), date(2026, 7, 1))
-        self.assertEqual(totals["event_count"], 2)
+        self.assertEqual(totals["recorded_events"], 2)
         self.assertEqual(totals["total_billed_cost_micros"], 2_000_000)
 
     def test_period_totals_edges_land_in_adjacent_windows(self):
         # The May last-microsecond event belongs to May's window only...
         may = queries.get_period_totals(self.tenant.id, date(2026, 5, 1), date(2026, 6, 1))
-        self.assertEqual(may["event_count"], 1)
+        self.assertEqual(may["recorded_events"], 1)
         # ...and the July first-microsecond event to July's window only.
         july = queries.get_period_totals(self.tenant.id, date(2026, 7, 1), date(2026, 8, 1))
-        self.assertEqual(july["event_count"], 1)
+        self.assertEqual(july["recorded_events"], 1)
 
     def test_customer_cost_totals_half_open(self):
         t = queries.get_customer_cost_totals(
             self.tenant.id, self.customer.id, date(2026, 6, 1), date(2026, 7, 1))
-        self.assertEqual(t["event_count"], 2)
+        self.assertEqual(t["posting_count"], 2)
         self.assertEqual(t["billed_cost_micros"], 2_000_000)
         self.assertEqual(t["provider_cost_micros"], 1_200_000)
 
@@ -91,7 +91,7 @@ class BoundaryEquivalenceTest(TestCase):
         rows = queries.get_per_customer_cost_totals(
             self.tenant.id, date(2026, 6, 1), date(2026, 7, 1))
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["event_count"], 2)
+        self.assertEqual(rows[0]["posting_count"], 2)
 
     # --- inclusive-end (date <= end_date) call sites ---
     #

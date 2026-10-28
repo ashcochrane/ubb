@@ -2,6 +2,12 @@ from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.billing.invoicing.models import CustomerUsageInvoice
+from core.vocabulary import (
+    USAGE_INVOICE_STATUS_FAILED,
+    USAGE_INVOICE_STATUS_FAILED_PERMANENT,
+    USAGE_INVOICE_STATUS_PENDING,
+    USAGE_INVOICE_STATUS_SKIPPED,
+)
 
 
 class Command(BaseCommand):
@@ -26,7 +32,7 @@ class Command(BaseCommand):
         except (CustomerUsageInvoice.DoesNotExist, ValidationError, ValueError):
             raise CommandError(f"No CustomerUsageInvoice found with id={options['row_id']}")
 
-        if rec.status not in ("failed", "failed_permanent", "skipped"):
+        if rec.status not in (USAGE_INVOICE_STATUS_FAILED, USAGE_INVOICE_STATUS_FAILED_PERMANENT, USAGE_INVOICE_STATUS_SKIPPED):
             # 'pending'/'pushing' rows are already owned by the hourly reconcile;
             # resetting a 'pushed' row would re-record an already-billed invoice.
             raise CommandError(
@@ -74,8 +80,8 @@ class Command(BaseCommand):
         rec.push_attempts = 0
         rec.first_attempted_at = None
         rec.last_attempt_error = ""
-        rec.status = "pending"
-        rec.skip_reason = ""
+        rec.status = USAGE_INVOICE_STATUS_PENDING
+        rec.skip_reason = None
         update_fields = ["push_attempts", "first_attempted_at", "last_attempt_error",
                          "status", "skip_reason", "updated_at"]
         if options["rebill_void"]:

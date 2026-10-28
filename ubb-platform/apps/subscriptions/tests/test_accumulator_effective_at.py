@@ -86,7 +86,7 @@ def test_reconcile_covers_two_months_back():
         tenant=t, customer=c, period_start=two_back_start)
     assert acc.total_provider_cost_micros == 111
     assert acc.total_billed_cost_micros == 222
-    assert acc.event_count == 1
+    assert acc.posting_count == 1
 
 
 @pytest.mark.django_db
@@ -155,7 +155,7 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
         period_start=cur_start, period_end=cur_end,
         total_provider_cost_micros=500_000,
         total_billed_cost_micros=700_000,
-        event_count=1,
+        posting_count=1,
     )
 
     # Run the reconcile — it should create the correct prior-month accumulator
@@ -168,7 +168,7 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
     )
     assert acc.total_provider_cost_micros == 500_000
     assert acc.total_billed_cost_micros == 700_000
-    assert acc.event_count == 1
+    assert acc.posting_count == 1
 
     # The stale current-month accumulator must have been ZEROED (event is not in
     # that period).  This is the bidirectional fix: existing accumulators whose
@@ -182,6 +182,6 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
     assert cur_acc.total_billed_cost_micros == 0, (
         f"stale accumulator was not zeroed: billed={cur_acc.total_billed_cost_micros}"
     )
-    assert cur_acc.event_count == 0, (
-        f"stale accumulator was not zeroed: event_count={cur_acc.event_count}"
+    assert cur_acc.posting_count == 0, (
+        f"stale accumulator was not zeroed: posting_count={cur_acc.posting_count}"
     )

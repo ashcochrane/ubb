@@ -40,7 +40,7 @@ right one.
 ## Exactly-once by idempotency key
 
 Any operation that can be redelivered (event handlers, top-up charges, ledger writes) is made
-idempotent with a deterministic key, e.g. `usage_deduction:{event_id}`, `auto_topup:{pi_id}`,
+idempotent with a deterministic key, e.g. `usage_deduction:{event_id}`, `auto_top_up:{pi_id}`,
 `expiry:{grant_id}`. A replay must be a no-op, not a double effect. Balance movements are always an
 append-only **ledger entry** keyed this way — never a bare `balance += x`.
 

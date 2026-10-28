@@ -167,12 +167,14 @@ def _priced_by_rules(rules, total_micros, costing_status):
 
     Returns `(amount, method, status)`.
 
-    **THE METHOD COMES FROM THE RULE AND NOT FROM THE ENGINE'S HABIT (#355).** A
-    rule declares which method it would derive by, or declares none; a rule that
-    declares none prices the event's own quantities by its own terms, which is
-    `direct_event_price` — an amount attached to the event regardless of what
-    the call cost. That is what every rate on disk is today, and reading it as
-    anything else would put a value on the record no tenant chose.
+    **THE METHOD COMES FROM THE RULE AND NOT FROM THE ENGINE'S HABIT (#355).**
+    Every selling rule STATES the method it derives by (R10-W4, ruling 4):
+    `direct_event_price` prices the event's own quantities by the rule's own
+    terms — an amount attached to the event regardless of what the call cost.
+    Until R10-W4 a rule could state none and this function read the null as
+    that method; `pricing/0034` wrote the method onto every such row, and a
+    rule with none is now refused here rather than defaulted, because the
+    table cannot hold one.
 
     **A RULE DECLARING A MARGIN IS THE MARKUP RUNG'S METHOD AT A DIFFERENT
     RUNG, AND IT GETS THE SAME TWO ANSWERS.** Where the cost is one UBB never
@@ -191,7 +193,16 @@ def _priced_by_rules(rules, total_micros, costing_status):
     compute makes the whole answer unsettled, because the alternative is a total
     that silently omits a line.
     """
-    declared = {rule.pricing_method for rule in rules} - {None}
+    # EVERY SELLING RULE STATES ITS METHOD (R10-W4, ruling 4), so there is no
+    # null here to read as `direct_event_price`: a rule without one is refused
+    # rather than defaulted. The table makes it unreachable
+    # (`ck_rate_a_selling_rule_states_its_method`); this is the read path
+    # saying so instead of answering a price nobody stated.
+    declared = {rule.pricing_method for rule in rules}
+    if None in declared:
+        raise ValueError(
+            "a selling rule states its pricing method; a rule with none is a "
+            "row the table refuses, not a direct price")
     if PRICING_METHOD_MARGIN_OVER_COST in declared:
         if a_margin_has_no_basis(costing_status):
             return None, None, PRICING_STATUS_WAIVED

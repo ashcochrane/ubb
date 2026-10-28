@@ -49,6 +49,9 @@ from apps.billing.gating.tests.test_a_blocking_pool_stops_prepaid_work_as_it_sto
     ThroughTheSingleRoute)
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.metering.pricing.tests._helpers import a_price_for_whole_work
+from apps.metering.pricing.tests.test_the_pricing_receipt_explains_an_amount import (
+    a_receipt,
+)
 from apps.platform.work import reasons
 from apps.platform.work.models import TaskType
 from core.vocabulary import (
@@ -509,11 +512,14 @@ class TheThreeAreRequiredKeysWhoseValuesMayBeNullTest(SimpleTestCase):
             RecordUsageResponse: {"event_id": "e1", "suspended": False,
                                   "costing_status": "known",
                                   "pricing_status": "known",
-                                  "pricing_status_reason": None},
+                                  "pricing_status_reason": None,
+                                  "pricing_receipt": a_receipt()},
             # A rejected item recorded nothing; it carries the three as null
-            # (and the price status's reason, required and nullable, #603).
+            # (and the price status's reason, required and nullable, #603,
+            # and its receipt, null only here, #558).
             UsageBatchItemResponse: {"accepted": False, "code": "refused",
-                                     "pricing_status_reason": None},
+                                     "pricing_status_reason": None,
+                                     "pricing_receipt": None},
         }
         nothing = dict.fromkeys(HOW_IT_WAS_APPLIED)
         for model, body in bodies.items():

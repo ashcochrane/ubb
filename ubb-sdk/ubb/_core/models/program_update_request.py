@@ -8,6 +8,7 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
+from ..models.program_update_request_reward_type_type_0 import ProgramUpdateRequestRewardTypeType0
 from ..types import UNSET, Unset
 from typing import cast
 
@@ -29,7 +30,7 @@ class ProgramUpdateRequest:
             max_referrals_per_day (int | None | Unset):
             max_reward_micros (int | None | Unset):
             min_customer_age_hours (int | None | Unset):
-            reward_type (None | str | Unset):
+            reward_type (None | ProgramUpdateRequestRewardTypeType0 | Unset):
             reward_value (float | None | Unset):
             reward_window_days (int | None | Unset):
      """
@@ -39,7 +40,7 @@ class ProgramUpdateRequest:
     max_referrals_per_day: int | None | Unset = UNSET
     max_reward_micros: int | None | Unset = UNSET
     min_customer_age_hours: int | None | Unset = UNSET
-    reward_type: None | str | Unset = UNSET
+    reward_type: None | ProgramUpdateRequestRewardTypeType0 | Unset = UNSET
     reward_value: float | None | Unset = UNSET
     reward_window_days: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -82,6 +83,8 @@ class ProgramUpdateRequest:
         reward_type: None | str | Unset
         if isinstance(self.reward_type, Unset):
             reward_type = UNSET
+        elif isinstance(self.reward_type, ProgramUpdateRequestRewardTypeType0):
+            reward_type = self.reward_type.value
         else:
             reward_type = self.reward_type
 
@@ -176,12 +179,22 @@ class ProgramUpdateRequest:
         min_customer_age_hours = _parse_min_customer_age_hours(d.pop("min_customer_age_hours", UNSET))
 
 
-        def _parse_reward_type(data: object) -> None | str | Unset:
+        def _parse_reward_type(data: object) -> None | ProgramUpdateRequestRewardTypeType0 | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
-            return cast(None | str | Unset, data)
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                reward_type_type_0 = ProgramUpdateRequestRewardTypeType0(data)
+
+
+
+                return reward_type_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | ProgramUpdateRequestRewardTypeType0 | Unset, data)
 
         reward_type = _parse_reward_type(d.pop("reward_type", UNSET))
 

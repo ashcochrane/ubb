@@ -18,6 +18,7 @@ value here traces to a frozen decision record rather than to a judgement made
 in this file.
 """
 
+import ast
 import json
 import re
 
@@ -49,9 +50,15 @@ def registry():
 #: `code-builder.yaml` joined in #576: the six value sets an Integration
 #: Blueprint publishes are consumed by the Blueprint and by nothing else, so
 #: they are a domain of their own rather than a tail on the unit of work's.
-DOMAIN_FILES = ("code-builder.yaml", "economics.yaml", "governance.yaml",
-                "payment-rails.yaml", "retired.yaml", "spend-controls.yaml",
-                "tasks.yaml", "webhooks.yaml")
+#:
+#: `billing.yaml`, `referrals.yaml` and `team.yaml` joined in R10-W4 (slice 8),
+#: with the value sets the console's legacy label maps had worded by hand:
+#: the wallet, its grants and the two kinds of invoice; the referral feature's
+#: four; and who may act for a tenant.
+DOMAIN_FILES = ("billing.yaml", "code-builder.yaml", "economics.yaml",
+                "governance.yaml", "payment-rails.yaml", "referrals.yaml",
+                "retired.yaml", "spend-controls.yaml", "tasks.yaml",
+                "team.yaml", "webhooks.yaml")
 
 
 def test_the_registry_is_split_across_the_declared_domains(registry):
@@ -352,12 +359,23 @@ def test_the_audit_action_rename_is_carried_as_retired_data(registry):
     assert {"budget.set", "dimension.declared", "rate_card.created",
             "rate.added", "revenue_mode.set"} <= retired
     for renamed in ("customer_spend_pool.set", "grouping_field.declared",
-                    "pricing_book.created", "cost_rate.added",
-                    "pricing_rule.added", "tenant_supplied_revenue.recorded"):
+                    "tenant_supplied_revenue.recorded"):
         assert renamed in actions.values, renamed
-    # The entry that opens the production ledger. It is registered like any
-    # other action because the ledger refuses a name it does not know.
+    # The cutover's catalogue half (#154 §4.2; R10-W4, ruled 2026-10-27): the
+    # eight registrations nothing ever wrote are gone, and none of them became
+    # a retired alias, because none had a same-concept successor.
+    never_written = {"pricing_book.created", "pricing_book.assigned",
+                     "pricing_book.published", "cost_rate.added",
+                     "cost_rate.deleted", "pricing_rule.added",
+                     "pricing_rule.deleted", "customer_pricing_override.set"}
+    assert not never_written & set(actions.values)
+    assert not never_written & retired
+    # The entry that was to open the production ledger stays declared until W6
+    # retires it (#190 ruling 6354381879), WITHHELD: no row may hold it, so the
+    # contract does not advertise it either.
     assert "system.preproduction_model_cutover" in actions.values
+    assert actions.withheld_values == ("system.preproduction_model_cutover",)
+    assert "system.preproduction_model_cutover" not in actions.occurring_values
     # Deleted outright rather than renamed: the configured input the first pair
     # recorded is now a field of a pricing rule, and the setting the third
     # recorded is gone because posture derives.
@@ -1026,3 +1044,156 @@ def test_the_close_reason_names_the_ticket_that_still_owes_it_a_surface(
             f"the close reason's own commentary does not name {ticket}, the "
             f"ticket that brings it to {surfaces}"
         )
+
+
+# ---------------------------------------------------------------------------
+# The role's rank is the registry's order (R10-W4)
+# ---------------------------------------------------------------------------
+
+#: Where the backend writes its rank — by hand, because the generated Python
+#: set has no order to read one off.
+ROLES_MODULE = (REPO_ROOT / "ubb-platform" / "apps" / "platform" / "membership"
+                / "roles.py")
+
+
+def _backend_role_rank(source, tokens):
+    """`_ROLE_RANK`'s roles in ascending rank, as tokens.
+
+    Each key is a module alias of a generated constant (`READ = ROLE_READ`),
+    and `tokens` maps the constant's name to its token.
+    """
+    tree = ast.parse(source)
+    aliases = {node.targets[0].id: node.value.id for node in tree.body
+               if isinstance(node, ast.Assign) and len(node.targets) == 1
+               and isinstance(node.targets[0], ast.Name)
+               and isinstance(node.value, ast.Name)}
+    (rank,) = [node.value for node in tree.body if isinstance(node, ast.Assign)
+               and any(isinstance(target, ast.Name) and target.id == "_ROLE_RANK"
+                       for target in node.targets)]
+    ascending = sorted(zip(rank.keys, rank.values), key=lambda kv: kv[1].value)
+    return tuple(tokens[aliases[key.id]] for key, _ in ascending)
+
+
+def test_the_role_rank_is_the_registrys_order(registry):
+    """The registry declares the roles lowest authority first, and a floor
+    compares by that order. The console ranks by it (`lib/role.ts`, off the
+    generated ordered list); the backend writes its own rank, and its
+    `assert` compares the SETS only — so this is what holds the two orders
+    equal, and an inverted backend rank fails here rather than in a floor."""
+    declared = registry.concepts["role"].values
+    tokens = {f"ROLE_{value.upper()}": value for value in declared}
+
+    assert _backend_role_rank(ROLES_MODULE.read_text(encoding="utf-8"),
+                              tokens) == declared
+
+
+# ---------------------------------------------------------------------------
+# What withholding means (the owner's review of #620)
+# ---------------------------------------------------------------------------
+
+#: EVERY WITHHELD VALUE IN THE REGISTRY, AND WHY — pinned, so that withholding
+#: stays a precise contract tool rather than a parking lot for planned
+#: vocabulary. A value is withheld only where it is a legitimate state that NO
+#: legal production transition can create today; the registry entry beside it
+#: records the reachability proof, and the first writer un-withholds it in the
+#: same commit. Adding a line here is a reviewed act with its reason.
+WITHHELD = {
+    ("audit_action", "system.preproduction_model_cutover"):
+        "temporary and W6-owned: the opening row is never written (#190 "
+        "6354381879); W6 deletes the registration and this exclusion together",
+    ("tenant_invoice_status", "void"):
+        "no writer: Stripe's invoice.voided never reaches a platform-fee "
+        "invoice, which lives on UBB's own account",
+    ("tenant_invoice_status", "uncollectible"):
+        "no writer: invoice.marked_uncollectible, on the same footing",
+    ("referral_program_status", "paused"):
+        "no writer: no route pauses a programme and the update body carries "
+        "no status",
+}
+
+#: Where a withheld value's generated constant may be named in production
+#: code, and why — the backend consumer that FILTERS it out of what it offers.
+#: Anywhere else, naming it is writing it.
+WITHHELD_NAMED_ONLY_IN = {
+    "ubb-platform/apps/billing/tenant_billing/models.py":
+        "the status choices, filtered through the withheld set",
+    "ubb-platform/apps/referrals/models.py":
+        "the programme status choices, filtered through the withheld set",
+}
+
+PRODUCTION = REPO_ROOT / "ubb-platform"
+
+
+def _registry_withheld(registry):
+    return {(name, value) for name, concept in registry.concepts.items()
+            for value in concept.withheld_values}
+
+
+def test_the_withheld_values_are_exactly_these_and_each_says_why(registry):
+    assert _registry_withheld(registry) == set(WITHHELD), (
+        "the registry withholds a different set from the one pinned here. "
+        "Withholding is for a legitimate value with NO legal production "
+        "writer today — never for a planned value — so a new one is added "
+        "here with its reachability proof, and a value that gained a writer "
+        "leaves both places in the same commit")
+    assert all(reason.strip() for reason in WITHHELD.values())
+
+
+def test_a_withheld_value_is_advertised_nowhere(registry):
+    """Excluded from every enum the contract publishes for its concept, on a
+    concept the contract does publish (so the absence is not vacuous)."""
+    document = json.loads((REPO_ROOT / "openapi" / "v1.json").read_text(
+        encoding="utf-8"))
+    enums = {}
+
+    def walk(node):
+        if isinstance(node, dict):
+            if "x-ubb-concept" in node and "enum" in node:
+                enums.setdefault(node["x-ubb-concept"], []).append(node["enum"])
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+    walk(document)
+
+    for concept, value in sorted(WITHHELD):
+        assert enums.get(concept), f"`{concept}` is published nowhere"
+        for enum in enums[concept]:
+            assert value not in enum, (
+                f"`{concept}` advertises its withheld `{value}`")
+
+
+def test_no_production_writer_names_a_withheld_value(registry):
+    """Ordinary writers cannot emit one, and a value with a live writer cannot
+    be withheld: its generated constant is named only where it is filtered
+    OUT. A writer gaining it is what un-withholds the value."""
+    names = {f"{concept.upper()}_"
+             f"{re.sub(r'[^0-9A-Za-z]+', '_', value).upper()}": (concept, value)
+             for concept, value in WITHHELD}
+    pattern = re.compile(r"\b(" + "|".join(sorted(names)) + r")\b")
+    named = {}
+    for path in sorted(PRODUCTION.rglob("*.py")):
+        relative = path.relative_to(REPO_ROOT).as_posix()
+        if ("/migrations/" in relative or "/tests/" in relative
+                or relative.endswith("core/vocabulary.py")):
+            continue
+        if pattern.search(path.read_text(encoding="utf-8")):
+            named[relative] = sorted(set(pattern.findall(
+                path.read_text(encoding="utf-8"))))
+    assert set(named) <= set(WITHHELD_NAMED_ONLY_IN), (
+        f"a production module names a withheld value outside the filters "
+        f"that withhold it: { {p: n for p, n in named.items() if p not in WITHHELD_NAMED_ONLY_IN} }")
+    assert named, "the scan found not even the filters — it is blind"
+
+
+def test_withholding_is_never_a_compatibility_alias(registry):
+    """A withheld value is a declared value of its own concept, never a
+    retired spelling kept answering for another: no withheld value is any
+    concept's retired alias, and none sits where a retired word would."""
+    retired = {alias for concept in registry.concepts.values()
+               for alias in concept.retired_aliases}
+    withheld = {value for _, value in _registry_withheld(registry)}
+    assert not withheld & retired
+    for concept, value in WITHHELD:
+        assert value in registry.concepts[concept].values

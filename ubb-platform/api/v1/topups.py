@@ -16,6 +16,10 @@ from django.db import IntegrityError, transaction
 from apps.platform.audit.ledger import record as audit_record
 from core.problems import Problem
 from core.responses import json_response
+from core.vocabulary import (
+    AUDIT_ACTION_TOP_UP_REQUESTED,
+    AUDIT_RESOURCE_TYPE_WALLET,
+)
 
 
 def _audit_top_up(customer, owner, tenant, attempt, payload, trigger):
@@ -26,8 +30,8 @@ def _audit_top_up(customer, owner, tenant, attempt, payload, trigger):
     the named subject of the action (who initiated); owner_id records whose
     wallet the eventual credit will land on (Task 7)."""
     audit_record(
-        action="top_up.requested", tenant_id=tenant.id,
-        resource_type="wallet", resource_id=customer.id,
+        action=AUDIT_ACTION_TOP_UP_REQUESTED, tenant_id=tenant.id,
+        resource_type=AUDIT_RESOURCE_TYPE_WALLET, resource_id=customer.id,
         metadata={"customer_id": str(customer.id),
                   "external_id": customer.external_id,
                   "owner_id": str(owner.id),

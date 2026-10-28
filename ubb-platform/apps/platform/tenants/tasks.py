@@ -18,6 +18,10 @@ from django.apps import apps as django_apps
 from django.db import transaction
 
 from apps.platform.tenants.models import Tenant
+from core.vocabulary import (
+    AUDIT_ACTION_SANDBOX_RESET,
+    AUDIT_RESOURCE_TYPE_SANDBOX,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -279,8 +283,8 @@ def reset_sandbox_tenant_sync(tenant_id, keep_config=True,
         actor = (Actor(kind=actor_kind, id=actor_id, display=actor_display)
                  if actor_kind else None)
         audit_record(
-            action="sandbox.reset", tenant_id=tenant.id,
-            resource_type="sandbox", resource_id=tenant.id, actor=actor,
+            action=AUDIT_ACTION_SANDBOX_RESET, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_SANDBOX, resource_id=tenant.id, actor=actor,
             metadata={"keep_config": keep_config,
                       "deleted": {k: v for k, v in deleted.items() if v}})
 

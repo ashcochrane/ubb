@@ -31,6 +31,7 @@ Pin 17 — the clean-cut sweep: no run-era event type in the catalog, neither
          name.
 """
 import json
+import re
 import uuid
 from datetime import timedelta
 from pathlib import Path
@@ -694,7 +695,7 @@ class Pin7TwoHundredAlwaysTest(RailActivated, OneRulePinTestBase):
         # Every report recorded: 3 singles + 2 batch items.
         self.assertEqual(Posting.objects.count(), 5)
         task.refresh_from_db()
-        self.assertEqual(task.event_count, 5)
+        self.assertEqual(task.recorded_events, 5)
 
 
 @patch("apps.platform.events.tasks.process_single_event")
@@ -810,7 +811,7 @@ class Pin16LabelFallbackRemovedTest(RailActivated, OneRulePinTestBase):
         self.assertEqual(event.metadata, {"task": str(task.id)})  # labels only
         task.refresh_from_db()
         self.assertEqual(task.status, TASK_STATUS_ACTIVE)
-        self.assertEqual(task.event_count, 0)
+        self.assertEqual(task.recorded_events, 0)
         self.assertEqual(self._limit_events().count(), 0)
 
 
@@ -835,6 +836,12 @@ _RUN_ERA_TOKENS = (
           if alias.endswith("_exceeded"))
 
 _PLATFORM_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _names(token, text):
+    """Where `text` spells `token` as a whole name, or None."""
+    return re.search(rf"(?<![0-9A-Za-z_]){re.escape(token)}(?![0-9A-Za-z_])",
+                     text)
 
 # The public surfaces the clean cut renames wholesale — every file whose
 # strings can still answer on the wire.
@@ -917,9 +924,24 @@ class Pin17CleanCutSweepTest(RailActivated, OneRulePinTestBase):
         for path in surface_files:
             text = path.read_text(encoding="utf-8")
             for token in _RUN_ERA_TOKENS:
-                self.assertNotIn(
-                    token, text,
+                self.assertIsNone(
+                    _names(token, text),
                     f"run-era token {token!r} survives in {path.name}")
+
+    def test_the_matcher_finds_a_name_and_not_a_longer_one_containing_it(self):
+        """The matcher above reads whole names, and this is its control.
+
+        It used to ask for a SUBSTRING, which held while no surface spelled a
+        longer identifier ending in one of these tokens. R10-W4 typed the
+        Pricing Receipt, whose provenance names the Resolution Run that
+        completed a posting (`resolution_run_id`, ADR-0010) — a live concept,
+        not the run era — and a substring check would have condemned it.
+        Both directions are held, so the narrowing cannot become blindness.
+        """
+        self.assertIsNotNone(_names("run_id", "x = body.run_id"))
+        self.assertIsNotNone(_names("ubb:runcost", 'key = "ubb:runcost:1"'))
+        self.assertIsNone(_names("run_id", "resolution_run_id: str"))
+        self.assertIsNone(_names("run_id", "external_run_ids"))
 
     def test_task_routes_replaced_run_routes(self):
         task = self._task(limit=None)
