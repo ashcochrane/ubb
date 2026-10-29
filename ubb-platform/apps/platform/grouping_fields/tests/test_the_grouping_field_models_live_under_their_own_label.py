@@ -50,10 +50,11 @@ class TheCanonicalNamesAreInstalledTest(TestCase):
     def test_the_value_index_is_the_concise_canonical_one(self):
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT indexdef FROM pg_indexes WHERE tablename = %s "
-                "AND indexname = %s", [TABLES[1], "idx_grouping_value_tenant_key"])
-            (definition,) = cursor.fetchone()
-        self.assertIn("btree (tenant_id, key)", definition)
+                "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = %s "
+                "AND indexname LIKE 'idx%%'", [TABLES[1]])
+            named = dict(cursor.fetchall())
+        self.assertEqual(set(named), {"idx_grouping_value_tenant_key"})
+        self.assertIn("btree (tenant_id, key)", named["idx_grouping_value_tenant_key"])
 
     def test_the_uniqueness_rules_carry_the_grouping_field_name(self):
         with connection.cursor() as cursor:
