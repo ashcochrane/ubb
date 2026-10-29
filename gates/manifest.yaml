@@ -1178,8 +1178,8 @@ gates:
       zero: a G9 table-name entry in the ledger, a G17 entry excusing a route
       the contract does not publish, and a breaking edit to `openapi/v1.json`
       with no suppression to hide it. Permanent exceptions are not debts and
-      are outside it, as are G18's unwrapped operations: they seed a manifest
-      that #155 §8.2 says "need not reach zero", only stay visible and grow by
+      are outside it, as are G18's unwrapped operations: #155 §8.2 has them seed
+      a manifest that "need not reach zero", only stay visible and grow by
       review.
     enforced_by:
       - suite: contracts

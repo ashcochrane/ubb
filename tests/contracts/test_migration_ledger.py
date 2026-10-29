@@ -186,17 +186,16 @@ def test_no_shipped_entry_expects_the_term_it_already_carries(programme):
         "would change when they are 'paid': " + ", ".join(inert))
 
 
-def _listed(path, key):
-    """The records a gates document lists under ``key``, read RAW.
+def _read_raw(path):
+    """A gates document as YAML, without :func:`load_programme`.
 
-    Not through :func:`load_programme`: once every slice has landed, rule 3
-    refuses any entry at all, so the loader would raise on the very debt this
-    module's zero exists to name — and a fault reported by another rule is not
-    this assertion failing for its own reason.
+    Once every slice has landed, rule 3 refuses any entry at all, so the loader
+    would raise on the very debt this module's zero exists to name — and a fault
+    reported by another rule is not this assertion failing for its own reason.
     """
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert document.get("version") == 1, f"{path.name} was not read"
-    return document.get(key) or [], document
+    return document
 
 
 def test_the_shipped_ledger_is_at_zero():
@@ -215,17 +214,16 @@ def test_the_shipped_ledger_is_at_zero():
     which nothing pays down — must have been read beside the empty entries, and
     the permanent exceptions, read by the same function, must not be empty.
     """
-    entries, ledger_document = _listed(GATES_DIR / "migration-ledger.yaml",
-                                       "entries")
+    ledger_document = _read_raw(REPO_ROOT / LEDGER_PATH)
     assert ledger_document.get("seeding_authorisations"), (
         "no seeding authorisation was read either, so an empty ledger here is "
         "a statement about this reader rather than about the ledger")
-    exceptions, _ = _listed(GATES_DIR / "permanent-exceptions.yaml",
-                            "exceptions")
+    exceptions = _read_raw(
+        GATES_DIR / "permanent-exceptions.yaml").get("exceptions")
     assert exceptions, "the permanent exceptions read as empty — suspect the read"
 
     owed = [f"{body.get('id')} ({body.get('gate')}) at {body.get('site')}"
-            for body in entries]
+            for body in ledger_document.get("entries") or []]
     assert owed == [], (
         f"the migration ledger is not at zero: {owed}. It reached zero at the "
         f"cutover (#190) and every slice has landed, so nothing can owe this "

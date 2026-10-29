@@ -35,7 +35,7 @@ environment that is not exactly the lock, and two builds that differ.
 | `ubb.__spec_version__` | `v1` |
 | Generator | `openapi-python-client==0.29.0` |
 | Tag | `sdk-v4.0.0` |
-| Wheel and its SHA-256 | `ubb_sdk-4.0.0-py3-none-any.whl`, `fdf9ae7688a9e5c632f83fb64347abc65de3e2f1db943b69f08edcb12ddf4d89` — built from `sdk-v4.0.0` at `c2eb35ff3431faf2985379b05b50031a59aa639c`, twice, one SHA-256, on Python 3.13.14 with the lock at SHA-256 `7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0`; recorded by the cutover's second pull request (#190) |
+| Wheel and its SHA-256 | `ubb_sdk-4.0.0-py3-none-any.whl`, `fdf9ae7688a9e5c632f83fb64347abc65de3e2f1db943b69f08edcb12ddf4d89` — built from `sdk-v4.0.0` at `c2eb35ff3431faf2985379b05b50031a59aa639c`, twice, one SHA-256, on Python 3.13.14 with the lock at SHA-256 `7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0`, by the tag's recipe at SHA-256 `f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7` with `SOURCE_DATE_EPOCH` 1793263109; recorded by the cutover's second pull request (#190) |
 
 ### Changed
 

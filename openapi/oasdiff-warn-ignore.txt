@@ -11,8 +11,8 @@
 # because each difference it covered is inside the new baseline and would now
 # match nothing. They stand in this file at the `api-v1-cutover` tag and in git
 # history. This file starts again at zero and grows only as reviewed breaks
-# against the new baseline land — the opposite of the implementation-rule
-# migration ledger, which shrank to zero and stays there, not another one of it.
+# against the new baseline land — the opposite mechanism from the
+# implementation-rule migration ledger, which shrank to zero and stays there.
 #
 # WARN-level findings ONLY. `--warn-ignore` filters by level before matching
 # text, so an ERR-level line here suppresses nothing at all — and this file was

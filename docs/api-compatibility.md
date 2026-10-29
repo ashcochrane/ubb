@@ -15,9 +15,9 @@
 > thing that binds; a consumer depending on the contract is.** Delete this note the day
 > the first tenant goes live, and §4 governs from then on with no further judgement calls.
 
-> **The active baseline is `api-v1-cutover`** — the `openapi/v1.json` revision tagged on
-> the cutover's merge commit on 2026-10-29 (#190), which CI's breaking gate now measures
-> every change against, while `api-v1-launch` stays where it was and is no longer compared.
+> **The active baseline is `api-v1-cutover`** — the `openapi/v1.json` revision tagged at the
+> cutover on 2026-10-29 (#190): every change to the contract since is measured against it,
+> and the earlier `api-v1-launch` tag stays exactly where it was.
 
 You are putting UBB between your agents and your Stripe account. You need to know the
 ground won't move under an integration you can't redeploy on our schedule. Here is the

@@ -79,13 +79,13 @@ construction rather than by a second check somebody has to remember to write.
 installed as a test that passes on nothing.** All three rows #191 decision 6
 named for it have left by installation, each when its subject arrived. Slice 3
 gave G19 the first columns declared into a class the database defends, with a
-trigger holding them (#318), and #319 flipped that row to `installed`. G14 left in two stages: #417 landed
-the `kind` column, found only two of the row's four pins had a subject, and
-re-owned it from slice 5 to slice 7 rather than install half a gate; slice 7
-built the one economic query the other two pin (#499, #501), and #511 wrote
-them and flipped the row to `installed`. G20 left last, when the cutover squash
-(slice 8, #190) gave ADR-0007 §1's data-carrying migration rule the fresh
-initial set it binds from. No row is owed now.
+trigger holding them (#318), and #319 flipped that row to `installed`. G14 left
+in two stages: #417 landed the `kind` column, found only two of the row's four
+pins had a subject, and re-owned it from slice 5 to slice 7 rather than install
+half a gate; slice 7 built the one economic query the other two pin (#499,
+#501), and #511 wrote them and flipped the row to `installed`. G20 left last,
+when the cutover squash (slice 8, #190) gave ADR-0007 §1's data-carrying
+migration rule the fresh initial set it binds from. No row is owed now.
 
 ### Flipping a row
 

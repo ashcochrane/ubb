@@ -447,10 +447,13 @@ class TestTheCutoverBaseline:
             "a new tag (migration/cutover §7.5)")
 
     def test_zero_entries_is_a_passing_state_when_nothing_broke(self):
+        """Zero entries is LEGAL — the state the reset left — where this module
+        used to refuse it. That is all this pins: the comparison against the new
+        tag needs the pinned binary, and it is CI's breaking step (0 breaks
+        against `api-v1-cutover` on the day of the reset)."""
         report = contract_gate.review([], err_entries=[], warn_entries=[],
                                       report_inert=True)
-        assert report.ok
-        assert report.unreviewed == [] and report.inert == []
+        assert report == contract_gate.Report(unreviewed=[], inert=[])
 
     def test_a_planted_break_has_no_suppression_to_hide_behind(self):
         """A break the cutover's baseline does not contain — an ERR and a WARN,

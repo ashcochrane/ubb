@@ -109,14 +109,18 @@ def test_no_gate_is_owed_once_the_cutover_has_landed(programme):
     status naming no slice, an owed row with no `blocked_on`, and a landed
     slice still owing a row are each refused.
     """
+    # Vacuity guard first: an empty walk would pass the claim below as well.
+    installed = programme.installed_gates()
+    assert installed, "no gate is installed — suspect the parse"
+
     owed = sorted(name for name, row in programme.rows.items()
                   if row.owner_slice is not None)
     assert owed == [], (
         f"{owed} owed again. Every gate was installed by the cutover (#190); a "
         f"row owed now needs a slice that has not landed, which is a reviewed "
         f"change to the programme rather than a status")
-    # Vacuity guard: an empty walk would pass the assertion above as well.
-    assert len(programme.installed_gates()) == len(programme.gates) == 27
+    assert set(installed) == set(programme.gates), (
+        f"not installed and not owed: {sorted(set(programme.gates) - set(installed))}")
 
 
 def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):

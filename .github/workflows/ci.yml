@@ -383,7 +383,7 @@ jobs:
       # tagged the re-modelled contract must be recorded as reviewed, and every
       # committed entry must still suppress something (openapi/README.md). The
       # suppression files were reset to zero with the repoint (#190), so on
-      # that day this step asserts no difference at all — which is G22's.
+      # that day this step asserted no difference at all — G22's third zero.
       - name: Breaking gate — cumulative vs the api-v1-cutover baseline
         run: python openapi/contract_gate.py
 

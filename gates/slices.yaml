@@ -338,13 +338,15 @@
 # name. 39 -> 0 is spec part 3 §5's forecast to the entry; nothing was born, no
 # owner moved, and every payment was this slice's own.
 #
-# Setting the flag turned ONE control red: `test_gate_manifest.py`'s walk over
-# the owed rows, whose vacuity guard asserted that some gate was still owed —
-# true from slice 0 until this commit. It now asserts that none is, and is red on
-# a planted slice that has not landed owing G22 again; the module as it stood at
-# main fails under the flag on its own guard, "no gate is owed". Nothing else
-# went red, because the cutover's first pull request had already moved the
-# synthetic gate rows off `slice_8` onto a synthetic slice no flip can land.
+# The flip — G22 installed and the flag set — turned ONE control red, and it was
+# the installation that did it: `test_gate_manifest.py`'s walk over the owed
+# rows, whose vacuity guard asserted that some gate was still owed, true from
+# slice 0 until G22, the last owed row, was installed. It now asserts that none
+# is, and is red on a planted slice that has not landed owing G22 again; the
+# module as it stood at main fails on this tree on its own guard, "no gate is
+# owed". Setting the flag turned nothing red, because the cutover's first pull
+# request had already moved the synthetic gate rows off `slice_8` onto a
+# synthetic slice no flip can land.
 #
 # All twenty-three controls were mutation-checked again with #587's harness,
 # unchanged but for its root: ALL TWENTY-THREE failed without their cause, and
