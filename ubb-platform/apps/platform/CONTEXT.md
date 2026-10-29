@@ -371,7 +371,7 @@ one now, and since #541 so do the published components (`GroupingFieldIn`/`Out`,
 `GroupingFieldError`) and the audit `resource_type` (`grouping_field_registry`), held by a
 case-insensitive contract gate. The last stored spellings of the old noun went with the cutover's
 migration squash (#190): the three constraints are `uq_grouping_field_key`, `uq_grouping_field_slot`
-and `uq_grouping_field_value`, the index is `idx_grouping_field_value_tenant_key`, and `TaskType`'s
+and `uq_grouping_field_value`, the index is `idx_grouping_value_tenant_key`, and `TaskType`'s
 required-fields column is `required_grouping_fields`.
 
 **Grouping field value**:

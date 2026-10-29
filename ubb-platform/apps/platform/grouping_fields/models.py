@@ -1,6 +1,6 @@
 from django.db import models
 
-from core.models import BaseModel, PostgresNamedIndex
+from core.models import BaseModel
 from core.vocabulary import (
     GROUPING_FIELD_SCOPE_EVENT,
     GROUPING_FIELD_SCOPE_VALUES,
@@ -156,7 +156,7 @@ class GroupingFieldValue(BaseModel):
                                     name="uq_grouping_field_value"),
         ]
         indexes = [
-            PostgresNamedIndex(fields=["tenant", "key"], name="idx_grouping_field_value_tenant_key"),
+            models.Index(fields=["tenant", "key"], name="idx_grouping_value_tenant_key"),
         ]
 
     def __str__(self):

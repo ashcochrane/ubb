@@ -85,12 +85,13 @@ moved between models or apps, state-only operations and raw-SQL drops are outsid
 The fresh set creates every living identifier under its canonical name, with no rename owed:
 `ubb_customer_subscription_item` (the migration ledger's last entry, G9 — the ledger is at zero);
 `uq_grouping_field_key`, `uq_grouping_field_slot`, `uq_grouping_field_value`,
-`idx_grouping_field_value_tenant_key` and `TaskType.required_grouping_fields` (W4's handed names);
+`idx_grouping_value_tenant_key` and `TaskType.required_grouping_fields` (W4's handed names);
 `uq_posting_idempotency` and the five `idx_posting_*` indexes on the posting; and
-`uq_top_up_attempt_idempotency`. `idx_grouping_field_value_tenant_key` is 35 characters, past the 30
-Django allows a `models.Index` for cross-database (Oracle) reasons; UBB runs on PostgreSQL alone, whose
-identifiers hold 63 bytes, so it is declared through `core.models.PostgresNamedIndex`, a plain btree
-index with PostgreSQL's limit, rather than abbreviated.
+`uq_top_up_attempt_idempotency`. The grouping-field value index is internal — no production code and
+no public surface names it — so its canonical name is the concise one that fits Django's own
+`models.Index` (30 characters at most): it carries no retired word and says what it indexes, a
+grouping value by tenant and key (the owner's ruling on the first pull request, 2026-10-29, in place of
+a 35-character spelling that needed a one-use index class).
 
 ### 5. The Pricing Receipt is read in one shape
 
