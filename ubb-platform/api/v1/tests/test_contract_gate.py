@@ -1,7 +1,8 @@
 """The cumulative contract-break gate (#195, migration/cutover decision §7.3).
 
 The gate stopped asking "did this pull request break the contract?" and started
-asking "has every break since ``api-v1-launch`` been reviewed?". The comparison
+asking "has every break since ``api-v1-cutover`` been reviewed?" — the baseline
+since the cutover (#190); it was ``api-v1-launch`` before. The comparison
 itself is oasdiff's job and runs in CI; what is pinned here is the part that has
 actually gone wrong twice — deciding **which committed suppression entries are
 real**.
@@ -330,64 +331,159 @@ class TestWebhookOperationFindings:
             contract_gate._cross_check(ours=[], theirs=[finding()])
 
 
+SUPPRESSION_FILES = [contract_gate.ERR_IGNORE_NAME,
+                     contract_gate.WARN_IGNORE_NAME]
+
+
+def committed_entries(name):
+    return contract_gate.parse_entries(
+        (GIT_ROOT / "openapi" / name).read_text(encoding="utf-8"))
+
+
+def malformed(entry):
+    """Why ``entry`` is not a generated finding, or ``None`` when it is one.
+
+    Three legal shapes, and nothing else. An OPERATION-level entry opens with
+    an HTTP method and an `/api/v1/` path — or, since #456, with the method
+    and a `webhook:<event>` path, which is how oasdiff locates an
+    operation-level finding inside the `webhooks` section (an enum on a payload
+    field, say); the event name must be followed by finding text, so a bare
+    `POST webhook:x` cannot stand in for one. A COMPONENT-level one opens with
+    its section instead, because the finding carries no operation and no path
+    — a webhook REMOVAL is about a published event, not a route (#222).
+    Widening to admit the second and third shapes is not loosening the rule:
+    prose still opens with none of them, which is the whole thing refused.
+    """
+    head, _, rest = entry.partition(" ")
+    if head not in HTTP_METHODS and head not in SECTIONS:
+        return ("not a generated finding — human metadata belongs on a `#` "
+                "comment line")
+    webhook = contract_gate.WEBHOOK_PATH_PREFIX
+    if head in HTTP_METHODS and rest.startswith(webhook):
+        event, _, text = rest.partition(" ")
+        if len(event) <= len(webhook) or not text:
+            return ("names a webhook and no finding — it would suppress every "
+                    "finding on that event")
+    elif head in HTTP_METHODS:
+        if not rest.startswith("/api/v1/"):
+            return "names an operation on no `/api/v1/` path"
+    elif not rest:
+        return ("a bare section with no finding text — it would suppress every "
+                "component finding")
+    return None
+
+
 class TestCommittedSuppressionFiles:
     """The committed files, checked without oasdiff — CI runs the real
-    comparison, but a hand-typed finding is catchable right here."""
+    comparison, but a hand-typed finding is catchable right here.
 
-    @pytest.mark.parametrize("name", [contract_gate.ERR_IGNORE_NAME,
-                                      contract_gate.WARN_IGNORE_NAME])
-    def test_every_entry_is_a_finding_not_prose(self, name):
-        """Three legal shapes, and nothing else.
+    ⚠ **THE CUTOVER RESET BOTH FILES TO ZERO ENTRIES (#190), AND ZERO IS
+    LEGAL.** This class used to assert that each file HAD entries — "did the
+    baseline move?" — because against `api-v1-launch` an empty file could only
+    mean a lost one. The baseline did move, to `api-v1-cutover`, and every
+    difference those entries covered is inside it now. So what is asserted is
+    the reset's truth: the files exist, any entry present is well-formed, and
+    the well-formedness rule is shown to refuse each malformed shape on a
+    planted line — because with nothing committed to read, the committed-file
+    check alone would be a rule with no subject.
+    """
 
-        An OPERATION-level entry opens with an HTTP method and an `/api/v1/`
-        path — or, since #456, with the method and a `webhook:<event>` path,
-        which is how oasdiff locates an operation-level finding inside the
-        `webhooks` section (an enum on a payload field, say); the event name
-        must be followed by finding text, so a bare `POST webhook:x` cannot
-        stand in for one. A COMPONENT-level one opens with its section instead,
-        because the finding carries no operation and no path — a webhook
-        REMOVAL is about a published event, not a route (#222). Widening to
-        admit the second and third shapes is not loosening the rule: prose
-        still opens with none of them, which is the whole thing this test
-        refuses.
-        """
-        entries = contract_gate.parse_entries(
-            (GIT_ROOT / "openapi" / name).read_text(encoding="utf-8"))
-        assert entries, f"{name} has no entries — did the baseline move?"
-        webhook = contract_gate.WEBHOOK_PATH_PREFIX
-        for lineno, entry in entries:
-            head, _, rest = entry.partition(" ")
-            assert head in HTTP_METHODS or head in SECTIONS, (
-                f"{name}:{lineno} is not a generated finding — human metadata "
-                f"belongs on a `#` comment line: {entry!r}")
-            if head in HTTP_METHODS and rest.startswith(webhook):
-                event, _, text = rest.partition(" ")
-                assert len(event) > len(webhook) and text, (
-                    f"{name}:{lineno} names a webhook and no finding — it would "
-                    f"suppress every finding on that event: {entry!r}")
-            elif head in HTTP_METHODS:
-                assert rest.startswith("/api/v1/"), f"{name}:{lineno}: {entry!r}"
-            else:
-                assert rest, (
-                    f"{name}:{lineno} is a bare section with no finding text — "
-                    f"it would suppress every component finding: {entry!r}")
+    @pytest.mark.parametrize("name", SUPPRESSION_FILES)
+    def test_the_file_exists(self, name):
+        """The gate reads both files unconditionally; a missing one is a crash
+        in CI rather than an empty review."""
+        assert (GIT_ROOT / "openapi" / name).is_file(), name
 
-    @pytest.mark.parametrize("name", [contract_gate.ERR_IGNORE_NAME,
-                                      contract_gate.WARN_IGNORE_NAME])
+    @pytest.mark.parametrize("name", SUPPRESSION_FILES)
+    def test_every_entry_present_is_a_finding_not_prose(self, name):
+        faults = [f"{name}:{lineno} {reason}: {entry!r}"
+                  for lineno, entry in committed_entries(name)
+                  for reason in [malformed(entry)] if reason]
+        assert not faults, "\n".join(faults)
+
+    @pytest.mark.parametrize("entry", [
+        "this line is prose somebody typed",
+        "POST webhook:customer.stop_cleared",
+        "components",
+        "GET /margin/ api path removed without deprecation",
+    ], ids=["prose", "a-bare-webhook", "a-bare-section", "a-path-off-the-api"])
+    def test_a_planted_malformed_entry_is_refused(self, entry):
+        assert malformed(entry), f"{entry!r} passed as a generated finding"
+
+    @pytest.mark.parametrize("entry", [
+        "GET /api/v1/margin/ api path removed without deprecation",
+        "POST webhook:billing.balance_low request property `x` was restricted "
+        "to a list of enum values",
+        "components webhook `billing.balance_low` removed",
+    ], ids=["an-operation", "a-webhook-operation", "a-component"])
+    def test_each_legal_shape_is_accepted(self, entry):
+        """The other half of the planted control: the checker is not refusing
+        everything, which would pass the test above for nothing."""
+        assert malformed(entry) is None, malformed(entry)
+
+    @pytest.mark.parametrize("name", SUPPRESSION_FILES)
     def test_no_duplicate_entries(self, name):
-        entries = [e for _, e in contract_gate.parse_entries(
-            (GIT_ROOT / "openapi" / name).read_text(encoding="utf-8"))]
+        entries = [e for _, e in committed_entries(name)]
         assert len(entries) == len(set(entries))
+
+
+class TestTheCutoverBaseline:
+    """The gate measures from `api-v1-cutover`, and a break has nowhere to hide
+    (#190, #155 §7.5; G22's third zero).
+
+    The cutover tagged slice 8's merge commit `api-v1-cutover`, pointed the gate
+    at it and reset both suppression files. That makes "no unexplained oasdiff
+    difference against the new baseline" checkable here in two halves: the
+    baseline the gate defaults to is the new tag, and a break the committed
+    files do not record is reported, not absorbed. The comparison itself needs
+    the pinned oasdiff binary and runs in CI's breaking step, which is G22's
+    other site.
+    """
+
+    def test_the_gate_compares_against_the_cutover_tag(self):
+        assert contract_gate.BASELINE_REF == "api-v1-cutover", (
+            "the breaking gate no longer measures from the cutover's baseline; "
+            "`api-v1-launch` is never the baseline again, and a new baseline is "
+            "a new tag (migration/cutover §7.5)")
+
+    def test_zero_entries_is_a_passing_state_when_nothing_broke(self):
+        """Zero entries is LEGAL — the state the reset left — where this module
+        used to refuse it. That is all this pins: the comparison against the new
+        tag needs the pinned binary, and it is CI's breaking step (0 breaks
+        against `api-v1-cutover` on the day of the reset)."""
+        report = contract_gate.review([], err_entries=[], warn_entries=[],
+                                      report_inert=True)
+        assert report == contract_gate.Report(unreviewed=[], inert=[])
+
+    def test_a_planted_break_has_no_suppression_to_hide_behind(self):
+        """A break the cutover's baseline does not contain — an ERR and a WARN,
+        on a path no reviewed entry could name — is reported against the
+        COMMITTED files, so neither file covers more than it records."""
+        planted = [finding(path="/api/v1/planted-by-the-cutover-test"),
+                   finding(path="/api/v1/planted-by-the-cutover-test",
+                           text="request property `x` became required",
+                           level=WARN)]
+        report = contract_gate.review(
+            planted,
+            committed_entries(contract_gate.ERR_IGNORE_NAME),
+            committed_entries(contract_gate.WARN_IGNORE_NAME))
+        assert not report.ok
+        assert report.unreviewed == planted
 
 
 class TestCiWiring:
     """#195's ruling, pinned: one baseline, one pinned version, one runner.
 
-    The gate compares against the immutable ``api-v1-launch`` tag, not the base
-    branch — comparing against the base branch proves only that each step was
-    reviewed in isolation, which is how #129's seven path removals reached main
+    The gate compares against the immutable ``api-v1-cutover`` tag
+    (``api-v1-launch`` until the cutover, #190), not the base branch —
+    comparing against the base branch proves only that each step was reviewed
+    in isolation, which is how #129's seven path removals reached main
     unreviewed after its `contract` job went red.
     """
+
+    #: The step G15 and G22 name in `gates/manifest.yaml`, which the manifest's
+    #: own check resolves against this workflow.
+    BREAKING_STEP = "Breaking gate — cumulative vs the api-v1-cutover baseline"
 
     def setup_method(self):
         """The `contract:` job only.
@@ -407,6 +503,18 @@ class TestCiWiring:
 
     def test_the_breaking_gate_runs_through_the_committed_script(self):
         assert "python openapi/contract_gate.py" in self.job
+
+    def test_the_breaking_step_compares_against_the_committed_baseline(self):
+        """CI names no baseline of its own, so the one it compares against is
+        `BASELINE_REF` — which :class:`TestTheCutoverBaseline` pins to the
+        cutover's tag. An override here would move the comparison without
+        moving either pin."""
+        lines = self.job.splitlines()
+        named = [i for i, line in enumerate(lines)
+                 if line.strip() == f"- name: {self.BREAKING_STEP}"]
+        assert len(named) == 1, f"no single step is named {self.BREAKING_STEP!r}"
+        assert lines[named[0] + 1].strip() == "run: python openapi/contract_gate.py"
+        assert "--baseline" not in self.job
 
     def test_the_contract_job_does_not_pin_its_own_oasdiff_version(self):
         """The pin lives in contract_gate.py; CI reads it from there, so the

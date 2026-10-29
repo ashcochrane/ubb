@@ -400,7 +400,7 @@ its canonical text.
    `python openapi/contract_gate.py --baseline origin/main --emit` from the git root,
    paste the lines into the file each belongs in, and write the `#` comment
    block that says why. CI then re-checks the **cumulative** set against the
-   `api-v1-launch` baseline — see [`openapi/README.md`](../../openapi/README.md).
+   `api-v1-cutover` baseline — see [`openapi/README.md`](../../openapi/README.md).
 
 ## Conformance sweep (wanted, not gating — #87)
 

@@ -309,6 +309,73 @@
 # are named here. Filing any of them would be an inert line, and an inert entry
 # turns the cumulative gate red. That gate was run locally with the pinned
 # binary and is green at 116 breaks, 116 reviewed.
+#
+# The cutover's flip (#190) is the eighth a slice makes in its own last pull
+# request, and the last there is to make: with it, every slice in this file has
+# landed. Like the Code Builder's, it installs the row its slice still owed. The
+# cutover came in two pull requests because the new API baseline had to name a
+# commit already on `main`: the first (#622) installed G20 and G21 and was tagged
+# `api-v1-cutover` and `sdk-v4.0.0` on its merge commit `c2eb35ff`, and the
+# second installs G22. Shown on the real programme: setting the flag with G22
+# still owed gives exactly one `landed_slice_owns_gate`, and undoing the flag
+# alone leaves the board green, because nothing else was owed.
+#
+# G22 was installed over three zeros, each shown red on a planted violation
+# before it was claimed: a G9 table-name entry in the ledger; a G17 entry
+# excusing a route the contract does not publish; and a breaking edit to
+# `openapi/v1.json` — three paths removed — with no suppression to hide it. The
+# first two are separate: the G9 plant leaves the SDK's zero green, and the G17
+# plant reddens both, because the ledger's zero covers every family. The loader
+# refuses the same G9 plant on its own rule 3 — every slice has landed, so no
+# entry has an owner — which is why the zero is read raw: a refusal by another
+# rule is not this assertion failing for its own reason.
+#
+# The census was walked by IDENTITY over `git rev-list --first-parent` from the
+# Code Builder's flip (`d36e65d0`) to the cutover's first merge (`c2eb35ff`):
+# six commits, of which three moved the ledger. R10-W3 paid 13 (G2 4, G4 2,
+# G6 2, G7 5), R10-W4 paid 25 (G2 1, G4 1, G6 23), and the squash paid the last,
+# G9's abbreviated subscription-item table, by creating it under its canonical
+# name. 39 -> 0 is spec part 3 §5's forecast to the entry; nothing was born, no
+# owner moved, and every payment was this slice's own.
+#
+# The flip — G22 installed and the flag set — turned ONE control red, and it was
+# the installation that did it: `test_gate_manifest.py`'s walk over the owed
+# rows, whose vacuity guard asserted that some gate was still owed, true from
+# slice 0 until G22, the last owed row, was installed. It now asserts that none
+# is, and is red on a planted slice that has not landed owing G22 again; the
+# module as it stood at main fails on this tree on its own guard, "no gate is
+# owed". Setting the flag turned nothing red, because the cutover's first pull
+# request had already moved the synthetic gate rows off `slice_8` onto a
+# synthetic slice no flip can land.
+#
+# All twenty-three controls were mutation-checked again with #587's harness,
+# unchanged but for its root: ALL TWENTY-THREE failed without their cause, and
+# every failure was read — twelve `DID NOT RAISE GatesInvalid`, ten an empty
+# fault set against the code they assert (`{'ledger_grew'}` SIX times, and one
+# each of `{'authorisation_count_wrong'}`, `{'authorisation_inert'}`,
+# `{'debt_deferred'}` and `{'base_unreadable'}`), and one `assert not True` on a
+# comparison holding nothing. Each real-git control failed on an EMPTY set,
+# `{'ledger_grew'}` three times and `{'base_unreadable'}` once. The twin mutates
+# `UNLANDED_SLICE`, synthetic since the first pull request, so it is untouched
+# by construction. The rewritten suppression pin (`ubb-platform/api/v1/tests/
+# test_contract_gate.py`) was shown red seven ways: a prose line, a duplicate
+# entry, an entry covering the planted break, the default baseline back at the
+# launch tag, a `--baseline` override in CI, the shape checker disabled, and the
+# module as it stood at main over the reset files ("has no entries — did the
+# baseline move?"). Reverting the CI step's name leaves G15 and G22 each naming a
+# step the contract job no longer has.
+#
+# THE BASELINE MOVED, AND BOTH SUPPRESSION FILES WERE RESET TO THEIR HEADERS.
+# Against `api-v1-cutover` the cumulative gate reports 0 breaks, and the
+# authoring direction against `origin/main` reports 0, because `openapi/v1.json`
+# is byte-identical to the tag's. Against `api-v1-launch` the same tree now
+# reports 136 breaks (94 error, 42 warning) and none reviewed — exactly the 94 and
+# 42 entries the reset removed, which stand in both files at the tag. That is
+# why the repoint and the reset are one commit: either alone turns the gate red.
+#
+# From here, rule 3 refuses any ledger entry and `landed_slice_owns_gate` any
+# owed row, because no slice is left to own either. A new slice in this file is
+# the only way to owe again, and it is a reviewed change to the programme.
 
 version: 1
 
@@ -374,4 +441,4 @@ slices:
     issue: 190
     title: Cutover
     order: 9
-    landed: false
+    landed: true

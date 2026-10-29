@@ -186,6 +186,51 @@ def test_no_shipped_entry_expects_the_term_it_already_carries(programme):
         "would change when they are 'paid': " + ", ".join(inert))
 
 
+def _read_raw(path):
+    """A gates document as YAML, without :func:`load_programme`.
+
+    Once every slice has landed, rule 3 refuses any entry at all, so the loader
+    would raise on the very debt this module's zero exists to name — and a fault
+    reported by another rule is not this assertion failing for its own reason.
+    """
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert document.get("version") == 1, f"{path.name} was not read"
+    return document
+
+
+def test_the_shipped_ledger_is_at_zero():
+    """G22's first zero — every seeded allowlist at zero, the migration ledger
+    among them (#155 §11.3, #190 spec part 3 §5).
+
+    The ledger was seeded with the violations each gate found on the day it was
+    installed and could only shrink; the cutover paid its last entry (G9's
+    abbreviated subscription-item table), and slice 8 landing means no slice is
+    left to owe a new one. So the assertion is the zero itself, over every
+    family at once — the G17 family is the SDK's invalid-call list and is
+    asserted again, by itself, in `test_sdk_operations.py`.
+
+    Two vacuity guards, because an empty list is also what a reader that read
+    nothing returns: the ledger's own seeding authorisations — its audit trail,
+    which nothing pays down — must have been read beside the empty entries, and
+    the permanent exceptions, read by the same function, must not be empty.
+    """
+    ledger_document = _read_raw(REPO_ROOT / LEDGER_PATH)
+    assert ledger_document.get("seeding_authorisations"), (
+        "no seeding authorisation was read either, so an empty ledger here is "
+        "a statement about this reader rather than about the ledger")
+    exceptions = _read_raw(
+        GATES_DIR / "permanent-exceptions.yaml").get("exceptions")
+    assert exceptions, "the permanent exceptions read as empty — suspect the read"
+
+    owed = [f"{body.get('id')} ({body.get('gate')}) at {body.get('site')}"
+            for body in ledger_document.get("entries") or []]
+    assert owed == [], (
+        f"the migration ledger is not at zero: {owed}. It reached zero at the "
+        f"cutover (#190) and every slice has landed, so nothing can owe this "
+        f"debt — a violation of an installed gate is fixed in the change that "
+        f"makes it, or it is a reasoned permanent exception, never an entry.")
+
+
 def test_ci_runs_the_ratchet_and_can_fail_on_it():
     """The gate over the gate. Everything else about the ledger is checked in
     this suite, offline; the shrink-only comparison needs git history and so

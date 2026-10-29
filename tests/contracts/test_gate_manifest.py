@@ -96,16 +96,31 @@ def test_every_installed_row_names_where_it_runs(programme):
         assert row.sites, f"{name} claims to be installed and names nowhere"
 
 
-def test_every_owed_row_names_a_real_slice_and_what_must_exist_first(programme):
-    owed = {name: row for name, row in programme.rows.items()
-            if row.owner_slice is not None}
-    assert owed, "no gate is owed — suspect the parse"
-    for name, row in owed.items():
-        assert row.owner_slice in programme.slices, name
-        assert not programme.slices[row.owner_slice].landed, name
-        assert row.body["blocked_on"].strip(), (
-            f"{name} is owed by {row.owner_slice} without saying what must "
-            f"exist before it can be installed")
+def test_no_gate_is_owed_once_the_cutover_has_landed(programme):
+    """Every one of the twenty-seven gates is installed (#190).
+
+    This test walked the shipped OWED rows — each names a real, unlanded slice
+    and states what must exist first — behind a vacuity guard that some row
+    was owed. That guard was true from slice 0 until slice 8 installed G22,
+    the last owed row, and landed; it would now be a test arguing with the
+    outcome the programme was built to reach. So the guard became the claim.
+    The shape rule it walked still binds any row a future slice might owe, and
+    the compiler holds it there, as the negative controls in section 3 show: a
+    status naming no slice, an owed row with no `blocked_on`, and a landed
+    slice still owing a row are each refused.
+    """
+    # Vacuity guard first: an empty walk would pass the claim below as well.
+    installed = programme.installed_gates()
+    assert installed, "no gate is installed — suspect the parse"
+
+    owed = sorted(name for name, row in programme.rows.items()
+                  if row.owner_slice is not None)
+    assert owed == [], (
+        f"{owed} owed again. Every gate was installed by the cutover (#190); a "
+        f"row owed now needs a slice that has not landed, which is a reviewed "
+        f"change to the programme rather than a status")
+    assert set(installed) == set(programme.gates), (
+        f"not installed and not owed: {sorted(set(programme.gates) - set(installed))}")
 
 
 def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):

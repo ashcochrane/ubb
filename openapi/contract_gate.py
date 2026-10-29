@@ -6,11 +6,11 @@ Run from the git root (CI's `contract` job runs exactly this):
     python openapi/contract_gate.py                 # the gate
     python openapi/contract_gate.py --baseline origin/main --emit   # authoring
 
-**The gate** compares `api-v1-launch` against the working tree, so every break
-since the contract was published is proven to have been reviewed — not merely
-that each step was reviewed against the step before it. A break that is skipped
-rather than reviewed is invisible to a per-pull-request comparison forever after,
-which is not hypothetical here (#129).
+**The gate** compares `api-v1-cutover` against the working tree, so every break
+since the re-modelled contract was baselined is proven to have been reviewed —
+not merely that each step was reviewed against the step before it. A break that
+is skipped rather than reviewed is invisible to a per-pull-request comparison
+forever after, which is not hypothetical here (#129).
 
 **Authoring** a slice's new entries compares previous `main` against the proposal
 (`--baseline origin/main --emit`), so a slice does not re-derive every earlier
@@ -23,8 +23,9 @@ and **inert**, a committed entry that covers no finding at its own level — whi
 means it silently does nothing, the defect this repo has already shipped once.
 
 openapi/README.md carries the full reasoning, including why the suppression files
-cannot reach zero until slice 8 cuts a new baseline, and why that makes them the
-opposite of the implementation-rule migration ledgers rather than another one.
+were reset to zero when slice 8 cut the new baseline (#190), and why that makes
+them the opposite of the implementation-rule migration ledger rather than another
+one.
 """
 from __future__ import annotations
 
@@ -39,9 +40,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-#: The tag CI compares against. Immutable: slice 8 cuts a *new* tag and points
-#: the gate at it rather than moving this one (migration/cutover §7.5).
-BASELINE_REF = "api-v1-launch"
+#: The tag CI compares against. Immutable: slice 8 cut this *new* tag on the
+#: cutover's merge commit and pointed the gate at it, rather than moving
+#: `api-v1-launch`, which stays where it was (migration/cutover §7.5; #190,
+#: ADR-0026).
+BASELINE_REF = "api-v1-cutover"
 
 #: The single pin. CI reads it from here (`--print-pinned-version`) so the binary
 #: it installs cannot drift from the one the entries were generated with.

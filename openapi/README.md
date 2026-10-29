@@ -95,16 +95,19 @@ slice 0 is for.
 ## The cumulative breaking gate
 
 The gate does not ask "did this pull request break the contract?". It asks
-**"has every break since the contract was published been reviewed?"** — so it
-compares the spec at the immutable **`api-v1-launch`** tag against the working
-tree, not against the base branch (#195, migration/cutover decision §7.3).
+**"has every break since the contract was baselined been reviewed?"** — so it
+compares the spec at the immutable **`api-v1-cutover`** tag against the working
+tree, not against the base branch (#195, migration/cutover decision §7.3). Until
+the cutover (#190) that tag was `api-v1-launch`; see *The suppression files were
+reset at the cutover* below.
 
 The difference is not academic. Comparing against the base branch proves only
 that each step was reviewed *in isolation*, and a step that is never reviewed
 is invisible forever after: #129's `contract` job went red on seven path
 removals, the pull request was merged anyway, and no later per-pull-request
 comparison could see them again. The cumulative comparison found them, and they
-are now recorded in `oasdiff-err-ignore.txt`.
+were recorded in `oasdiff-err-ignore.txt` until the cutover's reset (they stand
+there still at the `api-v1-cutover` tag).
 
 ### The two comparisons
 
@@ -161,7 +164,7 @@ oasdiff breaking --fail-on WARN \
   --severity-levels openapi/oasdiff-severity-levels.txt \
   --err-ignore openapi/oasdiff-err-ignore.txt \
   --warn-ignore openapi/oasdiff-warn-ignore.txt \
-  <api-v1-launch spec> openapi/v1.json
+  <api-v1-cutover spec> openapi/v1.json
 ```
 
 **One exception, and the gate says so at the address (`unsuppressible_by_oasdiff`):**
@@ -174,17 +177,24 @@ three parts as text), the raw run above goes on reporting it, and the gate's
 cross-check sets aside exactly that case — a covered webhook finding — and nothing
 else. Measured against v1.23.0 in #456 with six line shapes; none suppressed.
 
-### The suppression files cannot reach zero
+### The suppression files were reset at the cutover
 
-Not a backlog. While the baseline is `api-v1-launch`, the differences from that
-tag are real, intentional and permanent; the files **grow** as reviewed breaks
-land. They clear only when slice 8 cuts a **new** baseline and the gate is
-pointed at it — `api-v1-launch` is never moved or deleted (§7.5).
+Not a backlog. While the baseline was `api-v1-launch`, the differences from that
+tag were real, intentional and permanent, and the files **grew** as reviewed
+breaks landed — they could clear only when slice 8 cut a **new** baseline and the
+gate was pointed at it. The cutover did exactly that (#190, ADR-0026): it tagged
+its own merge commit `api-v1-cutover`, pointed the gate at the new tag and reset
+both files to their headers, with zero entries. `api-v1-launch` was never moved or
+deleted (§7.5), and every entry recorded against it stands in the two files at
+the `api-v1-cutover` tag and in git history.
+
+From the reset on, the files **grow** again only as reviewed breaks against the
+new baseline land, by the rules under *What may be added*.
 
 This is the **opposite mechanism** from the implementation-rule migration
-ledgers, which are seeded with today's known violations and must **shrink to
-empty** by slice 8. Growing-and-intentional vs shrinking-and-defective — do not
-conflate them.
+ledger, which was seeded with known violations and had to **shrink to empty** by
+slice 8 — it did, and G22 holds it there. Growing-and-intentional vs
+shrinking-and-defective — do not conflate them.
 
 So never delete an entry to make a suppression file shorter. Delete one only
 when the gate reports it **inert**: it no longer describes a real break, and has
@@ -192,11 +202,11 @@ become a lie about what was reviewed.
 
 ### What may be added
 
-Because the baseline *is* the launch tag, every entry is by construction a
-post-launch break — which is why the old `LAUNCH TAG BOUNDARY` marker is gone,
-along with the 20 pre-tag entries the tag already contains (they matched nothing
-and the gate reported them inert; they remain in git history). A new entry is
-permitted only:
+Because the baseline *is* the cutover tag, every entry is by construction a
+break made after it — which is why no boundary marker is needed (the old
+`LAUNCH TAG BOUNDARY` marker went when the launch tag became the baseline, along
+with the 20 pre-tag entries that tag already contained; they remain in git
+history). A new entry is permitted only:
 
 - in the **pre-live lane** — no tenant is integrated against v1, so the break is
   hand-coordinated with the one known consumer.
