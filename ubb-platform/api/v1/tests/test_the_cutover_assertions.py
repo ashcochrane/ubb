@@ -398,9 +398,11 @@ class EveryNewMonetaryRecordUsesTheNewReceiptShapeTest(_ADeclaringTenantTestCase
         written = list(Posting.objects.filter(tenant=self.tenant)
                        .values_list("pricing_receipt", flat=True))
         self.assertEqual(len(written), 2)
-        self.assertEqual({receipt["receipt_schema_version"]
-                          for receipt in written}, {RECEIPT_SCHEMA_VERSION})
+        # The named check first, so a record in another shape (`{}` above all)
+        # is reported as one rather than tripping over a missing key.
         self.assertEqual(receipts_not_in_the_one_shape(), [])
+        self.assertEqual({receipt.get("receipt_schema_version")
+                          for receipt in written}, {RECEIPT_SCHEMA_VERSION})
 
     def test_planted_records_in_another_shape_are_reported(self):
         for label, planted in NOT_A_CURRENT_RECEIPT.items():
