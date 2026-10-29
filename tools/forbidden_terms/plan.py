@@ -37,8 +37,11 @@ PLAN_FILE = "forbidden-term-sweep.yaml"
 PLAN_PATH = f"gates/{PLAN_FILE}"
 
 #: An exclusion that never ends, and one that ends at the cutover squash. #155
-#: §5.4 deletes the whole historical-migration category rather than excusing it,
-#: so that rule carries the slice that deletes it and cannot outlive its reason.
+#: §5.4 deleted the whole historical-migration category rather than excusing it,
+#: so that rule carried the slice that deleted it and could not outlive its
+#: reason — and the cutover deleted the rule with the category (#190). No
+#: shipped exclusion ends any more; the permanence stays declared, and its
+#: negative control plants one.
 PERMANENT = "permanent"
 UNTIL_SLICE_8 = "until_slice_8"
 PERMANENCES = (PERMANENT, UNTIL_SLICE_8)

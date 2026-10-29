@@ -1,4 +1,4 @@
-﻿"""A pricing rule declares one method, and never composes (#355, #147 §2).
+"""A pricing rule declares one method, and never composes (#355, #147 §2).
 
 Two claims, and they fail for different reasons:
 
@@ -262,8 +262,9 @@ class ARuleCarriesNoSecondComponentBesideItsMethodTest(
         """A rule with no method keeps both terms, whatever else it carries.
 
         The check has to be satisfied by a null method whatever else the row
-        carries, or the migration that installed it would have been unable to
-        apply against a populated table. Since R10-W4 (ruling 4) the rule with
+        carries, or the migration that installed it (before the cutover
+        squash, #190) would have been unable to apply against a populated
+        table. Since R10-W4 (ruling 4) the rule with
         no method is a cost book's rate, and a supplier's rate may carry both a
         per-unit rate and a flat addend.
         """

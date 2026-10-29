@@ -30,10 +30,18 @@ The shape::
 **TWO VERSIONS, BECAUSE THEY ANSWER TWO QUESTIONS** (#148 §4.3): *can today's
 code read this record*, and *which engine produced this number*. A single
 version conflates a shape change with a behaviour change, and the two have to
-move independently — a reshuffled key is not a repriced event. The reader
-functions at the foot of this module therefore dispatch on the version **the
-record declares**, never on :data:`RECEIPT_SCHEMA_VERSION`, which is what makes a
-receipt written today still readable when the code has moved on.
+move independently — a reshuffled key is not a repriced event.
+
+**ONE SHAPE IS WRITTEN AND ONE SHAPE IS READ, AND IT IS THE SAME ONE (#190).**
+The readers at the foot of this module once dispatched on the version the
+record declared, so that receipts in two older shapes stayed readable. The
+cutover reset every database and nothing was ever deployed, so no record in an
+older shape exists to read (ADR-0026): the readers know
+:data:`RECEIPT_SCHEMA_VERSION` alone and REFUSE anything else — a record
+declaring another version, and the empty record ``{}``, which is not a receipt,
+not an older one, and not the public "no receipt" (that is ``null``, on a batch
+item that never created a record). A future shape change bumps the version and
+adds its reader in the same commit.
 
 **⚠ FOR A UNIT OF WORK SOLD AT ONE AGREED PRICE, ITS REVENUE AND ITS COGS
 RESOLVE AGAINST DIFFERENT INSTANTS, AND THAT IS THE DESIGN RATHER THAN A BUG
@@ -171,17 +179,14 @@ bump is a claim that some reader's ANSWER changes. **Nothing reads this key.**
 `uncosted_quantity_keys` and `recorded_quantities` are the module's two readers
 and neither touches a component's shape; the only thing that has ever read it is
 a test, over a receipt it wrote itself moments earlier. So a receipt written
-last year and one written today are equally readable by every reader that
-exists, and a bumped version would have refused nothing, unlocked nothing, and
-added a shape to :data:`READABLE_SCHEMA_VERSIONS` that no branch below could
-tell apart from the one beside it.
+before the rename and one written after it were equally readable by every
+reader that existed, and a bumped version would have refused nothing, unlocked
+nothing, and added a shape no reader could tell apart from the one beside it.
 
-**Old receipts keep the old spelling and are NOT rewritten**, which is #148
-§4.6's rule and the whole point of the record: back-dating one to a shape that
-did not exist on its day makes it a worse record, not a better one. ⚠ **The day
-a real reader of this key appears, it must know BOTH spellings** — that is what
-a version would have bought and what this note is instead, and the reader that
-adds it is the one that should add the version with it.
+⚠ **Since the cutover (#190) no receipt in the old spelling exists**: every
+receipt on a database is one this code wrote, in the one shape below, after the
+rename. A future rename of a key some reader reads is a shape change, and moves
+the version with the reader that reads it.
 
 ⚠ **THE QUANTITIES NOW EXIST IN TWO PLACES ON PURPOSE AND THEY ARE NOT TWO
 SOURCES OF TRUTH** (#165 §6). The measurement record holds what was *reported*;
@@ -232,55 +237,24 @@ from core.vocabulary import (
     PRICING_STATUS_VALUES,
 )
 
-#: A receipt written before the record was versioned at all. Read, never
-#: rewritten (#148 §4.6): a receipt records what the engine did on a day, and
-#: back-dating one to a shape that did not exist then would make it a worse
-#: record rather than a better one. What eventually removes these is the cutover
-#: squash, not any migration in this slice.
-LEGACY_SCHEMA_VERSION = 0
-
-#: The shape with two versions, a typed subject and three sections, whose
-#: components hold the quantity (:data:`QUANTITY_KEY`) as a whole NUMBER.
-#: Named separately from the
-#: constant below because they answer different questions and stopped being
-#: equal in #603: this identifies a SHAPE, permanently, and is what a reader
-#: dispatches on. Read, never rewritten.
-SECTIONED_SCHEMA_VERSION = 1
-
-#: The same sections, whose components hold the quantity as its
-#: CANONICAL EXACT SIGNED-DECIMAL TEXT (#603, ADR-0020) — the form UBB
-#: canonicalises an admitted quantity to before it is stored, and the one the
-#: measurement record and the acknowledgement carry it in. A quantity may
-#: be fractional, negative and of any length since #603, and no number a JSON
-#: column can hold says all three exactly. A component key whose VALUE changes
-#: kind is a key that moved, which is what this module's rule bumps the
-#: version for: the version is what says what a component's quantity IS, so a
-#: reader never has to guess from the value's type.
-CANONICAL_QUANTITY_SCHEMA_VERSION = 2
-
-#: THE SHAPE A RECEIPT BUILT TODAY DECLARES, AND ONLY THAT. Bump this when a key
-#: moves, arrives or leaves — never because an amount would come out
-#: differently, which is what `pricing_engine_version` is for. A key arriving
-#: INSIDE a section's `detail` is the exception the module docstring argues
-#: (#350, #357): the open containers promise no fixed key set, so an additive
-#: detail key leaves every reader reading, and `undeclared_quantities` (#428),
-#: `reported_cost_source_kind` (#570) and `pricing_status_reason` (#603)
+#: THE ONE SHAPE A RECEIPT IS WRITTEN IN AND READ IN. Its sections' components
+#: hold the quantity (:data:`QUANTITY_KEY`) as its CANONICAL EXACT
+#: SIGNED-DECIMAL TEXT (#603, ADR-0020) — the form UBB canonicalises an admitted
+#: quantity to before it is stored, and the one the measurement record and the
+#: acknowledgement carry it in.
+#:
+#: Bump this when a key moves, arrives or leaves — never because an amount would
+#: come out differently, which is what `pricing_engine_version` is for. A key
+#: arriving INSIDE a section's `detail` is the exception the module docstring
+#: argues (#350, #357): the open containers promise no fixed key set, so an
+#: additive detail key leaves every reader reading, and `undeclared_quantities`
+#: (#428), `reported_cost_source_kind` (#570) and `pricing_status_reason` (#603)
 #: arrived that way too.
-RECEIPT_SCHEMA_VERSION = CANONICAL_QUANTITY_SCHEMA_VERSION
-
-#: EVERY SHAPE THIS CODE CAN READ, which is deliberately not the one shape it
-#: WRITES. A writer declares a version; a reader knows a set of them, and the
-#: day the two are confused is the day a receipt written last year stops being
-#: readable because the code moved on — the exact failure the pair of versions
-#: exists to prevent. Adding a shape means adding a branch AND a member here.
-READABLE_SCHEMA_VERSIONS = frozenset({LEGACY_SCHEMA_VERSION,
-                                      SECTIONED_SCHEMA_VERSION,
-                                      CANONICAL_QUANTITY_SCHEMA_VERSION})
-
-#: The two shapes with sections — what every reader below dispatches on where
-#: the section structure, not the spelling of a quantity, is the question.
-SECTIONED_SCHEMA_VERSIONS = frozenset({SECTIONED_SCHEMA_VERSION,
-                                       CANONICAL_QUANTITY_SCHEMA_VERSION})
+#:
+#: ⚠ It is 2 and not 1 because shapes 0 and 1 existed before the cutover. Their
+#: readers were deleted with them (#190, ADR-0026): every reader below refuses a
+#: record declaring any other version.
+RECEIPT_SCHEMA_VERSION = 2
 
 TOP_LEVEL_KEYS = frozenset({
     "receipt_schema_version", "pricing_engine_version",
@@ -382,7 +356,8 @@ REQUIRED_COMPONENT_KEYS = frozenset({
 #: completing the COST side of a posting whose price was already settled by
 #: markup would put the older price section through this set and fail. It is
 #: stated rather than handled: **this tree is deployed nowhere and holds no
-#: stored receipt**, and #155 §11 squashes at cutover. A tolerant set would be a
+#: stored receipt older than this set** — the cutover (#190, #155 §11)
+#: squashed the chain onto a fresh database. A tolerant set would be a
 #: boundary that accepts the term forever, which is the debt this deletes.
 REQUIRED_MARKUP_KEYS = frozenset({
     "micro_percent", "basis_micros",
@@ -582,8 +557,8 @@ HELD_NAME_KEY = "held_name_id"
 #: that costing section, so the one a completed record keeps is the one
 #: recording wrote. A stored `None` therefore means a service-level caller
 #: stated a figure without saying where it came from, which no recording
-#: through either route does; and a receipt written before #570 carries no
-#: such key at all, read as written and never rewritten. An additive `detail`
+#: through either route does. (No stored receipt predates #570: the cutover,
+#: #190, started from a fresh database.) An additive `detail`
 #: key, so :data:`RECEIPT_SCHEMA_VERSION` does not move (the module
 #: docstring's rule).
 REPORTED_COST_SOURCE_KIND_KEY = "reported_cost_source_kind"
@@ -625,26 +600,6 @@ def build_receipt(*, subject, effective_at, currency, pricing_engine_version,
     return record
 
 
-def written_in_the_current_shape(record):
-    """Can this record be completed, and can it be made to name what completed it?
-
-    One question with one answer, asked BEFORE a completion is assembled and
-    again inside :func:`completed_receipt`, so a caller deciding whether a
-    posting is recoverable and the boundary refusing a bad record cannot come to
-    disagree about which records those are.
-
-    A record in an older shape is `False` here rather than upgraded: the
-    receipt's own ruling is that such a record is *read, never rewritten*. So is
-    the empty default, which explains nothing and has nothing to complete. That
-    is a fact about the posting rather than an error to route around — and it is
-    what makes *a completed field can always be explained by the act that
-    completed it* true rather than nearly true, because a record this answers
-    `False` for is one no completion may touch at all.
-    """
-    return (isinstance(record, dict)
-            and record.get("receipt_schema_version") == RECEIPT_SCHEMA_VERSION)
-
-
 def completed_receipt(record, *, sections, provenance=None):
     """A STORED RECEIPT WITH ITS UNRESOLVED SECTIONS COMPLETED (#363).
 
@@ -652,8 +607,8 @@ def completed_receipt(record, *, sections, provenance=None):
     exactly the change the database admits: a section recorded as unresolved
     moves to settled — status, method and amount in one statement — the
     provenance gains a cross-reference, and **nothing else moves at all**.
-    `usage/migrations/0040` refuses everything else at the table, through every
-    door; this refuses the same things one layer up, where the caller can be
+    `trg_posting_receipt_sealing` refuses everything else at the table, through
+    every door; this refuses the same things one layer up, where the caller can be
     told which section and why, and so that a wrong record never reaches a
     statement in the first place.
 
@@ -670,19 +625,11 @@ def completed_receipt(record, *, sections, provenance=None):
         if a named section is not completable, or if the result would not be a
         valid receipt.
 
-    **A RECORD IN AN OLDER SHAPE IS REFUSED HERE, NOT UPGRADED.** The receipt's
-    own ruling is that such a record is *read, never rewritten* — so a caller
-    holding one has a posting whose price cannot be completed, which is a fact
-    about that posting rather than an error to route around.
+    **A RECORD IN ANY OTHER SHAPE IS REFUSED HERE, NOT UPGRADED** — by the
+    guard every reader below shares (#190): one shape is written and one is
+    read, and the empty record is not a receipt at all.
     """
-    if not isinstance(record, dict):
-        raise ReceiptShapeError(f"a receipt is a record, not {type(record)!r}")
-    if not written_in_the_current_shape(record):
-        raise ReceiptShapeError(
-            f"a completion writes the shape this code writes "
-            f"({RECEIPT_SCHEMA_VERSION}); this record declares "
-            f"{record.get('receipt_schema_version')!r}, and a receipt in an "
-            f"older shape is read, never rewritten")
+    _a_receipt(record)
 
     completing = dict(record)
     completing["totals"] = dict(record["totals"])
@@ -941,7 +888,7 @@ def _validate_components(name, components):
                 f"and this record does not")
         # WHAT THIS SHAPE SAYS A QUANTITY IS (#603): its canonical
         # exact text, and nothing a reader would have to convert. A number
-        # here would be schema 1's spelling under schema 2's version.
+        # here is a retired shape's spelling under this shape's version.
         if not is_canonical(component[QUANTITY_KEY]):
             raise ReceiptShapeError(
                 f"a {name} component's quantity is "
@@ -1039,64 +986,47 @@ def _leaves(value):
         yield value
 
 
-def schema_version_of(receipt):
-    """Which shape this record is in, asked of the RECORD.
+def _a_receipt(receipt):
+    """THE GUARD EVERY READER SHARES: a receipt in the one shape, or a refusal.
 
-    A receipt with no version is one written before the record carried one, and
-    it reads as :data:`LEGACY_SCHEMA_VERSION` rather than as a fault: the read
-    path tolerates both shapes and nothing rewrites the older one.
+    A reader acts on a record declaring :data:`RECEIPT_SCHEMA_VERSION` and on
+    nothing else (#190, ADR-0026). There is no branch for an older shape: none
+    exists on any database, and a reader that tolerated one would be a second
+    contract nobody can test. **The empty record is refused here too** — ``{}``
+    is not a receipt, not an older one, and not "no receipt" (the public absence
+    is ``null``, on a batch item that never created a record). A record from a
+    newer shape is refused for the reason it always was: guessing would turn a
+    shape this code does not understand into a plausible wrong answer.
+
+    Shared rather than written five times, so the five readers and the
+    completion boundary cannot come to disagree about which records they read.
+    It checks the shape's declaration, not its whole content: the full check is
+    :func:`validate_receipt`, which the construction boundary already ran on
+    everything this code writes.
     """
-    if not isinstance(receipt, dict):
-        return LEGACY_SCHEMA_VERSION
-    return receipt.get("receipt_schema_version", LEGACY_SCHEMA_VERSION)
-
-
-def _readable_version_of(receipt):
-    """The version a reader may act on, or a refusal — the guard both readers
-    below share.
-
-    **THE DISPATCH IS THREE-WAY, NOT TWO.** A version this code does not know is
-    REFUSED rather than read as the current shape: "old record, new code" is the
-    direction that happens and is answered, and the other direction — a record
-    written by something newer — cannot be read by guessing, so guessing would
-    turn a shape it does not understand into a plausible wrong answer or a
-    `KeyError` from the middle of a request.
-
-    Extracted rather than written twice (#355). It takes no path and reads no
-    section, so each reader below still says in its own body what it reads and
-    from where; what is shared is only the question *may this record be read at
-    all*, which has one answer for the whole module.
-    """
-    if not isinstance(receipt, dict):
-        return None
-    version = schema_version_of(receipt)
-    if version not in READABLE_SCHEMA_VERSIONS:
+    if not isinstance(receipt, dict) or not receipt:
         raise ReceiptShapeError(
-            f"this receipt declares schema version {version!r}; this code reads "
-            f"{sorted(READABLE_SCHEMA_VERSIONS)}")
-    return version
+            f"a Pricing Receipt is a record declaring receipt_schema_version "
+            f"{RECEIPT_SCHEMA_VERSION}; {receipt!r} is not a receipt")
+    declared = receipt.get("receipt_schema_version")
+    if declared != RECEIPT_SCHEMA_VERSION:
+        raise ReceiptShapeError(
+            f"this receipt declares schema version {declared!r}; this code "
+            f"writes and reads {RECEIPT_SCHEMA_VERSION} only")
+    return receipt
 
 
 def uncosted_quantity_keys(receipt):
-    """WHICH QUANTITIES WENT UNCOSTED, out of a receipt of any shape.
+    """WHICH QUANTITIES WENT UNCOSTED.
 
     Read by the recording surfaces, which answer it beside `costing_status` —
     the status says THAT a cost is unresolved and this says which declaration to
     fix: a declared quantity no rate matched, or since #428 a name the Event
     Type's declaration does not carry, for which this is the only place the ack
     can name it. An idempotent replay serves the receipt the posting was
-    recorded with, so this is a live read path over rows in the older shape
-    rather than a migration courtesy.
-
-    The three-way dispatch this rests on is :func:`_readable_version_of`, which
-    both readers share; what is written here is only where THIS answer lives in
-    each shape.
+    recorded with, which is a receipt in the one shape (:func:`_a_receipt`).
     """
-    version = _readable_version_of(receipt)
-    if version is None:
-        return []
-    if version == LEGACY_SCHEMA_VERSION:
-        return receipt.get("uncosted_measurement_keys", []) or []
+    _a_receipt(receipt)
     return receipt["costing"]["detail"].get("uncosted_measurement_keys", []) or []
 
 
@@ -1122,25 +1052,11 @@ def recorded_quantities(receipt):
     is in it so that a re-costing after the tenant declares the name costs the
     whole call rather than silently less of it.
 
-    ⚠ A RECEIPT IN THE PRE-VERSION SHAPE ANSWERS EMPTY, which is what it is:
-    that shape recorded no per-quantity terms, so there is nothing in it to
-    re-resolve from and a caller must not be handed a partial bag that looks
-    like a whole one.
-
-    ⚠⚠ **BOTH SECTIONED SHAPES ANSWER, AND THEY ANSWER THE SAME BAG (#603).**
-    Schema 1 holds a quantity as a whole number and schema 2 as its canonical
-    text; this reader knows both spellings — the obligation the note above
-    `REQUIRED_COMPONENT_KEYS` set for the day a real reader of a renamed key
-    appeared — and answers canonical text for either, the one form costing
-    reads. Dispatching on "is it schema 1" alone would have read every new
-    receipt as holding no quantities, and recovery would have re-resolved
-    nothing, silently.
+    Each quantity is answered as the canonical exact text the record holds
+    (#603), the one form costing reads — refused if it is not, rather than read
+    as whatever it happens to be.
     """
-    version = _readable_version_of(receipt)
-    if version not in SECTIONED_SCHEMA_VERSIONS:
-        return {}
-    as_recorded = (_whole_as_text if version == SECTIONED_SCHEMA_VERSION
-                   else _text_as_text)
+    _a_receipt(receipt)
     quantities = {}
     for name in SECTIONS:
         # `.get` WITHOUT A FALLBACK COERCION, WHICH IS THE DIFFERENCE THAT
@@ -1152,38 +1068,28 @@ def recorded_quantities(receipt):
         # make, for the same reason.
         for component in receipt[name]["detail"].get("components", []):
             quantities.setdefault(component["measurement_key"],
-                                  as_recorded(component[QUANTITY_KEY]))
+                                  _text_as_text(component[QUANTITY_KEY]))
     uncosted = receipt["costing"]["detail"]
     if "uncosted_quantities" in uncosted:
-        quantities.update({key: as_recorded(value) for key, value
+        quantities.update({key: _text_as_text(value) for key, value
                            in uncosted["uncosted_quantities"].items()})
     # Presence-checked like the mapping above it, and for the same reason: a
-    # receipt written before #428 has no such key, and that is not a corrupt
-    # record but an older one.
+    # Charge's receipt, whose costing detail is empty, has no such key, and
+    # that is not a corrupt record. (Before the cutover, #190, a receipt
+    # written before #428 had none either; the fresh database holds none.)
     if "undeclared_quantities" in uncosted:
-        quantities.update({key: as_recorded(value) for key, value
+        quantities.update({key: _text_as_text(value) for key, value
                            in uncosted["undeclared_quantities"].items()})
     return quantities
 
 
-def _whole_as_text(value):
-    """A schema-1 quantity — a whole number — as the canonical text schema 2
-    holds. Exact: an integer's own digits; nothing else was ever written
-    there, and anything else is refused rather than read."""
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ReceiptShapeError(
-            f"a schema-{SECTIONED_SCHEMA_VERSION} receipt holds a quantity "
-            f"as a whole number, not {value!r}")
-    return canonical_quantity(value)
-
-
 def _text_as_text(value):
-    """A schema-2 quantity, which is already its canonical text — refused
+    """A recorded quantity, which is already its canonical text — refused
     if it is not, rather than read as whatever it happens to be."""
     if not is_canonical(value):
         raise ReceiptShapeError(
-            f"a schema-{CANONICAL_QUANTITY_SCHEMA_VERSION} receipt holds a "
-            f"quantity as its canonical exact text, not {value!r}")
+            f"a schema-{RECEIPT_SCHEMA_VERSION} receipt holds a quantity as "
+            f"its canonical exact text, not {value!r}")
     return value
 
 
@@ -1197,21 +1103,10 @@ def pricing_method_of(receipt):
     answered together and neither answers the other's question.
 
     Read by the recording surfaces and by the audit lookup, which is the surface
-    a dispute is settled on. The three-way dispatch is
-    :func:`_readable_version_of`, shared with the reader above.
-
-    ⚠ **A RECEIPT IN THE OLDER SHAPE NAMES NO METHOD, AND THIS DOES NOT INVENT
-    ONE.** What that shape recorded beside its price is the SOURCE that supplied
-    it — the rung — and that is a different question from how the amount was
-    derived: a markup and a rule declaring a margin are one method at two
-    sources. Translating the older field into a method would therefore put a
-    value on the published contract that no writer ever recorded, under a
-    mapping nobody ratified. So an older receipt answers `None` — *this record
-    does not say* — which is what it is.
+    a dispute is settled on. The record is asked for through
+    :func:`_a_receipt`, shared with the readers above.
     """
-    version = _readable_version_of(receipt)
-    if version is None or version == LEGACY_SCHEMA_VERSION:
-        return None
+    _a_receipt(receipt)
     return receipt["pricing"]["method"]
 
 
@@ -1225,21 +1120,17 @@ def pricing_mode_of(receipt):
     `_subject_of`'s stated reason and for #363's: what a recovery may re-derive
     is what the record can support, never what configuration says today.
 
-    ⚠ **A RECEIPT IN THE OLDER SHAPE NAMES NO REGIME, AND THIS DOES NOT INVENT
-    ONE.** That shape predates the field, so there is nothing in the record to
-    read; answering *this record does not say* is what it is, and it is what
-    the two readers above give a record written before their question existed.
-
-    The three-way dispatch is :func:`_readable_version_of`, shared with them.
+    `None` where the record states no regime: the price detail carries the
+    regime only where it decided the outcome (:data:`PRICING_REGIME_KEY`). The
+    record is asked for through :func:`_a_receipt`, shared with the readers
+    above.
     """
-    version = _readable_version_of(receipt)
-    if version is None or version == LEGACY_SCHEMA_VERSION:
-        return None
+    _a_receipt(receipt)
     return receipt["pricing"]["detail"].get(PRICING_REGIME_KEY)
 
 
 def subject_type_of(receipt):
-    """WHAT THIS RECEIPT EXPLAINS — one usage row, one Charge, or `None` (#370).
+    """WHAT THIS RECEIPT EXPLAINS — one usage row or one Charge (#370).
 
     The registry's `pricing_receipt_subject_type`, read out of the record. It is
     a stored value rather than an inference, and that is the whole of the typed
@@ -1247,17 +1138,8 @@ def subject_type_of(receipt):
     would be a SECOND authority on what a receipt is about, able to disagree
     with the one the record states. #148 §3.2 refuses a pair that must agree.
 
-    The three-way dispatch is :func:`_readable_version_of`, shared with the two
-    readers above.
-
-    ⚠ **A RECEIPT IN THE OLDER SHAPE NAMES NO SUBJECT, AND THIS DOES NOT INVENT
-    ONE.** That shape predates the typed subject, so there is nothing in the
-    record to read; answering *this record does not say* is what it is. The
-    alternative — reading the subject off the row the receipt is stored on — is
-    the inference this function exists to refuse, and it would be published on
-    the contract as a value some writer had recorded.
+    The record is asked for through :func:`_a_receipt`, shared with the readers
+    above.
     """
-    version = _readable_version_of(receipt)
-    if version is None or version == LEGACY_SCHEMA_VERSION:
-        return None
+    _a_receipt(receipt)
     return receipt["subject_type"]

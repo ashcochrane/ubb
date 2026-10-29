@@ -76,7 +76,7 @@
     },
     "audit_action": {
       "advertised": true,
-      "backend_serves": "70 of 70 values",
+      "backend_serves": "69 of 69 values",
       "kind": "closed",
       "representation": "enum",
       "values": [

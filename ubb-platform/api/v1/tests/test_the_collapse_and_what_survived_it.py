@@ -42,6 +42,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work.models import Task
 from apps.subscriptions.economics.models import CustomerEconomics
 from core.widget_auth import create_widget_token
+from apps.metering.usage.tests._helpers import a_posting
 
 #: The nine, and what each one answered. The list is the ticket's table, in its
 #: order, because a reader checking the break block against this file should be
@@ -253,7 +254,7 @@ class TestThePerCustomerEventListStillReturnsEvents:
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="c1")
         for index in range(3):
-            Posting.objects.create(
+            a_posting(
                 tenant=self.tenant, customer=self.customer,
                 idempotency_key=f"i{index}", event_type="chat.completion",
                 billed_cost_micros=1_000 * (index + 1))
@@ -278,7 +279,7 @@ class TestThePerCustomerEventListStillReturnsEvents:
         task = Task.objects.create(tenant=self.tenant, customer=self.customer,
                                    balance_snapshot_micros=0,
                                    task_type="invoice_batch")
-        under_the_task = Posting.objects.create(
+        under_the_task = a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="t1",
             event_type="chat.completion", task_id=task.id,
             billed_cost_micros=9_000)
@@ -545,7 +546,7 @@ class TestTheTrendIsTheSameQuestionWithABucket:
                 # The second customer exists to be EXCLUDED, so it carries the
                 # same figures: a filter that silently did nothing would still
                 # produce plausible months.
-                posting = Posting.objects.create(
+                posting = a_posting(
                     tenant=self.tenant, customer=customer,
                     idempotency_key=f"i-{customer.external_id}-{month}",
                     event_type="chat.completion",
@@ -648,7 +649,7 @@ class TestTheCustomerScopedSummaryIsTheSameQuestionFiltered:
         self._event(self.seat_b, "b2", event_type="images", billed=1_000_000)
 
     def _event(self, customer, key, *, event_type, billed):
-        return Posting.objects.create(
+        return a_posting(
             tenant=self.tenant, customer=customer, idempotency_key=f"i-{key}",
             event_type=event_type, billed_cost_micros=billed)
 

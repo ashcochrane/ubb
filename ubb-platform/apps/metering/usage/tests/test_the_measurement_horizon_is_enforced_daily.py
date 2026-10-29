@@ -29,9 +29,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.conf import settings
-from django.db import (
-    DatabaseError, IntegrityError, connection, migrations, transaction)
-from django.db.migrations.loader import MigrationLoader
+from django.db import DatabaseError, IntegrityError, connection, transaction
 from django.db.models import Q, QuerySet
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
@@ -164,25 +162,11 @@ class TheReleaseIsSetOnceTest(TestCase):
         """Never a frozen deadline stamped at recording (ruling 8)."""
         self.assertIsNone(_measured("fresh", days_old=0).prunable_at)
 
-    def test_the_rule_is_a_trigger_whose_reverse_is_exercised(self):
-        """Forward and back against the real table, asserted by behaviour:
-        with the rule out a release can be moved, and with it back it cannot."""
-        migration = MigrationLoader(connection).get_migration(
-            "usage", "0052_a_measurement_is_released_once_by_the_prune")
-        run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython))
-        measurement = _measured("reverse", days_old=1)
-        _through_the_queryset(measurement, timezone.now() - timedelta(days=2))
-
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        _through_the_queryset(measurement, timezone.now() - timedelta(days=3))
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        measurement.refresh_from_db()
-        self._refused(_through_the_queryset, measurement,
-                      timezone.now() - timedelta(days=4))
+    # The rule's reverse — uninstalled, a release can be moved; reinstalled,
+    # it cannot — was asserted here against usage/0052's own installer until
+    # the cutover (#190). `trg_posting_measurement_released_once` is proven
+    # with the other 20 rules now, through `usage/0002_the_database_rules`, in
+    # `apps/platform/tests/test_the_database_rules_are_carried.py`.
 
 
 # --- what the prune takes, and what it leaves ---------------------------------

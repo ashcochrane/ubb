@@ -3,6 +3,7 @@ from django.test import TestCase, Client
 from api.v1.billing_endpoints import CARDINALITY_WARNING_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.metering.usage.tests._helpers import a_posting
 
 
 class PostpaidEndpointsTest(TestCase):
@@ -119,7 +120,7 @@ class InvoiceLineGroupingIsChosenFromTheDiscoveryContractTest(TestCase):
 
     def _a_posting(self, key, region):
         from apps.metering.usage.models import Posting
-        return Posting.objects.create(
+        return a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key=key,
             billed_cost_micros=1_000, grouping_field_1=region)
 

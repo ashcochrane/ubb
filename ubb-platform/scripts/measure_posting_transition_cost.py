@@ -22,8 +22,12 @@ each the median of `--runs` batches of `--rows`:
 
 **The insert number is the one to read first.** All three triggers are `BEFORE
 UPDATE`, so an insert should pay nothing at all; a number that says otherwise
-means the enforcement is not the shape `usage/migrations/0037`, `0039` and
-`0040` claim.
+means the enforcement is not the shape `usage/0002_the_database_rules` installs.
+
+(The table carries a FOURTH rule since #417, `trg_posting_kind_frozen`. None of
+the five statements moves `kind`, so its `WHEN` clause is all it ever costs
+them, and it stands in both states — inside both numbers, so out of every
+delta.)
 
 **⚠ The completion column is the one to read second, and it is not comparable
 with the two beside it.** The other two permitted moves compare scalars; this
@@ -78,6 +82,7 @@ from core.vocabulary import (  # noqa: E402
     COSTING_METHOD_CALCULATED,
     COSTING_STATUS_KNOWN,
     COSTING_STATUS_UNRESOLVED,
+    PRICING_METHOD_DIRECT_EVENT_PRICE,
     PRICING_METHOD_MARGIN_OVER_COST,
     PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
     PRICING_STATUS_KNOWN,
@@ -91,21 +96,24 @@ from core.vocabulary import (  # noqa: E402
 #: the name from the model rather than typing it bought.
 RECEIPT_COLUMN = Posting.RECEIPT_COLUMN
 
-#: The rules on this table, each as (migration module, trigger name). ONE ENTRY
-#: PER RULE, and both halves matter: the trigger name is what is asked for by
-#: name below, and the migration is where the shipped SQL is imported from.
+#: The usage app's rules migration, which carries every rule's shipped SQL as a
+#: module-level constant. A name starting with a digit, so imported by string.
+RULES_MIGRATION = "apps.metering.usage.migrations.0002_the_database_rules"
+
+#: The rules this script measures, each as (constant in the rules migration,
+#: trigger name). ONE ENTRY PER RULE, and both halves matter: the trigger name
+#: is what is asked for by name below, and the constant is the shipped SQL —
+#: the final installed definition, which since the cutover (#190) lives in one
+#: place rather than in whichever historical migration last re-installed it.
 #:
 #: #352 added the second and #353 the third. A script that knew about some of
 #: them would install and drop those while the rest stood, and every delta below
 #: would be the cost of part of the table's enforcement measured against the
 #: remainder.
 RULES = (
-    ("0037_a_cost_settles_once_and_the_table_holds_it",
-     "trg_posting_declared_transitions"),
-    ("0039_a_price_resolves_once_and_the_table_holds_it",
-     "trg_posting_price_transitions"),
-    ("0040_a_receipt_seals_when_its_unresolved_fields_complete",
-     "trg_posting_receipt_sealing"),
+    ("POSTING_DECLARED_TRANSITIONS", "trg_posting_declared_transitions"),
+    ("POSTING_PRICE_TRANSITIONS", "trg_posting_price_transitions"),
+    ("POSTING_RECEIPT_SEALING", "trg_posting_receipt_sealing"),
 )
 
 #: **One statement per batch, not one per row.** Issuing a statement per row
@@ -146,7 +154,7 @@ UPDATE ubb_posting SET provider_cost_micros = 42,
 #: move without the report noticing.
 #:
 #: ⚠ **Since #557 the table admits it only under the price door's mark**
-#: (`usage/migrations/0049`), so `_resolve_batch` makes it under that mark —
+#: (`trg_posting_price_transitions`), so `_resolve_batch` makes it under that mark —
 #: the one setter outside the door itself, and it says so there.
 RESOLUTION = f"""
 UPDATE ubb_posting SET billed_cost_micros = 42,
@@ -182,29 +190,44 @@ UPDATE ubb_posting
 """
 
 
-def _an_unpriced_receipt():
-    """A real receipt whose price section is unresolved, built at the boundary.
+def _a_receipt(*, cost_known=True, price_known=True):
+    """A real receipt, built at the boundary, stating the sections asked for.
 
     Through `build_receipt` rather than written out here, so the row this script
     inserts is the record the rule is actually about — a hand-written dict could
     drift into a shape the construction boundary would never have admitted, and
     the completion above would then be timing a statement no rule would see.
+
+    EVERY ROW CARRIES ONE since the cutover (#190): the column has no default,
+    and `{}` is not a receipt. Each batch's receipt states the statuses its
+    columns state, except the completion batch's, whose unresolved price section
+    is the subject being timed.
     """
     from apps.metering.pricing.receipts import (
         ReceiptSubject, Resolution, build_receipt)
 
+    costing = (Resolution(method=COSTING_METHOD_CALCULATED,
+                          status=COSTING_STATUS_KNOWN, amount_micros=1,
+                          detail={"components": []}) if cost_known
+               else Resolution(method=None, status=COSTING_STATUS_UNRESOLVED,
+                               amount_micros=None, detail={}))
+    pricing = (Resolution(method=PRICING_METHOD_DIRECT_EVENT_PRICE,
+                          status=PRICING_STATUS_KNOWN, amount_micros=1,
+                          detail={}) if price_known
+               else Resolution(method=None, status=PRICING_STATUS_UNKNOWN,
+                               amount_micros=None, detail={}))
     return build_receipt(
         subject=ReceiptSubject(
             subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
             subject_id="11111111-1111-1111-1111-111111111111"),
         effective_at="2026-08-18T09:00:00+00:00", currency="usd",
         pricing_engine_version="2.1.0",
-        costing=Resolution(method=COSTING_METHOD_CALCULATED,
-                           status=COSTING_STATUS_KNOWN, amount_micros=1,
-                           detail={"components": []}),
-        pricing=Resolution(method=None, status=PRICING_STATUS_UNKNOWN,
-                           amount_micros=None, detail={}),
-        provenance={})
+        costing=costing, pricing=pricing, provenance={})
+
+
+def _an_unpriced_receipt():
+    """A receipt whose price section is unresolved — the completion's subject."""
+    return _a_receipt(price_known=False)
 
 
 def _execute(statement, params=None):
@@ -256,8 +279,9 @@ def _rows(tenant, customer, rows, *, unresolved=False, unpriced=False,
         billed_cost_micros=None,
         pricing_status=PRICING_STATUS_UNKNOWN) if unpriced \
         else dict(billed_cost_micros=1, pricing_status=PRICING_STATUS_KNOWN)
-    receipt = {RECEIPT_COLUMN: _an_unpriced_receipt()} if unpriced_receipt \
-        else {}
+    receipt = {RECEIPT_COLUMN: (
+        _an_unpriced_receipt() if unpriced_receipt
+        else _a_receipt(cost_known=not unresolved, price_known=not unpriced))}
     return [Posting(tenant=tenant, customer=customer,
                     idempotency_key=str(index), **cost, **price, **receipt)
             for index in range(rows)]
@@ -314,23 +338,37 @@ def _rules_are_installed():
     return all(_rule_is_installed(trigger) for _, trigger in RULES)
 
 
+def _shipped_sql(constant):
+    """`(install, uninstall)` for one rule, both read off the rules migration.
+
+    The install is the module constant; the uninstall is the reverse the
+    migration's own `RunSQL` carries beside it, so neither direction is a copy
+    written out here.
+    """
+    rules = importlib.import_module(RULES_MIGRATION)
+    install = getattr(rules, constant)
+    (operation,) = [op for op in rules.Migration.operations
+                    if list(op.sql) == [install]]
+    (uninstall,) = operation.reverse_sql
+    return install, uninstall
+
+
 def _set_rules(state):
-    """Install or drop **the shipped SQL**, imported from the migrations.
+    """Install or drop **the shipped SQL**, imported from the rules migration.
 
     A copy of a trigger written out here would measure whatever this script
     happened to say rather than what the table actually carries.
 
-    Both rules move together. What is being reported is the cost of this
-    table's declared-transition enforcement, and half of it measured against
-    the other half is neither rule's number.
+    All three rules move together. What is being reported is the cost of this
+    table's declared-transition enforcement, and part of it measured against
+    the rest is no rule's number.
     """
-    for module, trigger in RULES:
-        migration = importlib.import_module(
-            f"apps.metering.usage.migrations.{module}")
+    for constant, trigger in RULES:
+        install, uninstall = _shipped_sql(constant)
         if state == "installed" and not _rule_is_installed(trigger):
-            _execute(migration.INSTALL)
+            _execute(install)
         elif state == "dropped" and _rule_is_installed(trigger):
-            _execute(migration.UNINSTALL)
+            _execute(uninstall)
         assert _rule_is_installed(trigger) == (state == "installed"), (
             f"{trigger} is not {state}")
     assert _rules_are_installed() == (state == "installed"), state

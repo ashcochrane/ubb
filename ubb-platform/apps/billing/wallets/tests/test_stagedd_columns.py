@@ -1,6 +1,7 @@
 import pytest
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.django_db
@@ -9,8 +10,8 @@ def test_columns_and_backfill_defaults():
     c = Customer.objects.create(tenant=t, external_id="c1")
     from apps.metering.usage.models import Posting
     from apps.billing.wallets.models import Wallet, WalletTransaction
-    e = Posting.objects.create(tenant=t, customer=c, idempotency_key="i",
-                                  billing_owner_id=c.id)
+    e = a_posting(tenant=t, customer=c, idempotency_key="i",
+                     billing_owner_id=c.id)
     assert e.billing_owner_id == c.id
     w = Wallet.objects.create(customer=c, balance_micros=0)
     tx = WalletTransaction.objects.create(wallet=w, transaction_type="top_up",

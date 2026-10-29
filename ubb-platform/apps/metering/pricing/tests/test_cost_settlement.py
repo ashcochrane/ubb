@@ -56,13 +56,14 @@ from core.vocabulary import (
     COSTING_STATUS_UNRESOLVED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 
 def _posting(**columns):
     tenant = Tenant.objects.create(name="T")
     customer = Customer.objects.create(tenant=tenant, external_id="c1")
     columns.setdefault("idempotency_key", "k")
-    return Posting.objects.create(tenant=tenant, customer=customer, **columns)
+    return usage_helpers.a_posting(tenant=tenant, customer=customer, **columns)
 
 
 def _unresolved():

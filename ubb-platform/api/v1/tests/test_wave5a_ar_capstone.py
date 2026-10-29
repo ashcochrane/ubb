@@ -316,9 +316,10 @@ class TestSubscriptionPaymentFailed(TestCase):
     refreshes hosted_invoice_url + invoice_pdf on the SubscriptionInvoice row,
     with full parity to the usage-invoice path.
 
-    SubscriptionInvoice.payment_failed_at was added in migration 0008 to close
-    the gap that caused the connector to raise ValueError on every subscription
-    payment-failed event (retrying forever in production).
+    SubscriptionInvoice.payment_failed_at was added (by `subscriptions/0008`,
+    before the cutover squash, #190) to close the gap that caused the
+    connector to raise ValueError on every subscription payment-failed event
+    (retrying forever in production).
     """
 
     ACCT = "acct_pf_sub"

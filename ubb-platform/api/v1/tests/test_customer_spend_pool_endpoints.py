@@ -9,6 +9,7 @@ from django.test import TestCase, Client
 from api.v1.tests._helpers import retired_aliases
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
+from apps.metering.usage.tests._helpers import a_posting
 
 
 def retired_audit_actions():
@@ -59,7 +60,7 @@ class CustomerSpendPoolEndpointsTest(TestCase):
         than sums."""
         from apps.metering.usage.models import Posting
         from core.vocabulary import PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN
-        return Posting.objects.create(
+        return a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key=f"p{n}",
             provider_cost_micros=0, billed_cost_micros=billed,
             pricing_status=PRICING_STATUS_KNOWN if billed is not None else PRICING_STATUS_UNKNOWN)

@@ -53,8 +53,7 @@ import re
 from datetime import timedelta
 from pathlib import Path
 
-from django.db import IntegrityError, connection, migrations, models, transaction
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, connection, models, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -64,7 +63,7 @@ from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
     a_usage_event_subject, cost_rate_in_default_book, database_rules_guarding,
-    rate_in_default_book, the_pricing_tables_as_this_migration_saw_them)
+    rate_in_default_book)
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -76,9 +75,11 @@ VALID_TO = "valid_to"
 
 TABLE = Rate._meta.db_table
 
-#: The rule this module is about, by the name `0018` gave it. Spelled since
-#: #326, which installed a SECOND trigger on this table — one holding what may
-#: happen to a rate's two moments, the other what may be born at all — so
+#: The rule this module is about, by the name `pricing/0018` gave it (the
+#: pricing rules migration carries it under that name since the cutover,
+#: #190). Spelled since #326, which installed a SECOND trigger on this table —
+#: one holding what may happen to a rate's two moments, the other what may be
+#: born at all — so
 #: "the trigger on this table" stopped being a description of anything.
 TRANSITION_TRIGGER = "trg_rate_declared_transitions"
 #: The other one, named here only so the count below says which two it found.
@@ -153,7 +154,8 @@ def _refusal_body():
 
 
 def _transition_trigger():
-    """The row `0018` installed, addressed BY NAME.
+    """The rule's row in the catalogue (`pricing/0018`'s rule, carried into the
+    pricing rules migration at the cutover, #190), addressed BY NAME.
 
     It was `_trigger_rows()[0]` while this table had one trigger. #326 installed
     a second — a `BEFORE INSERT` rule refusing a rate that references no
@@ -489,10 +491,11 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
 
     A migration that ran is evidence that a file executed, not that a rule is
     installed. What matters is what `pg_trigger` holds now, on the table the
-    model actually uses.
+    model actually uses. The rule's REVERSE — which this class drove through
+    `pricing/0018`'s own DDL until the squash deleted it (#190) — is proven
+    centrally, with every other rule's
+    (`apps/platform/tests/test_the_database_rules_are_carried.py`).
     """
-
-    MIGRATION = "0018_a_rate_takes_effect_from_the_moment_the_tenant_chooses"
 
     def test_exactly_these_two_rules_guard_this_table(self):
         """This asserted ONE trigger until #326 installed the second.
@@ -521,56 +524,6 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         self.assertTrue(tgtype & (1 << 4), "does not fire on UPDATE")
         self.assertFalse(tgtype & (1 << 2), "fires on INSERT")
         self.assertFalse(tgtype & (1 << 3), "fires on DELETE")
-
-    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
-        """Forward and back, against a real database, with a real refusal.
-
-        `docs/conventions/django-patterns.md` asks for a reverse *"that a test
-        actually runs"*, and this migration is the shape the rule is about: a
-        `RunPython` whose two halves are DDL strings, where a typo in the
-        reverse is invisible until the day somebody needs it and no other test
-        will ever execute that branch.
-
-        Asserted by BEHAVIOUR at both ends rather than by counting catalogue
-        rows: with the rule reversed out, a write it refuses is admitted; with
-        it re-applied, the same write is refused again. Postgres runs DDL inside
-        the transaction this `TestCase` rolls back, so all of it leaves with the
-        test and no other test sees this table without its rule.
-        """
-        migration = MigrationLoader(connection).get_migration(
-            "pricing", self.MIGRATION)
-        run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython))
-        rate = cost_rate_in_default_book(_tenant())
-        moved = timezone.now() - timedelta(days=5)
-
-        # ⚠ BOTH HALVES SPELL THE TABLE, AND THE TABLE WAS RENAMED IN #367. A
-        # migration's DDL is history and must not be edited to follow a later
-        # rename, so what the replay reconstructs is the NAME — the same repair
-        # this suite already makes to the columns and rules that arrived after
-        # the migration being replayed. Held only around the two DDL calls: the
-        # writes between them go through the live model.
-        with the_pricing_tables_as_this_migration_saw_them(migration):
-            with connection.schema_editor() as editor:
-                run_python.reverse_code(None, editor)
-        # This rule gone, and only this one: the table carries a second trigger
-        # since #326, and asserting an empty catalogue would have meant
-        # asserting that reversing one migration removed another's rule.
-        self.assertNotIn(TRANSITION_TRIGGER,
-                         {name for name, _, _ in _trigger_rows()})
-        _through_the_queryset(rate, **{VALID_FROM: moved})
-        rate.refresh_from_db()
-        self.assertEqual(getattr(rate, VALID_FROM), moved)
-
-        with the_pricing_tables_as_this_migration_saw_them(migration):
-            with connection.schema_editor() as editor:
-                run_python.code(None, editor)
-        self.assertIn(TRANSITION_TRIGGER,
-                      {name for name, _, _ in _trigger_rows()})
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                _through_the_queryset(
-                    rate, **{VALID_FROM: moved - timedelta(days=1)})
 
     def test_a_column_the_rule_says_nothing_about_still_writes(self):
         """The rule guards two columns, not the table.

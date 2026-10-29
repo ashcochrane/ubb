@@ -27,6 +27,8 @@ from apps.metering import queries
 from core.report_windows import ReportWindow
 from core.time_windows import utc_day_start
 from core.vocabulary import ANALYTICS_MEASURE_SUPPLIER_COGS
+from apps.metering.pricing.tests._helpers import a_receipt_agreeing_with
+from apps.metering.usage.tests._helpers import a_posting
 
 
 def _utc(y, mo, d, h=0, mi=0, s=0, us=0):
@@ -40,7 +42,9 @@ def _pin(event, effective_at):
 
 
 def _seed(tenant, customer, n, effective_at, billed=1_000_000, provider_cost=600_000, **extra):
-    ev = Posting.objects.create(
+    # Through `a_posting`, which writes the version-2 receipt these amounts
+    # state: the receipt column has no default since the cutover (#190).
+    ev = a_posting(
         tenant=tenant, customer=customer,
         idempotency_key=f"idem_f21_{n}",
         billed_cost_micros=billed, provider_cost_micros=provider_cost, **extra)
@@ -210,14 +214,18 @@ class PlannerIndexProofTest(TestCase):
         other_customer = Customer.objects.create(tenant=self.other, external_id="c_f21_pl_x")
         # Enough rows that the composite indexes win on cost by a decisive
         # multiple (single-column paths must fetch 6-8x the tuples), not a
-        # coin-flip that cross-suite heap/index bloat could tip.
+        # coin-flip that cross-suite heap/index bloat could tip. Each row
+        # carries the version-2 receipt its amounts state (#190: the column has
+        # no default), built once through the construction boundary.
+        receipt = a_receipt_agreeing_with(provider_cost_micros=0,
+                                          billed_cost_micros=1_000)
         rows = [Posting(tenant=self.tenant, customer=self.customers[i % 8],
-                           idempotency_key=f"idem_pl_{i}",
-                           billed_cost_micros=1_000)
+                        idempotency_key=f"idem_pl_{i}",
+                        billed_cost_micros=1_000, pricing_receipt=receipt)
                 for i in range(1000)]
         rows += [Posting(tenant=self.other, customer=other_customer,
-                            idempotency_key=f"idem_plo_{i}",
-                            billed_cost_micros=1_000)
+                         idempotency_key=f"idem_plo_{i}",
+                         billed_cost_micros=1_000, pricing_receipt=receipt)
                  for i in range(1000)]
         Posting.objects.bulk_create(rows, batch_size=500)
         with connection.cursor() as cur:
@@ -265,14 +273,14 @@ class PlannerIndexProofTest(TestCase):
             tenant_id=self.tenant.id,
             effective_at__gte=utc_day_start(date(2026, 6, 1)),
             effective_at__lt=utc_day_start(date(2026, 6, 4)))
-        self._assert_range_served_by(qs, "idx_usage_tenant_effective")
+        self._assert_range_served_by(qs, "idx_posting_tenant_effective")
 
     def test_customer_cost_totals_window_served_by_customer_effective_index(self):
         qs = Posting.objects.filter(
             tenant_id=self.tenant.id, customer_id=self.customers[0].id,
             effective_at__gte=utc_day_start(date(2026, 6, 1)),
             effective_at__lt=utc_day_start(date(2026, 6, 4)))
-        self._assert_range_served_by(qs, "idx_usage_customer_effective")
+        self._assert_range_served_by(qs, "idx_posting_customer_effective")
 
     def test_billable_created_window_served_by_tenant_created_index(self):
         """F4.2: the created-basis iter_billable_postings query shape
@@ -283,7 +291,7 @@ class PlannerIndexProofTest(TestCase):
             tenant_id=self.tenant.id, billed_cost_micros__gt=0,
             created_at__gte=utc_day_start(date(2026, 6, 1)),
             created_at__lt=utc_day_start(date(2026, 6, 4)))
-        self._assert_range_served_by(qs, "idx_usage_tenant_created",
+        self._assert_range_served_by(qs, "idx_posting_tenant_created",
                                      field="created_at")
 
 
@@ -294,16 +302,16 @@ class PlannerIndexProofTest(TestCase):
 class OpenBagGinSchemaTest(TestCase):
     """Assert the schema has exactly the right GIN index on the open bag.
 
-    0022 swapped the retiring bag's index to the default opclass; #273
-    folded that bag into the survivor and the index moved with the
-    filtering, this time declared on the model rather than as raw SQL.
+    The index is declared on the model (`idx_posting_metadata`, default
+    opclass) and created by the usage app's schema migration, so what is
+    asserted here is the schema state the test database was built with.
 
-    CONCURRENTLY DDL cannot run inside a transaction, so we do not run the
-    migration functions here.  Instead we assert the schema state produced by
-    the migration that was already applied to the test DB (Django rebuilds the
-    test DB from scratch on every run, so the migration functions execute once
-    per test run in the normal migrate path — without the TestCase transaction
-    wrapper because atomic=False).
+    Before the cutover (#190) the history behind it was migrations: usage/0022
+    swapped the retiring bag's raw-SQL `jsonb_path_ops` index to the default
+    opclass, and #273 folded that bag into the survivor, the index moving with
+    the filtering. A case here asserted the swapped-out index had been dropped;
+    it retired with the chain, because no migration in the fresh set creates
+    or drops it.
     """
 
     def setUp(self):
@@ -325,19 +333,6 @@ class OpenBagGinSchemaTest(TestCase):
         self.assertNotIn("jsonb_path_ops", row[1],
                          f"Expected jsonb_ops (no qualifier) but got: {row[1]}")
         self.assertIn("gin", row[1].lower(), row[1])
-
-    def test_old_jsonb_path_ops_index_absent(self):
-        """idx_usage_event_tags (jsonb_path_ops) must have been dropped."""
-        with connection.cursor() as cur:
-            cur.execute("""
-                SELECT indexname
-                FROM pg_indexes
-                WHERE tablename = 'ubb_posting'
-                  AND indexname = 'idx_usage_event_tags';
-            """)
-            row = cur.fetchone()
-        self.assertIsNone(row,
-                          "Old idx_usage_event_tags (jsonb_path_ops) still present — swap failed")
 
     def test_exactly_one_gin_index_on_the_open_bag(self):
         """Only one GIN index on the open bag may exist."""
@@ -382,15 +377,18 @@ class OpenBagGinPlannerProofTest(TestCase):
             tenant=self.tenant, external_id="c_f22_gin")
 
         # Haystack: 1000 rows with a common key so the rare needle is selective.
+        receipt = a_receipt_agreeing_with(provider_cost_micros=0,
+                                          billed_cost_micros=500)
         haystack = [Posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key=f"idem_f22_h{i}",
-            billed_cost_micros=500, metadata={"env": "prod", "team": "common"})
+            billed_cost_micros=500, metadata={"env": "prod", "team": "common"},
+            pricing_receipt=receipt)
             for i in range(1000)]
         Posting.objects.bulk_create(haystack, batch_size=500)
 
         # Needle: 1 row with a rare unique value, plus a common key for @>.
-        self.needle = Posting.objects.create(
+        self.needle = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="idem_f22_needle",
             billed_cost_micros=1_000,

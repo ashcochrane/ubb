@@ -9,16 +9,16 @@ here is what a route cannot reach or cannot see:
   on three models decide what a publication pins, and three shapes in
   ``publication.py`` are what a reader is handed. Nothing but this module makes
   the second set follow the first.
-* **Declarations published before copies were kept.** No route can produce one
-  any more, so the rows are written directly — the one place in this ticket
-  that is right, because the subject is the migration and not the lifecycle.
 * **The order the lifecycle takes its lock in**, which is the whole of why a
   copy cannot be composed from parts that are about to change under it.
-"""
-from importlib import import_module
 
+(Before the cutover, #190, this module also drove the two backfills that gave a
+declaration published before copies were kept its copy — `event_types/0007` —
+and gave a kept copy its supplier — `event_types/0012`. A fresh database holds
+no declaration published before either, so every copy is the one `publish`
+composes, which the cases below read.)
+"""
 import pytest
-from django.apps import apps as live_apps
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
@@ -45,13 +45,6 @@ from core.vocabulary import (
 from ._helpers import declares_an_event_type
 
 KEY = "acme.embed"
-
-keep_what_is_published_now = import_module(
-    "apps.platform.event_types.migrations."
-    "0007_the_last_published_declaration_is_kept").keep_what_is_published_now
-THE_SUPPLIER_MIGRATION = import_module(
-    "apps.platform.event_types.migrations."
-    "0012_a_publication_keeps_its_supplier")
 
 
 def _declared(tenant=None, key=KEY):
@@ -179,42 +172,18 @@ def test_a_supplier_renamed_revises_every_declaration_naming_it():
     assert _read(revised).provider_key == "openai-eu"
 
 
-def _as_before_the_supplier_was_kept(event_type):
-    """The copy as a tree that did not pin the supplier left it."""
-    kept = dict(EventType.objects.get(pk=event_type.pk).published_declaration)
-    kept.pop(PROVIDER_KEY)
-    EventType.objects.filter(pk=event_type.pk).update(
-        published_declaration=kept)
-
-
 @pytest.mark.django_db
-def test_a_copy_kept_before_the_supplier_was_pinned_is_given_the_one_read():
-    """`0012` writes in the supplier recording was reading live the instant
-    before — so nothing an integration sends is answered differently across
-    the migration — and `""` where the Event Type names none."""
-    supplied = _supplied(_published())
+def test_a_declaration_naming_no_supplier_is_kept_naming_none():
+    """`""`, the one spelling of *no supplier* the copy keeps — never a
+    missing key, which the read would answer `None` for. Before the cutover
+    (#190) this was the form `event_types/0012` wrote into every copy kept
+    before the supplier was pinned, held beside that backfill."""
     unsupplied = _published(key="acme.internal")
-    for event_type in (supplied, unsupplied):
-        _as_before_the_supplier_was_kept(event_type)
-    assert _read(supplied).provider_key is None
 
-    THE_SUPPLIER_MIGRATION.keep_the_supplier(live_apps, None)
-
-    assert _read(supplied).provider_key == "openai"
+    assert unsupplied.provider_id is None
+    assert EventType.objects.get(
+        pk=unsupplied.pk).published_declaration[PROVIDER_KEY] == ""
     assert _read(unsupplied).provider_key == ""
-
-
-@pytest.mark.django_db
-def test_the_supplier_migration_leaves_a_kept_key_alone_and_reverses():
-    supplied = _supplied(_published())
-    Provider.objects.filter(pk=supplied.provider_id).update(key="renamed")
-
-    THE_SUPPLIER_MIGRATION.keep_the_supplier(live_apps, None)
-    assert _read(supplied).provider_key == "openai"
-
-    THE_SUPPLIER_MIGRATION.forget_the_supplier(live_apps, None)
-    assert PROVIDER_KEY not in EventType.objects.get(
-        pk=supplied.pk).published_declaration
 
 
 @pytest.mark.django_db
@@ -245,75 +214,6 @@ def test_the_read_is_one_query_and_never_visits_the_parts(
     statement = captured.captured_queries[0]["sql"]
     assert Measurement._meta.db_table not in statement
     assert ReportedCostMapping._meta.db_table not in statement
-
-
-# ---------------------------------------------------------------------------
-# Declarations published before copies were kept
-# ---------------------------------------------------------------------------
-
-def _as_before_copies_were_kept(event_type):
-    """The row as a tree without this column would have left it."""
-    EventType.objects.filter(pk=event_type.pk).update(
-        published_declaration=None)
-
-
-@pytest.mark.django_db
-def test_a_declaration_already_published_is_given_the_copy_it_would_have():
-    """Its rows still say what it pinned — nothing has revised it — and no
-    later act would fill the copy in: publishing it again moves nothing."""
-    published = _published()
-    kept = _read(published)
-    _as_before_copies_were_kept(published)
-    assert _read(published) is None
-
-    # In the order a migrate runs them: 0007 composes the copy as it knew a
-    # copy, and 0012 then gives it the supplier.
-    keep_what_is_published_now(live_apps, None)
-    THE_SUPPLIER_MIGRATION.keep_the_supplier(live_apps, None)
-
-    assert _read(published) == kept
-
-
-@pytest.mark.django_db
-def test_a_declaration_revised_before_copies_were_kept_is_not_given_one():
-    """What it published was overwritten in place and is gone. Composing a
-    copy from the draft would label an unpublished declaration as the
-    published one, so it reads as nothing published — and publishing it again
-    is what brings a copy back."""
-    revised = _published()
-    _recount(revised)
-    _as_before_copies_were_kept(revised)
-    revised = EventType.objects.get(pk=revised.pk)
-    assert revised.declaration_status == DECLARATION_STATUS_DRAFT
-    assert revised.published_revision == 1
-
-    keep_what_is_published_now(live_apps, None)
-
-    assert _read(revised) is None
-
-    revised.publish()
-    again = _read(revised)
-    assert again.published_revision == 2
-    assert [m.unit for m in again.measurements] == [UNIT_CALL]
-
-
-@pytest.mark.django_db
-def test_the_backfill_leaves_a_copy_already_kept_alone():
-    """Run twice, or run over a tree that has been publishing since: a copy
-    that is there was written by the publication and is not recomposed."""
-    revised = _published()
-    kept = _read(revised)
-    assert [m.unit for m in kept.measurements] == [UNIT_TOKEN]
-    _recount(revised)
-    # Published once more by a writer that goes round the model, so the row
-    # says `published` over parts the copy does not describe — the one state
-    # in which recomposing would visibly move it.
-    EventType.objects.filter(pk=revised.pk).update(
-        declaration_status=DECLARATION_STATUS_PUBLISHED)
-
-    keep_what_is_published_now(live_apps, None)
-
-    assert _read(revised) == kept
 
 
 # ---------------------------------------------------------------------------

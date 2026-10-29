@@ -154,7 +154,7 @@ class CustomerSubscriptionItem(BaseModel):
     plan = models.ForeignKey("plans.Plan", on_delete=models.SET_NULL, null=True, blank=True)
 
     class Meta:
-        db_table = "ubb_customer_sub_item"
+        db_table = "ubb_customer_subscription_item"
 
 
 # Import economics models so Django discovers them for migrations

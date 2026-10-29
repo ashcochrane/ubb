@@ -370,12 +370,12 @@ def test_the_audit_action_rename_is_carried_as_retired_data(registry):
                      "pricing_rule.deleted", "customer_pricing_override.set"}
     assert not never_written & set(actions.values)
     assert not never_written & retired
-    # The entry that was to open the production ledger stays declared until W6
-    # retires it (#190 ruling 6354381879), WITHHELD: no row may hold it, so the
-    # contract does not advertise it either.
-    assert "system.preproduction_model_cutover" in actions.values
-    assert actions.withheld_values == ("system.preproduction_model_cutover",)
-    assert "system.preproduction_model_cutover" not in actions.occurring_values
+    # The entry that was to open the production ledger is gone, with the
+    # exclusion that withheld it (#190 ruling 6354381879, ADR-0026): no opening
+    # row is ever written, so nothing declares the name and nothing withholds it.
+    assert "system.preproduction_model_cutover" not in actions.values
+    assert actions.withheld_values == ()
+    assert actions.occurring_values == actions.values
     # Deleted outright rather than renamed: the configured input the first pair
     # recorded is now a field of a pricing rule, and the setting the third
     # recorded is gone because posture derives.
@@ -1098,9 +1098,6 @@ def test_the_role_rank_is_the_registrys_order(registry):
 #: records the reachability proof, and the first writer un-withholds it in the
 #: same commit. Adding a line here is a reviewed act with its reason.
 WITHHELD = {
-    ("audit_action", "system.preproduction_model_cutover"):
-        "temporary and W6-owned: the opening row is never written (#190 "
-        "6354381879); W6 deletes the registration and this exclusion together",
     ("tenant_invoice_status", "void"):
         "no writer: Stripe's invoice.voided never reaches a platform-fee "
         "invoice, which lives on UBB's own account",

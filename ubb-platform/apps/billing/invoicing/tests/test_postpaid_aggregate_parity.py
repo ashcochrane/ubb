@@ -39,6 +39,7 @@ from apps.billing.invoicing.models import PostpaidUsageConfig, PostpaidResidualL
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 from apps.platform.grouping_fields.services import GroupingFieldService
 from core.time_windows import utc_day_start
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 PS2, PE2 = datetime.date(2026, 7, 1), datetime.date(2026, 8, 1)
@@ -100,7 +101,7 @@ def _grouped_by_a_declared_field(tenant, key="product", slot="grouping_field_1")
 
 def _ev(t, c, key, billed, **kw):
     kw.setdefault("effective_at", MID)
-    return Posting.objects.create(
+    return usage_helpers.a_posting(
         tenant=t, customer=c, idempotency_key=key,
         provider_cost_micros=1, billed_cost_micros=billed, **kw)
 

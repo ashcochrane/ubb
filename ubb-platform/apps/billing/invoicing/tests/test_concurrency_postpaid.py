@@ -12,10 +12,14 @@ holds under any push order or interleaving.
 Thread tests use TransactionTestCase (real Postgres row locking, committed
 setup data) with threading.Barrier(2) and per-thread connection.close(), the
 same harness pattern as apps/billing/tests/test_concurrency_races.py.
+
+Before the cutover (#190) this module also drove `invoicing/0006`'s data step,
+which seeded each customer's ledger from the residual of its latest pushed row
+when the ledger replaced the chain read; that step left with the squashed
+chain.
 """
 import contextlib
 import datetime
-import importlib
 import threading
 from unittest.mock import patch, MagicMock
 
@@ -28,6 +32,7 @@ from apps.platform.customers.models import Customer
 from apps.billing.invoicing.models import CustomerUsageInvoice, PostpaidResidualLedger
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 from apps.platform.tenants.tests._rails import RailActivated
+from apps.metering.usage.tests._helpers import a_posting
 
 SVC = "apps.billing.invoicing.services.postpaid_service.stripe"
 
@@ -329,12 +334,12 @@ class TestSkipPathsReserveNoCarry:
         from apps.metering.usage.models import Posting
         t = _charge_ready_tenant()
         c = _postpaid_customer(t)
-        Posting.objects.create(
+        a_posting(
             tenant=t, customer=c, billing_owner_id=c.id,
             idempotency_key="priced-at-zero", billed_cost_micros=0,
             provider_cost_micros=0,
             effective_at=datetime.datetime(2026, 6, 15,
-                                           tzinfo=datetime.timezone.utc))
+                              tzinfo=datetime.timezone.utc))
         with _stripe() as state, _agg(0, lines=[]):
             rec = PostpaidUsageService.push_customer_period(t, c, P_JUN, P_JUL)
         rec.refresh_from_db()
@@ -385,48 +390,6 @@ class TestSkipPathsReserveNoCarry:
         assert rec.customer_id == biz.id and rec.status == "pushed"
         assert rec.carry_in_micros == 0
         assert PostpaidResidualLedger.objects.filter(customer=biz).exists()
-
-
-@pytest.mark.usefixtures("rail_activated")
-@pytest.mark.django_db
-class TestMigrationBackfill:
-    """0006 seeds each customer's ledger with the residual of their LATEST
-    pushed row — exactly what the old chain read would have returned next."""
-
-    def _seed(self):
-        from django.apps import apps as django_apps
-        mig = importlib.import_module(
-            "apps.billing.invoicing.migrations.0006_residual_ledger")
-        mig.seed_residual_ledgers(django_apps, None)
-
-    def test_pushed_rows_seed_latest_residual_others_get_no_ledger(self):
-        t = _charge_ready_tenant()
-        pushed = _postpaid_customer(t, external_id="c_pushed")
-        unpushed = _postpaid_customer(t, external_id="c_unpushed", stripe_customer_id="cus_2")
-        CustomerUsageInvoice.objects.create(
-            tenant=t, customer=pushed, period_start=P_JUN, period_end=P_JUL,
-            status="pushed", residual_micros=1_111)
-        CustomerUsageInvoice.objects.create(
-            tenant=t, customer=pushed, period_start=P_JUL, period_end=P_AUG,
-            status="pushed", residual_micros=2_222)  # the LATEST pushed row
-        CustomerUsageInvoice.objects.create(
-            tenant=t, customer=unpushed, period_start=P_JUN, period_end=P_JUL,
-            status="pending")
-        CustomerUsageInvoice.objects.create(
-            tenant=t, customer=unpushed, period_start=P_JUL, period_end=P_AUG,
-            status="skipped", skip_reason="no_usage")
-
-        self._seed()
-        ledger = PostpaidResidualLedger.objects.get(customer=pushed)
-        assert ledger.balance_micros == 2_222  # latest, not first/sum
-        assert ledger.tenant_id == t.id
-        assert not PostpaidResidualLedger.objects.filter(customer=unpushed).exists()
-
-        # Idempotent re-run: an existing ledger is never clobbered or duplicated.
-        PostpaidResidualLedger.objects.filter(customer=pushed).update(balance_micros=5_555)
-        self._seed()
-        assert PostpaidResidualLedger.objects.filter(customer=pushed).count() == 1
-        assert PostpaidResidualLedger.objects.get(customer=pushed).balance_micros == 5_555
 
 
 class ConcurrentUnseededLedgerCreation(RailActivated, TransactionTestCase):

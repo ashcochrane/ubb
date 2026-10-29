@@ -1,38 +1,39 @@
 """Shared setup for the events app's tests (`docs/conventions/testing.md`).
 
-Two doors the webhook-rename modules share rather than copy:
+- :func:`retired_event_names` — every webhook event name the vocabulary
+  registry retires, read off the registry itself
+  (`domain-vocabulary/concepts/webhooks.yaml`, `webhook_event_type`'s
+  `retired_aliases`). A test that needs a retired name — to prove it is not
+  published, or that a subscription naming one is refused — reads it here
+  rather than spelling it, which no living file may do; the registry is the
+  one copy the forbidden-term sweep reads too.
 
-- :func:`stub_webhook_client` — the patched `httpx.Client` answering 200 to
-  any POST, so a case can drive the real fan-out (`deliver_webhook`) and
-  assert on the delivery attempts it records.
-- :func:`as_it_was_spelled` — the name a row carried for one of today's event
-  constants BEFORE `events/0009` moved the five control events under their
-  families (#464). A frozen migration keeps the spelling it ran with, so a
-  test planting a row for one — or holding its map to the constants — reads
-  the old spelling off `0009`'s own reverse rather than spelling a retired
-  word, which no living file may do. The billing suite carries its own copy
-  of this three-line reader: a product test importing a kernel TEST helper
-  is the boundary `gating/tests/test_patrol_pins.py` names.
+Before the cutover (#190) this module read the old spellings off
+`events/0009`'s own reverse map, and carried the patched-client door the
+rename modules shared; both left with the migrations they served.
 """
-import importlib
-from unittest.mock import MagicMock
+from pathlib import Path
 
-THE_CATALOGUE_RENAME = importlib.import_module(
-    "apps.platform.events.migrations."
-    "0009_five_control_events_move_under_their_families")
-
-
-def as_it_was_spelled(current):
-    """The pre-`0009` spelling of today's event constant ``current`` — the
-    constant itself where `0009` renamed nothing to it."""
-    return THE_CATALOGUE_RENAME.REVERSE.get(current, current)
+#: The registry file declaring the webhook event names. Five parents up:
+#: tests -> events -> platform -> apps -> ubb-platform -> the root.
+WEBHOOK_REGISTRY = (Path(__file__).resolve().parents[5]
+                    / "domain-vocabulary" / "concepts" / "webhooks.yaml")
 
 
-def stub_webhook_client(mock_client_class):
-    """Wire the patched `httpx.Client` to answer 200 to any POST."""
-    client = MagicMock()
-    client.__enter__ = MagicMock(return_value=client)
-    client.__exit__ = MagicMock(return_value=False)
-    client.post.return_value = MagicMock(status_code=200, text="OK")
-    mock_client_class.return_value = client
-    return client
+def retired_event_names():
+    """`webhook_event_type`'s retired aliases, in the registry's order.
+
+    Line-walked rather than parsed: the platform's lock carries no YAML
+    parser. Comment lines between the entries are skipped; the walk ends at
+    the concept's next key.
+    """
+    lines = WEBHOOK_REGISTRY.read_text(encoding="utf-8").splitlines()
+    at = lines.index("  retired_aliases:", lines.index("webhook_event_type:")) + 1
+    names = []
+    while at < len(lines) and lines[at].startswith("    "):
+        entry = lines[at].strip()
+        if entry.startswith("- "):
+            names.append(entry.removeprefix("- ").strip())
+        at += 1
+    assert names, f"no retired alias was read from {WEBHOOK_REGISTRY}"
+    return tuple(names)

@@ -303,10 +303,10 @@ A_PRICE_A_CALLER_MAY_NOT_STATE = "billed_cost_micros"
 # It is therefore a TOMBSTONE, with the cost tombstones have: it is a list of
 # one spelling, and it only answers for the name it holds. That is the trade
 # taken deliberately — the alternative was not "a stronger rule" but "a
-# different rule about other people's fields". It is also temporary: it exists
-# so this deletion is loud while the re-model is in flight, and the cutover
-# (slice 8) is where a key nothing has sent for eight slices stops needing a
-# headstone.
+# different rule about other people's fields". It was written as temporary,
+# for the cutover to remove; the cutover kept it (#190): the owner's review of
+# #619 ruled that a retired request field is refused by name and never
+# silently dropped, and the cutover moves no product behaviour.
 class RecordUsageRequest(Schema):
     customer_id: UUID
     idempotency_key: str = Field(min_length=1, max_length=500)
@@ -586,10 +586,11 @@ PricingMethod = Annotated[
 #: field is what lets the contract carry the agreed set. The rule for WHERE it
 #: sits is therefore the mechanical one: wherever the receipt goes.
 #:
-#: NULLABLE, AND NULL MEANS THE RECORD DOES NOT SAY. A receipt written before
-#: the subject was typed carries no subject at all, and those receipts are read
-#: and never rewritten (#148 §4.6) — so the honest answer for one of them is
-#: that this record does not say, not a value invented by whoever read it. The
+#: NULLABLE, AND NULL MEANS THE RECORD DOES NOT SAY. Before the cutover (#190)
+#: a receipt written before the subject was typed carried no subject at all,
+#: and such receipts were read and never rewritten (#148 §4.6) — so the honest
+#: answer for one of them was that the record does not say, not a value
+#: invented by whoever read it. (The cutover's fresh database holds none.) The
 #: marker therefore lands in the STRING MEMBER of `Optional[...]`, never on the
 #: union node, because `enum` and `anyOf` at one node are read conjunctively.
 #:
@@ -816,11 +817,11 @@ STOP_MEASURED_ON_AN_ACKNOWLEDGEMENT = (
 # needs a typed node). This is that node.
 #
 # **VERSION 2 ONLY (§0.3 ruling 3).** Writers write 2 and nothing else
-# (`receipts.RECEIPT_SCHEMA_VERSION`); the readers that still take 0 and 1 are
-# internal, for development databases older than 2, which are not product
-# history and are reset at the cutover rather than accommodated here. A v0 or
-# v1 record does not validate against this type, and no legacy branch is
-# published beside it.
+# (`receipts.RECEIPT_SCHEMA_VERSION`). Versions 0 and 1 existed only on
+# development databases, which are not product history: the cutover (#190)
+# reset them rather than accommodating them here, and removed the internal
+# readers that took them. A v0 or v1 record does not validate against this
+# type, and no legacy branch is published beside it.
 #
 # **THE `detail` AND `provenance` CONTAINERS STAY OPEN, BY ADR-0020's ADDITIVE
 # RULE AND ONLY BY IT.** A key arriving inside one moves no receipt version
@@ -1475,7 +1476,7 @@ class CreateTopUpRequest(Schema):
     success_url: str = Field(min_length=1)
     cancel_url: str = Field(min_length=1)
     # #78: top-up creation moves money — replay must never mint a second
-    # attempt (backed by uq_topup_attempt_idempotency).
+    # attempt (backed by uq_top_up_attempt_idempotency).
     idempotency_key: str = Field(min_length=1, max_length=400)
 
     @field_validator("amount_micros")
@@ -4331,15 +4332,10 @@ class TaskTypeIn(Schema):
     #: deadline and a disabled one are two readings and only one is a window.
     absolute_deadline_seconds: Optional[int] = Field(default=None, gt=0)
     #: WHICH DECLARED GROUPING FIELDS A START OF THIS KIND MUST CARRY, by the
-    #: tenant's own declared key. The column behind it is still spelled the way
-    #: #277 left it; the wire takes the registry's word here and moving the
-    #: column is a migration the cutover owns.
-    #:
-    #: THE TWO SPELLINGS MEET IN THREE PLACES AND NOWHERE ELSE — both row
-    #: serialisers in `apps/platform/work/queries.py`, and the write path in
-    #: `api/v1/task_type_endpoints.py`. Each says so where it stands, because
-    #: a bridge a reader has to discover from a `.values()` list is a bridge
-    #: they will cross without noticing.
+    #: tenant's own declared key. The wire takes the registry's word, and since
+    #: the cutover (#190) moved the column off the spelling #277 left, the
+    #: column behind it (`TaskType.required_grouping_fields`) carries the same
+    #: name — one spelling, and no bridge between two.
     required_grouping_fields: list[str] = Field(default_factory=list,
                                                 max_length=6)
     #: THREE ANSWERS, NOT TWO, WHICH IS WHY IT IS NULLABLE WITH NO DEFAULT.

@@ -17,7 +17,7 @@ from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
-# The retired bag's name, read off the migration that drops it rather than
+# The retired bag's name, read off the registry that retired it rather than
 # spelled here — see that module's own note for why. Importing it keeps the
 # derivation in one place instead of two.
 from apps.metering.usage.tests.test_the_second_open_bag_folds import (

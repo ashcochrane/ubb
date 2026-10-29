@@ -73,8 +73,7 @@ import copy
 import re
 
 from django.apps import apps
-from django.db import IntegrityError, connection, migrations, transaction
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
 from apps.metering.pricing.receipts import (
@@ -122,22 +121,6 @@ TABLE = Posting._meta.db_table
 #: three, and `pg_trigger` promises no order at all.
 TRIGGER = "trg_posting_receipt_sealing"
 FUNCTION = "ubb_posting_receipt_sealing"
-
-#: WHICH MIGRATION DEFINES THIS RULE TODAY, which is not the one that first
-#: installed it. `0040` installed it; `0042` took the rule off the table,
-#: renamed the column it is about, and put the rule back naming the new column
-#: — because Postgres stores a `plpgsql` body as text and a column rename does
-#: not reach inside one. So `0040`'s DDL now names a column that does not
-#: exist, and a reverse driven through it would fail against today's table
-#: while proving nothing about the rule that is actually installed. The claim
-#: is unchanged and it moves to the migration that carries it.
-MIGRATION = "0042_the_receipt_takes_the_ratified_name_of_what_it_holds"
-
-#: The operation inside it whose forward direction is the live rule. That
-#: migration runs THREE — take the rule off, rename the column, put it back —
-#: so `next(... isinstance(op, RunPython))` would find the first, whose
-#: forward direction is the removal. Addressed by the function's own name.
-INSTALLING_OPERATION = "install"
 
 SUBJECT = ReceiptSubject(
     subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
@@ -644,36 +627,30 @@ class AReceiptWithNothingToCompleteIsFrozenWholeTest(TransitionRefusalMixin,
                                                      TestCase):
     """A record the rule cannot read as having an unresolved field.
 
-    Neither of these is a gap. A record with no section to complete has no move
-    this rule admits, so it has none at all — which is the first property
-    applied to a record that never had the second.
+    Not a gap. A record with no section to complete has no move this rule
+    admits, so it has none at all — which is the first property applied to a
+    record that never had the second.
+
+    Before the cutover (#190) a second case here seeded a receipt in the
+    unversioned legacy shape and found it read, never rewritten. That shape is
+    gone (ruling 8: one receipt shape, version 2), and the case retired with it;
+    the branch it reached — no section to complete — is the one the case below
+    still drives.
     """
 
     REFUSAL_NAMES = RECEIPT
 
-    def test_the_empty_default_cannot_be_filled_in_afterwards(self):
-        """A posting recorded without a receipt does not acquire one by update.
+    def test_an_empty_record_cannot_be_filled_in_afterwards(self):
+        """A posting stored without a receipt does not acquire one by update.
 
-        The recording path writes the receipt at insert, in the same statement
-        as the posting. A column that could be filled in later would be a
-        second construction boundary with no validation on it.
+        The column has no default since the cutover and `{}` is not a receipt,
+        so no writer produces this row — but the table admits it, and the
+        recording path writes the receipt at insert, in the same statement as
+        the posting. A column that could be filled in later would be a second
+        construction boundary with no validation on it.
         """
         self._refused_by_the_trigger(
             _holding(dict), RESOLVE_ONCE, **{RECEIPT: _sealed()})
-
-    def test_a_receipt_in_the_older_shape_is_read_never_rewritten(self):
-        """The record module's own ruling, held at the table.
-
-        A receipt records what the engine did on a day. Back-dating one into
-        today's shape would make it a worse record rather than a better one, and
-        what eventually removes these is the cutover squash rather than a rule
-        here quietly reshaping them.
-        """
-        self._refused_by_the_trigger(
-            _holding(lambda: {"engine_version": ENGINE,
-                              "cost_source": "caller",
-                              "provider_cost_micros": 4_000}),
-            RESOLVE_ONCE, **{RECEIPT: _sealed()})
 
 
 class ThisRuleGuardsItsOwnColumnAndNoOthersTest(TestCase):
@@ -722,7 +699,7 @@ class ThisRuleGuardsItsOwnColumnAndNoOthersTest(TestCase):
 
         This is the property a merged rule would have removed, and it is the
         reason the receipt's rule is a third trigger rather than a branch in the
-        second. It is asserted here rather than argued in the migration.
+        second. It is asserted here rather than argued beside the rule's SQL.
 
         Made under the price door's mark (#557): the statement is the door's,
         and the price pair's rule admits it nowhere else.
@@ -793,7 +770,8 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
     A migration that ran is not evidence that a rule is installed — it is
     evidence that a file executed.
 
-    **The mechanism is `0037`'s and `0039`'s, extended to a third rule.** A
+    **The mechanism is the two pair rules' (`trg_posting_declared_transitions`
+    and `trg_posting_price_transitions`), extended to a third rule.** A
     `CHECK` cannot see `OLD` at all, so it can say whether a receipt is
     well-formed and can never say whether the one it replaced was; a Postgres
     `RULE` rewrites the statement rather than judging it. What was refused is a
@@ -832,51 +810,11 @@ class TheRuleIsHeldByAThirdTriggerOnThisTableTest(TestCase):
         self.assertFalse(tgtype & (1 << 2), "fires on INSERT")
         self.assertFalse(tgtype & (1 << 3), "fires on DELETE")
 
-    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
-        """Forward and back, against a real database, with a real refusal.
-
-        `docs/conventions/django-patterns.md` asks for a reverse *"that a test
-        actually runs"*, and the reason is this migration's shape: a `RunPython`
-        whose two halves are DDL strings, where a typo in the reverse is
-        invisible until the day somebody needs it.
-
-        Asserted by BEHAVIOUR at both ends rather than by counting catalogue
-        rows, and **the two sibling rules are asserted still standing while this
-        one is out**, so a reverse that took a neighbour down with it fails here
-        rather than somewhere unrelated.
-
-        ⚠ The two ends drive the same *kind* of statement — correcting a settled
-        amount — at two different values. The same value twice would leave the
-        second write identical to what the row already held, and the trigger's
-        own `WHEN` clause fires on nothing at all in that case — so the
-        re-applied half would have passed against a table carrying no rule.
-        """
-        migration = MigrationLoader(connection).get_migration("usage", MIGRATION)
-        run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython)
-                          and op.code.__name__ == INSTALLING_OPERATION)
-        sealed = _posting(_sealed())
-
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        self.assertEqual(_triggers_on_the_table(),
-                         {"trg_posting_declared_transitions",
-                          "trg_posting_price_transitions",
-                          "trg_posting_kind_frozen"})
-        _through_the_queryset(sealed, **{RECEIPT: _priced_at(9_999)})
-        sealed.refresh_from_db()
-        self.assertEqual(getattr(sealed, RECEIPT)["totals"][PRICE], 9_999)
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        self.assertEqual(_triggers_on_the_table(),
-                         {"trg_posting_declared_transitions",
-                          "trg_posting_price_transitions", TRIGGER,
-                          "trg_posting_kind_frozen"})
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                _through_the_queryset(
-                    sealed, **{RECEIPT: _priced_at(1_000)})
+    # The rule's reverse — uninstalled, a settled amount is edited; reinstalled,
+    # the same kind of edit is refused again — was asserted here against
+    # usage/0042's installer until the cutover (#190). It is proven for all 21
+    # rules at once now, through `usage/0002_the_database_rules`, in
+    # `apps/platform/tests/test_the_database_rules_are_carried.py`.
 
     def test_the_rule_names_the_record_the_registry_and_the_shape_declare(self):
         """The tokens spelled outside their own sources, held to them.

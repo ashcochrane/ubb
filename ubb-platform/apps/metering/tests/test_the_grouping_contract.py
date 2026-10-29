@@ -47,6 +47,8 @@ from core.vocabulary import (
     ANALYTICS_ROLLUP_EVENT_CATEGORY, ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
     COSTING_METHOD_CALCULATED, SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN,
 )
+from apps.metering.usage.tests._helpers import a_posting
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 MEASUREMENT_ROLLUP = grouping_axis(ANALYTICS_GROUPING_KIND_ROLLUP,
                                    ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT)
@@ -301,7 +303,7 @@ class TheCostTheMeasurementAxisRefusesDoesNotExistToBeSpread(TestCase):
     def test_one_event_measured_two_ways_carries_one_cost_and_no_split(self):
         tenant = Tenant.objects.create(name="T", products=["metering"])
         customer = Customer.objects.create(tenant=tenant, external_id="c1")
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=tenant, customer=customer, idempotency_key="i1",
             event_type="chat.completion", provider_cost_micros=900_000)
         measurement = PostingMeasurement.objects.create(
@@ -341,7 +343,7 @@ class ChangingARollupReclassifiesHistoryAndMovesNoMoney(TestCase):
         cls.event_type = EventType.objects.create(
             tenant=cls.tenant, key="chat.completion",
             costing_method=COSTING_METHOD_CALCULATED, category=cls.before)
-        cls.posting = Posting.objects.create(
+        cls.posting = usage_helpers.a_posting(
             tenant=cls.tenant, customer=cls.customer, idempotency_key="i1",
             event_type="chat.completion", provider_cost_micros=400_000,
             billed_cost_micros=1_000_000,

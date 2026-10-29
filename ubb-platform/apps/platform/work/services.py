@@ -76,9 +76,9 @@ class ContainmentRegimeRefused(ValueError):
     express it — a `CHECK` is evaluated against one row and cannot see the
     parent — so it is stated once in the one service every writer passes
     through, and enforced at the database by the `BEFORE INSERT` trigger
-    `work/migrations/0022` installs. This class is what turns that refusal into
-    a sentence naming both regimes; without it the tenant would meet the
-    trigger's `IntegrityError` and be told nothing actionable.
+    `trg_task_containment_shares_the_pricing_regime`. This class is what turns
+    that refusal into a sentence naming both regimes; without it the tenant
+    would meet the trigger's `IntegrityError` and be told nothing actionable.
 
     A mixed tree produces a number nobody can explain. The rollup is
     unconditional, so a per-event step under an agreed-price parent adds
@@ -714,7 +714,8 @@ class TaskService:
         invariant compares TWO ROWS — so no column constraint can express it
         and it cannot be left to the caller. It is checked here, in the one
         service every writer of this table passes through, and enforced at the
-        database by `work/migrations/0022`'s `BEFORE INSERT` trigger. What this
+        database by the `BEFORE INSERT` trigger
+        `trg_task_containment_shares_the_pricing_regime`. What this
         adds over the trigger is the sentence: a caller meeting the trigger
         alone gets an `IntegrityError` and no idea which regime it contradicted.
         """

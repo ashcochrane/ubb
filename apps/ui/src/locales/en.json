@@ -79,7 +79,6 @@
   "audit_action.subscription.paused": "Subscription paused",
   "audit_action.subscription.resumed": "Subscription resumed",
   "audit_action.subscription.seats_changed": "Subscription seats changed",
-  "audit_action.system.preproduction_model_cutover": "Pre-production model cutover",
   "audit_action.task_type.declared": "Task Type declared",
   "audit_action.tenant.config_changed": "Tenant configuration changed",
   "audit_action.tenant_default_markup.declared": "Default markup declared",

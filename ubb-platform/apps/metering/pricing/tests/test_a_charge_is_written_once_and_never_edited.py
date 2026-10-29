@@ -31,7 +31,7 @@ this module names the rule it is about and asserts the table's rules as an exact
 SET — which is what makes a second rule arriving something a person reads rather
 than something an index silently starts pointing at (#352).
 """
-from importlib import import_module
+import re
 
 from django.db import IntegrityError, transaction
 from django.test import TestCase
@@ -53,24 +53,28 @@ from core.vocabulary import (
 
 TABLE = Charge._meta.db_table
 
-#: THE MIGRATION THAT INSTALLED THE RULE, IMPORTED FOR ITS COLUMN SET.
-#:
-#: Read off the migration rather than transcribed here, so that the declaration
-#: on the model and the rule on the table are compared against ONE list instead
-#: of against two copies of it that agree until somebody edits one. Deferred
-#: into a call for the reason `_helpers.retired_kind_column` gives about a
-#: migration import on a collection path: a squash deletes these files, and a
-#: module-level import would turn that into a collection error across this
-#: whole app rather than a failure in the two assertions that actually ask.
-_RULE_MIGRATION = "0031_a_delivered_piece_of_work_is_charged_once"
+#: The rule this module's refusals belong to, addressed BY NAME.
+TRANSITION_TRIGGER = "trg_charge_declared_transitions"
 
 
 def the_rules_column_set():
-    return set(import_module(
-        f"apps.metering.pricing.migrations.{_RULE_MIGRATION}").FROZEN_COLUMNS)
+    """THE COLUMNS THE INSTALLED RULE HOLDS, read off the catalogue.
 
-#: The rule this module's refusals belong to, addressed BY NAME.
-TRANSITION_TRIGGER = "trg_charge_declared_transitions"
+    The rule names its frozen columns in one `ARRAY[...]` literal, and this
+    reads that literal out of the function body `pg_proc` holds — so the
+    declaration on the model is compared with the rule ON THE TABLE rather
+    than with a list beside it that agrees until somebody edits one. Until the
+    cutover (#190) the list came off `pricing/0031`'s `FROZEN_COLUMNS`, which
+    the squash deleted; the installed body is the stronger source anyway, since
+    it is what refuses.
+
+    The one-element unpacks fail loudly if the rule ever names its columns in
+    a second literal, or if a second rule on this table answers to this name.
+    """
+    (body,) = [source for name, _, source in database_rules_guarding(TABLE)
+               if name == TRANSITION_TRIGGER]
+    (literal,) = re.findall(r"ARRAY\[([^\]]*)\]", body)
+    return set(re.findall(r"'([^']+)'", literal))
 
 #: What the rule's message says about the class, so every refusal below can
 #: assert the CLASS and the COLUMN together. Naming only one of the two is the
@@ -405,7 +409,8 @@ class TheDeclarationIsWhatTheDatabaseDefendsTest(ChargeTestBase):
 
     A rule with no declaration answers *what may happen to this?* nowhere; a
     declaration with no rule is the promise nothing keeps. The first is read off
-    the model, the second off `pg_catalog`.
+    the model, the second off `pg_catalog` — the rule's column set included,
+    out of its installed body (`the_rules_column_set`).
     """
 
     def test_every_economic_column_declares_frozen(self):
@@ -452,12 +457,13 @@ class TheDeclarationIsWhatTheDatabaseDefendsTest(ChargeTestBase):
         rolling back work already done, and a statement-level one cannot see the
         old row at all, which is the only thing this rule is about.
 
-        ⚠ AND THE `INSERT` BIT BEING OFF IS THE MIGRATION'S OWN COST ARGUMENT,
-        ASSERTED RATHER THAN CLAIMED. That file says this rule carries no `WHEN`
-        clause because nothing updates this table at all -- writing a charge is
-        an INSERT and so is correcting one -- so every write this table actually
-        takes must not enter the function. Without this case that is a sentence;
-        with it, it is a fact about the catalogue.
+        ⚠ AND THE `INSERT` BIT BEING OFF IS THE RULE'S OWN COST ARGUMENT,
+        ASSERTED RATHER THAN CLAIMED. The migration that first installed it
+        (`pricing/0031`, before the cutover, #190) said this rule carries no
+        `WHEN` clause because nothing updates this table at all -- writing a
+        charge is an INSERT and so is correcting one -- so every write this
+        table actually takes must not enter the function. Without this case
+        that is a sentence; with it, it is a fact about the catalogue.
         """
         (_, tgtype, _), = database_rules_guarding(TABLE)
         self.assertTrue(tgtype & (1 << 0), "not FOR EACH ROW")

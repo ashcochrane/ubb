@@ -6,11 +6,15 @@ row, its config read and write, the console and the SDK to the word, and pays
 the thirteen migration-ledger entries that recorded the debt. The posture the
 registry derives from it — `tenant_posture`, never stored (ADR-0006 §4) — is
 served read-only beside it so a caller need not reconstruct the mapping.
+
+Before the cutover (#190) this module also ran `tenants/0029` through the
+executor and back, moving every stored row from the retired spelling to
+`external`; that data step left with the squashed chain. The closed set it
+left the table holding — `ck_tenant_billing_mode_known` — is pinned below.
 """
 import json
 
 from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, TestCase
 
 from api.v1.tests._helpers import retired_aliases
@@ -106,37 +110,3 @@ class TheDatabaseHoldsTheClosedSetTest(TestCase):
                 self.tenant.refresh_from_db()
                 self.assertEqual(self.tenant.billing_mode,
                                  CUSTOMER_BILLING_MODE_EXTERNAL)
-
-
-class TheRenameMovesEveryStoredRowTest(TestCase):
-    """`tenants/0029` run for real, through the executor and back (the #562
-    module's precedent): the stored rows move to the final word, and back."""
-
-    BEFORE = ("tenants", "0028_a_tenant_holds_usd_only")
-    AFTER = ("tenants", "0029_a_tenant_that_bills_elsewhere_is_external")
-
-    def _migrate_to(self, target):
-        with connection.cursor() as cursor:
-            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-        MigrationExecutor(connection).migrate([target])
-
-    def tearDown(self):
-        self._migrate_to(self.AFTER)
-
-    def _mode(self, pk):
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT billing_mode FROM ubb_tenant WHERE id = %s", [str(pk)])
-            return cursor.fetchone()[0]
-
-    def test_a_stored_retired_mode_becomes_external_and_back(self):
-        tenant = Tenant.objects.create(name="Old", products=["metering"])
-        self._migrate_to(self.BEFORE)
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE ubb_tenant SET billing_mode = %s WHERE id = %s",
-                           [RETIRED, str(tenant.pk)])
-
-        self._migrate_to(self.AFTER)
-        self.assertEqual(self._mode(tenant.pk), CUSTOMER_BILLING_MODE_EXTERNAL)
-
-        self._migrate_to(self.BEFORE)
-        self.assertEqual(self._mode(tenant.pk), RETIRED)

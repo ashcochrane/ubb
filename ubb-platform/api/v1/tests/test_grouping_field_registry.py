@@ -133,7 +133,7 @@ class TestGroupingFieldRegistry:
 
     def test_slot_collision_on_a_new_key_is_422_not_500(self):
         """Important 4 (final-fixes wave): declaring a second key on a slot
-        already bound to a DIFFERENT key used to hit uq_dimension_def_slot's
+        already bound to a DIFFERENT key used to hit uq_grouping_field_slot's
         IntegrityError uncaught (500) — GroupingFieldService.declare only ever
         looked an existing def up by `key`, never by `slot`. An admin's
         copy-paste mistake (reusing one slot for a second axis) must be a 422

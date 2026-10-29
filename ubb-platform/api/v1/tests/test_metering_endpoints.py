@@ -14,6 +14,7 @@ from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup)
 # Read from here by other modules since before it moved to the shared helpers.
 from api.v1.tests._helpers import usage_payload  # noqa: F401
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 
 def declared_grouping_values(values):
@@ -192,7 +193,7 @@ class UsageEventDetailEndpointTest(TestCase):
         # response rather than widening it. What the older shape answers is
         # the reader's own question, held by its unit tests
         # (`apps/metering/pricing/tests/test_the_pricing_receipt_explains_an_amount.py`).
-        return Posting.objects.create(
+        return usage_helpers.a_posting(
             tenant=t, customer=c,
             idempotency_key=f"idem-{c.external_id}",
             provider_cost_micros=300_000, billed_cost_micros=450_000,
@@ -447,10 +448,11 @@ class UsageEventDetailEndpointTest(TestCase):
     # ⚠ THE OLDER SHAPE'S "NAMES NO METHOD RATHER THAN ONE" LEFT THIS CLASS IN
     # R10-W4, because ruling 3 made the public read version 2 only and an
     # older record no longer validates there. The question it asked — what
-    # the reader answers for a record that predates the sectioned shape — is
-    # the reader's, and `pricing_method_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is
-    # None` in `test_the_pricing_receipt_explains_an_amount.py` holds it
-    # until W6 removes the older readers at the cutover.
+    # the reader answers for a record that predates the sectioned shape — was
+    # the reader's, and the cutover (#190, ruling 8) answered it the other
+    # way: `pricing_method_of` now REFUSES such a record rather than reading
+    # it as naming no method, which `test_the_pricing_receipt_explains_an_
+    # amount.py`'s `TestOnlyTheOneShapeIsRead` holds at every reader.
 
 
 class MeteringTaskEndpointTest(TestCase):

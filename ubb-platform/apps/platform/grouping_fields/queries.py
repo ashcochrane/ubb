@@ -24,8 +24,8 @@ def keys_by_slot(tenant_id) -> dict:
     registry says which column to put it in. This answers the READ direction,
     which is what a response needs — the row carries a column and the reader
     needs the tenant's own word for it. Both are one query over at most ten rows
-    under `uq_dimension_def_slot`, and the two are inverses because that
-    constraint and `uq_dimension_def_key` together make the binding a bijection.
+    under `uq_grouping_field_slot`, and the two are inverses because that
+    constraint and `uq_grouping_field_key` together make the binding a bijection.
 
     Retired defs are included for the reason `slot_map` includes them: a posting
     recorded before its field was retired must still be able to say what its

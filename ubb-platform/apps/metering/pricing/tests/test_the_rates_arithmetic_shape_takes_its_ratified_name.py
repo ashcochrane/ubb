@@ -10,11 +10,12 @@ and #154 §3.3 locked it. So this is a forced rename, and it is the rename ADR-
 
 **THREE CLAIMS LIVE HERE AND THEY FAIL FOR DIFFERENT REASONS.**
 
-* **The move is a rename and it carries its data.** ADR-0007 §1: `RenameField`,
-  never `AddField` beside `RemoveField` — which would leave a column of the
-  right name holding nothing, and every "does the new name exist" assertion
-  green over the loss. The value conversion beside it is RUN here, forwards and
-  backwards over real rows, rather than asserted to exist.
+* **The column carries the ratified name and the registry's value set.** Until
+  the cutover (#190) this claim was also that the move was a rename carrying
+  its data — ADR-0007 §1's `RenameField`, never `AddField` beside
+  `RemoveField` — with the value conversion RUN forwards and backwards over
+  real rows. The squash deleted that migration and every row in the old
+  shape, so what is asserted now is the end state the rename produced.
 * **The compute path branches through the named shape.** Both branches, with the
   discriminator asserted beside the amount — because a fixed rule's per-unit
   term is usually zero, so the per-unit formula answers CORRECTLY for it by
@@ -33,25 +34,26 @@ would put "the ledger reaches zero" out of reach by construction. The decision
 is right and it has a price: **a ticket that greps for a retired token finds the
 column and never finds the branch.** It was found by reading `Rate.compute`.
 
-**NEITHER RETIRED SPELLING IS WRITTEN IN THIS MODULE.** Both are read off the
-rename migration — the column name off its `RenameField`, the value off the
-constant the conversion converts from. A test module is a living surface, and
-the ledger's counts are ceilings on SPREAD as much as floors, so spelling the
-column here would re-open an extent this same commit takes to zero. Deriving it
-costs one import and takes no seeding authorisation, which is #275's own
-technique in `test_the_rates_quantity_name_takes_the_canonical_name.py`.
+**THE RETIRED COLUMN NAME IS NOT WRITTEN IN THIS MODULE.** It was read off the
+rename migration's `RenameField` until the squash deleted it (#190); it is read
+off the registry that retired it now (`rate_structure`'s `retired_aliases` in
+`domain-vocabulary/concepts/economics.yaml`). A test module is a living
+surface, and the ledger's counts are ceilings on SPREAD as much as floors, so
+spelling the column here would re-open an extent that reached zero. Deriving
+it costs one import and takes no seeding authorisation, which is #275's own
+technique in `test_the_rates_quantity_name_takes_the_canonical_name.py`. The
+retired VALUE was read off the conversion for the conversion's own tests, and
+left with them.
 """
 
 import json
 from functools import cache
-from importlib import import_module
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db import connection, migrations as operations
-from django.db.migrations.loader import MigrationLoader
 from django.test import SimpleTestCase, TestCase
 
 from api.v1.openapi_export import GIT_ROOT
+from api.v1.tests._helpers import retired_aliases
 from apps.metering.pricing.models import Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
@@ -65,27 +67,13 @@ from core.vocabulary import (
     RATE_STRUCTURE_VALUES,
 )
 
-APP_LABEL = "pricing"
-RENAME_MIGRATION = "0026_the_rates_arithmetic_shape_takes_its_ratified_name"
+#: The canonical name — the model's own constant for its column, which the
+#: receipt's component key follows too.
+CANONICAL_COLUMN = Rate.STRUCTURE_COLUMN
 
-_MODULE = import_module(f"apps.metering.pricing.migrations.{RENAME_MIGRATION}")
-
-#: The two column names, both read off the rename itself.
-#:
-#: Unpacked from a one-element tuple on purpose: a migration that ever grew a
-#: second `RenameField` would make `next(...)` pick one silently, and every
-#: assertion below would then be about a column nobody meant.
-(_RENAME,) = tuple(op for op in _MODULE.Migration.operations
-                   if isinstance(op, operations.RenameField))
-RETIRED_COLUMN = _RENAME.old_name
-CANONICAL_COLUMN = _RENAME.new_name
-
-#: The retired VALUE, read off the conversion rather than typed. It costs the
-#: sweep nothing — a retired sense is not sweep input — but a literal here would
-#: be a second copy of the thing the migration is the authority on, and the day
-#: they disagreed this module would assert the conversion did something it did
-#: not do.
-RETIRED_VALUE = _MODULE.THE_RETIRED_SENSE
+#: The name it replaced, read off the registry: the concept retired exactly one
+#: spelling, and the one-element unpack fails loudly if it ever lists another.
+(RETIRED_COLUMN,) = retired_aliases("economics", CANONICAL_COLUMN)
 
 #: The published schemas the shape appears on — the reprice and the read. Named
 #: rather than discovered: a walk that found one would report success just as
@@ -110,50 +98,15 @@ def schemas():
     )["components"]["schemas"]
 
 
-class TheMoveIsARenameTest(TestCase):
-    """ADR-0007 §1, checked against the migration rather than the message."""
+class TheColumnTakesItsRatifiedNameTest(TestCase):
+    """ADR-0006 §3's worked example, asked of the model.
 
-    def setUp(self):
-        self.migration = MigrationLoader(connection).get_migration(
-            APP_LABEL, RENAME_MIGRATION)
-
-    def test_it_carries_no_add_plus_remove(self):
-        """The failure this rule exists to stop leaves no trace afterwards.
-
-        An `AddField` beside a `RemoveField` produces a column of the right name
-        holding none of the data, and every other assertion in this module would
-        pass over it — the new name exists, the contract publishes it, the model
-        answers. Only the rows would be gone.
-
-        NESTED OPERATIONS ARE WALKED, for the reason #275's twin gives: an
-        operation carrying lists of its own could hide a field add from a check
-        that reads only the top level.
-        """
-        for op in self._every_operation():
-            with self.subTest(operation=type(op).__name__):
-                self.assertNotIsInstance(
-                    op, (operations.AddField, operations.RemoveField))
-
-    def _every_operation(self):
-        for op in self.migration.operations:
-            yield op
-            yield from getattr(op, "database_operations", ())
-            yield from getattr(op, "state_operations", ())
-
-    def test_it_renames_the_column_on_the_rate(self):
-        self.assertEqual(_RENAME.model_name.lower(), Rate._meta.model_name)
-
-    def test_it_is_the_rename_the_conversion_and_the_value_set_and_nothing_else(self):
-        """The whole operation list, in order, because the ORDER is load-bearing.
-
-        The conversion runs AFTER the rename: it addresses the column through
-        the migration state's own model, and at that point the state carries the
-        new name. Written the other way round it would raise rather than
-        silently miss, but the list is pinned here so a later edit that reorders
-        them is a decision somebody makes rather than one that happens.
-        """
-        self.assertEqual([type(op).__name__ for op in self.migration.operations],
-                         ["RenameField", "RunPython", "AlterField"])
+    Until the cutover (#190) this class also read `pricing/0026`'s operation
+    list — a rename, a conversion and the value set, in that order — and a
+    class beside it ran the conversion forwards and backwards over real rows.
+    Those were claims about a migration the squash deleted, and about rows in a
+    shape no database holds any more; what the rename produced is what is left.
+    """
 
     def test_the_retired_name_is_gone_from_the_model(self):
         with self.assertRaises(FieldDoesNotExist):
@@ -171,89 +124,6 @@ class TheMoveIsARenameTest(TestCase):
         self.assertEqual({value for value, _ in field.choices},
                          set(RATE_STRUCTURE_VALUES))
         self.assertEqual(field.get_default(), RATE_STRUCTURE_PER_UNIT)
-
-
-class _LiveApps:
-    """`apps.get_model`'s interface, answered with the live models.
-
-    The migration's functions take the historical registry; a test driving them
-    outside a migration run has to hand them something with the one method they
-    use. Narrow on purpose — it answers for this app's one model and nothing
-    else, so a conversion that started reaching for a second model fails here
-    loudly instead of being handed a registry that quietly serves it.
-    """
-
-    def get_model(self, app_label, model_name):
-        assert app_label == APP_LABEL, app_label
-        assert model_name == "Rate", model_name
-        return Rate
-
-
-class TheConversionCarriesItsDataTest(TestCase):
-    """The value move, RUN over real rows rather than asserted to exist.
-
-    ADR-0007 §1 is about the column; this is the same claim about what the
-    column HOLDS. A rename that carried every row and left them all saying a
-    word that no longer means anything would satisfy every operation-list check
-    in the class above while leaving `compute` unable to recognise its own
-    fixed-component rules — which is not a failed migration but a WRONG PRICE,
-    silently, on every such rule.
-
-    Driven through the migration's own functions over the live table, so what is
-    exercised is the code that will run rather than a restatement of it.
-    """
-
-    def setUp(self):
-        self.tenant = Tenant.objects.create(name="T")
-        # The historical model at this point in the migration history, which is
-        # what the conversion is handed. `apps.get_model` is not available
-        # outside a migration run, and the live model is the right stand-in
-        # here: the conversion touches one column and the two agree about it.
-        self.apps = _LiveApps()
-
-    def _a_rule_saying(self, value):
-        rate = cost_rate_in_default_book(
-            self.tenant, measurement_key="input_tokens", fixed_micros=7_500)
-        Rate.objects.filter(pk=rate.pk).update(**{CANONICAL_COLUMN: value})
-        return rate
-
-    def _shape_of(self, rate):
-        return getattr(Rate.objects.get(pk=rate.pk), CANONICAL_COLUMN)
-
-    def test_a_row_on_the_retired_value_arrives_on_the_ratified_one(self):
-        rate = self._a_rule_saying(RETIRED_VALUE)
-
-        _MODULE.to_the_ratified_value(self.apps, None)
-
-        self.assertEqual(self._shape_of(rate), RATE_STRUCTURE_FIXED_COMPONENT)
-
-    def test_the_other_value_is_left_exactly_where_it_was(self):
-        """The half a conversion gets wrong by being too broad.
-
-        An `update()` with no filter would move every row, so a per-unit rule
-        would come out of the migration charging a fixed component — the same
-        wrong price as the untouched case, arriving from the other direction.
-        """
-        rate = self._a_rule_saying(RATE_STRUCTURE_PER_UNIT)
-
-        _MODULE.to_the_ratified_value(self.apps, None)
-
-        self.assertEqual(self._shape_of(rate), RATE_STRUCTURE_PER_UNIT)
-
-    def test_the_reverse_puts_the_row_back_where_the_old_code_reads_it(self):
-        """RUN, not asserted to exist.
-
-        A rollback that renamed the column back and left the values converted
-        would land on rows the old `compute` cannot recognise: its branch tests
-        for the retired value, finds the ratified one, and takes the per-unit
-        path for a rule that charges once. An un-reversed data migration is
-        worse than none precisely here.
-        """
-        rate = self._a_rule_saying(RATE_STRUCTURE_FIXED_COMPONENT)
-
-        _MODULE.back_to_the_retired_sense(self.apps, None)
-
-        self.assertEqual(self._shape_of(rate), RETIRED_VALUE)
 
 
 class TheComputePathRunsThroughTheNamedShapeTest(TestCase):

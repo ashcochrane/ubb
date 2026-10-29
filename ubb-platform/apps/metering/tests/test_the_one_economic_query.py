@@ -71,6 +71,7 @@ from core.vocabulary import (
     PRICING_STATUS_UNKNOWN, SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN,
     UNRESOLVED_REASON_COST_RATE_MISSING, USAGE_EVENT_KIND_TASK_CHARGE,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 CUSTOMER_AXIS = grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, "customer")
 PROVIDER_AXIS = grouping_axis(ANALYTICS_GROUPING_KIND_FIELD, "provider")
@@ -102,7 +103,7 @@ def a_posting(tenant, customer, key, **overrides):
               "billed_cost_micros": 1_000_000,
               "pricing_status": PRICING_STATUS_KNOWN}
     fields.update(overrides)
-    return Posting.objects.create(**fields)
+    return usage_helpers.a_posting(**fields)
 
 
 def measure_of(answer, measure, row=0):

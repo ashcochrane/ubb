@@ -74,8 +74,8 @@ class BlueprintSnapshot(BaseModel):
     #: WHAT MAY HAPPEN TO EACH COLUMN (ADR-0007 §2): nothing, after insert.
     #: A snapshot whose content could move would be a fingerprint naming
     #: something other than what a file was generated from. The rule that
-    #: keeps it is a `BEFORE UPDATE` trigger on this table, installed by
-    #: `code_builder/migrations/0001`.
+    #: keeps it is a `BEFORE UPDATE` trigger on this table,
+    #: `trg_blueprint_snapshot_declared_transitions`.
     #:
     #: ⚠ DELETE IS DELIBERATELY NOT REFUSED. A snapshot is prunable, and a
     #: sandbox reset or a tenant's removal takes it by cascade — a refusal on

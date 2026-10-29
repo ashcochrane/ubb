@@ -57,8 +57,7 @@ case in this module red bar the `INSERT` one and the permitted-move control;
 dropping the combination `CHECK` turns the `INSERT` one red and leaves the rest
 green. Two mechanisms, two failure sets, neither carrying the other.
 """
-from django.db import IntegrityError, connection, migrations, transaction
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 
 from apps.metering.usage.models import Posting
@@ -406,52 +405,11 @@ class TheRuleIsHeldByATriggerOnThisTableTest(TestCase):
         self.assertFalse(tgtype & (1 << 2), "fires on INSERT")
         self.assertFalse(tgtype & (1 << 3), "fires on DELETE")
 
-    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
-        """Forward and back, against a real database, with a real refusal.
-
-        `docs/conventions/django-patterns.md` asks for a reverse *"that a test
-        actually runs"*, and the reason is exactly this migration's shape: a
-        `RunPython` whose two halves are DDL strings, where a typo in the
-        reverse is invisible until the day somebody needs it and no other test
-        will ever execute that branch.
-
-        It is asserted by BEHAVIOUR at both ends rather than by counting
-        catalogue rows: with the rule reversed out, a write it refuses is
-        admitted; with it re-applied, the same write is refused again. Postgres
-        runs DDL inside the transaction this `TestCase` rolls back, so all of it
-        leaves with the test and no other test sees a table without its rule.
-
-        `apps` is passed as `None` deliberately: neither half consults the
-        historical model state, because a trigger is not model state — which is
-        the same fact that keeps `makemigrations --check` quiet about it.
-
-        **The other two rules are asserted still standing while this one is
-        out**, because a reverse that dropped a neighbour too would otherwise
-        show up as an unrelated failure in another module.
-        """
-        migration = MigrationLoader(connection).get_migration(
-            "usage", "0037_a_cost_settles_once_and_the_table_holds_it")
-        run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython))
-        settled = _settled()
-
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        self.assertIsNone(self._trigger_row())
-        self.assertEqual(self._triggers_on_the_table(),
-                         {"trg_posting_price_transitions",
-                          "trg_posting_receipt_sealing",
-                          "trg_posting_kind_frozen"})
-        _through_the_queryset(settled, **{COST: 999})
-        settled.refresh_from_db()
-        self.assertEqual(getattr(settled, COST), 999)
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        self.assertIsNotNone(self._trigger_row())
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                _through_the_queryset(settled, **{COST: 1_000})
+    # The rule's reverse — uninstalled, a write it refuses lands; reinstalled,
+    # the same write is refused again — was asserted here against usage/0037's
+    # own installer until the cutover (#190). It is proven for all 21 rules at
+    # once now, through `usage/0002_the_database_rules`, in
+    # `apps/platform/tests/test_the_database_rules_are_carried.py`.
 
     def test_the_rule_names_the_status_values_the_registry_declares(self):
         """The one place a token is spelled outside `domain-vocabulary/`.

@@ -110,11 +110,34 @@ def suites(**overrides):
 
 #: The slice the synthetic rows are owed by. It MUST be one that has not landed:
 #: a baseline row owed by a landed slice is rejected for `landed_slice_owns_gate`
-#: in every control, none of which is testing that. Slice 8 is the cutover, the
-#: last thing in the programme to land, so this outlives every slice that could
-#: invalidate it — and `test_a_landed_slice_may_not_still_owe_a_gate` mutates
-#: THIS slice, so the two cannot drift apart.
-UNLANDED_SLICE = "slice_8"
+#: in every control, none of which is testing that.
+#:
+#: ⚠ IT IS SYNTHETIC, DECLARED BY :func:`synthetic_slices` BESIDE THE SHIPPED
+#: ONES, AND NO FLIP CAN LAND IT (#190). It used to be `slice_8`, the cutover —
+#: chosen as the last real slice to land, which held exactly until the cutover
+#: landed and turned every control here red on `landed_slice_owns_gate`. A real
+#: slice is a borrowed premise with an expiry date; the programme now runs out
+#: of unlanded real slices altogether, so the controls declare their own, as
+#: `test_migration_ledger.py`'s `chain` fixture already did (#587).
+#: `test_a_landed_slice_may_not_still_owe_a_gate` mutates THIS slice, so the two
+#: cannot drift apart.
+UNLANDED_SLICE = "synthetic_unlanded"
+
+
+def synthetic_slices():
+    """The shipped slices, plus :data:`UNLANDED_SLICE` declared after all of
+    them and unlanded — the slices every synthetic programme loads by default.
+    The real ones stay declared, so the rules in force are still the real
+    ones; the synthetic one's order and issue are taken past theirs, so a
+    slice the programme adds later cannot collide with it."""
+    declared = yaml.safe_load(real("slices.yaml"))
+    shipped = list(declared["slices"].values())
+    declared["slices"][UNLANDED_SLICE] = {
+        "issue": max(body["issue"] for body in shipped) + 1,
+        "title": "A synthetic slice the controls are owed by",
+        "order": max(body["order"] for body in shipped) + 1,
+        "landed": False}
+    return declared
 
 
 def owned(slice_key=UNLANDED_SLICE, **overrides):
@@ -185,7 +208,7 @@ def write_programme(tmp_path, *, gates=None, obligations=None, suites=None,
     gates_dir.mkdir(exist_ok=True)
 
     _write(gates_dir / "schema.yaml", schema, real("schema.yaml"))
-    _write(gates_dir / "slices.yaml", slices, real("slices.yaml"))
+    _write(gates_dir / "slices.yaml", slices, synthetic_slices())
     _write(gates_dir / "manifest.yaml", manifest,
            {"version": 1,
             "suites": _default_suites() if suites is None else suites,

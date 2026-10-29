@@ -6,11 +6,12 @@ from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.wallets.tasks import reconcile_usage_drawdowns
+from apps.metering.usage.tests._helpers import a_posting
 
 
 def _old_event(t, c, owner_id, billed, key_suffix, *, effective_at=None):
-    e = Posting.objects.create(tenant=t, customer=c, idempotency_key=key_suffix,
-                                  billed_cost_micros=billed, billing_owner_id=owner_id)
+    e = a_posting(tenant=t, customer=c, idempotency_key=key_suffix,
+                     billed_cost_micros=billed, billing_owner_id=owner_id)
     # F4.2: the repair scan is ARRIVAL-basis (created_at) — age the arrival
     # time past GRACE; effective_at is irrelevant to eligibility.
     aged = timezone.now() - datetime.timedelta(hours=8)
@@ -54,8 +55,8 @@ class TestReconcileDrawdowns:
         t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
-                                  billed_cost_micros=2_000_000, billing_owner_id=c.id)  # created_at = now
+        a_posting(tenant=t, customer=c, idempotency_key="i1",
+                     billed_cost_micros=2_000_000, billing_owner_id=c.id)  # created_at = now
         reconcile_usage_drawdowns()
         w.refresh_from_db()
         assert w.balance_micros == 0  # within grace -> not repaired
@@ -86,8 +87,8 @@ class TestReconcileDrawdowns:
         t = Tenant.objects.create(name="T", products=["metering", "billing"], billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         w = Wallet.objects.create(customer=c, balance_micros=0)
-        e = Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
-                                      billed_cost_micros=2_000_000, billing_owner_id=c.id)
+        e = a_posting(tenant=t, customer=c, idempotency_key="i1",
+                         billed_cost_micros=2_000_000, billing_owner_id=c.id)
         Posting.objects.filter(id=e.id).update(
             effective_at=timezone.now() - datetime.timedelta(days=30))  # created_at stays now
         reconcile_usage_drawdowns()

@@ -2,10 +2,10 @@ import pytest
 from django.core.cache import cache
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import Posting
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.live_counter import Door
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.django_db
@@ -18,10 +18,10 @@ class TestCustomerSpendPoolReconciliation:
         t = Tenant.objects.create(name="T")
         c = Customer.objects.create(tenant=t, external_id="c1")
         CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=10_000_000)
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
-                                  provider_cost_micros=400_000, billed_cost_micros=400_000)
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i2",
-                                  provider_cost_micros=350_000, billed_cost_micros=350_000)
+        a_posting(tenant=t, customer=c, idempotency_key="i1",
+                     provider_cost_micros=400_000, billed_cost_micros=400_000)
+        a_posting(tenant=t, customer=c, idempotency_key="i2",
+                     provider_cost_micros=350_000, billed_cost_micros=350_000)
         Door.set_spend_pool(c.id, 0)  # corrupt/drifted counter
         reconcile_customer_spend_pool_counters()
         assert CustomerSpendPoolService.current_spend(c.tenant_id, c.id) == 750_000

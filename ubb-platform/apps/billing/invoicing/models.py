@@ -63,7 +63,8 @@ class Invoice(BaseModel):
 # `usage_invoice_status` and `skip_reason` (R10-W4), by reference. The skip
 # reason was a bare string with no `choices=` until then, written as literals
 # by the postpaid service, and an invoice that was NOT skipped held `""`; it
-# holds null now (`invoicing/0011`), and the table refuses anything else.
+# holds null now, and `ck_usage_invoice_skip_reason_known` refuses anything
+# else.
 USAGE_INVOICE_STATUS = [
     (USAGE_INVOICE_STATUS_PENDING, "Pending"),
     (USAGE_INVOICE_STATUS_PUSHING, "Pushing"),

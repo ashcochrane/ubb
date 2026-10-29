@@ -32,6 +32,7 @@ from _gate_helpers import (
     TEST_FILE,
     TEST_NODE,
     UNLANDED_SLICE,
+    synthetic_slices,
     copy_real_programme,
     gates,
     installed,
@@ -112,13 +113,14 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
     each: the column, the protected field and the squash did not exist, so
     installing the gate would be installing a test that passes on nothing.
 
-    **G19 and G14 have left that list because their subjects arrived**, which is
+    **All three have left that list because their subjects arrived**, which is
     the only reason a gate may leave it. Slice 3 declared the first columns into
     a class the database defends and installed a trigger that holds them (#317,
     #318), so G19's nodes run against real declarations rather than passing on
-    an empty walk. The one that remains is asserted exactly as it was — the
-    cutover squash still does not exist, and a gate is removed here only when
-    its subject arrives.
+    an empty walk. **G20 left last, with the cutover (#190):** the squash is
+    what its subject was, and the fresh initial set is the boundary it holds
+    every later migration from. The list is empty now, and the test keeps its
+    shape: a gate re-owed for want of a subject goes back into it.
 
     ⚠ **G14 LEFT IN TWO STAGES, AND ONLY THE SECOND WAS A DEPARTURE.** This
     docstring once said the `kind` discriminator column did not exist, and that
@@ -137,12 +139,13 @@ def test_the_gates_whose_subject_does_not_exist_are_owed_not_faked(programme):
     with the claim that the departed gate is installed, the only way past this
     test is the one that is honest.
     """
-    for name in ("G20",):
+    for name in ():
         row = programme.gates[name]
         assert row.owner_slice is not None, (
             f"{name}'s subject does not exist yet, so it cannot be installed")
 
-    for name, installer in (("G19", "slice 3"), ("G14", "slice 7")):
+    for name, installer in (("G19", "slice 3"), ("G14", "slice 7"),
+                            ("G20", "slice 8's squash")):
         assert programme.gates[name].installed, (
             f"{name} was removed from the list above because {installer} "
             f"installed it. If it is owed again its subject has gone, and it "
@@ -554,7 +557,7 @@ def test_a_landed_slice_may_not_still_owe_a_gate(tmp_path):
     on a mutation of nothing — which is how slices 0 and 1 landing turned the
     original `slice_0` reading vacuous.
     """
-    slices = yaml.safe_load(real("slices.yaml"))
+    slices = synthetic_slices()
     assert not slices["slices"][UNLANDED_SLICE]["landed"], (
         f"{UNLANDED_SLICE} has landed, so this control mutates nothing and "
         f"proves nothing — re-point it, and `UNLANDED_SLICE` with it, at a "

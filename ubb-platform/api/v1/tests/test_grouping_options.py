@@ -29,7 +29,6 @@ from apps.metering.queries import (
 from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.metering.usage.models import Posting
 from core.vocabulary import (
     ANALYTICS_GROUPING_KIND_FIELD, ANALYTICS_GROUPING_KIND_ROLLUP,
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_GROSS_MARGIN,
@@ -37,6 +36,7 @@ from core.vocabulary import (
     ANALYTICS_MEASURE_SUPPLIER_COGS, ANALYTICS_ROLLUP_EVENT_CATEGORY,
     ANALYTICS_ROLLUP_MEASUREMENT_CONCEPT,
 )
+from apps.metering.usage.tests._helpers import a_posting
 
 OPTIONS = "/api/v1/metering/analytics/grouping-options"
 
@@ -280,10 +280,10 @@ class TestTheBusinessTreeTakesNoRollupAxis:
                                            account_type="business")
         seat = Customer.objects.create(tenant=tenant, external_id="seat",
                                        account_type="seat", parent=business)
-        Posting.objects.create(tenant=tenant, customer=seat,
-                               idempotency_key="i1",
-                               billed_cost_micros=3_000_000,
-                               provider_cost_micros=1_000_000)
+        a_posting(tenant=tenant, customer=seat,
+                  idempotency_key="i1",
+                  billed_cost_micros=3_000_000,
+                  provider_cost_micros=1_000_000)
         tree = "/api/v1/margin/business/biz"
         plain = read(key, tree)
         assert plain.status_code == 200

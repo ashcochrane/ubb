@@ -65,8 +65,8 @@ from django.utils import timezone
 from api.v1 import schemas
 from apps.metering.pricing.models import ResolutionRun
 from apps.metering.pricing.receipts import (
-    LEGACY_SCHEMA_VERSION, RESOLUTION_RUN_KEY, SECTIONS, ReceiptShapeError,
-    Resolution, completed_receipt, written_in_the_current_shape)
+    RESOLUTION_RUN_KEY, SECTIONS, ReceiptShapeError, Resolution,
+    completed_receipt, pricing_mode_of, recorded_quantities)
 from apps.metering.pricing.services import resolution_run
 from apps.metering.pricing.services.price_resolution import (
     PriceResolution, resolve_customer_price)
@@ -101,6 +101,7 @@ from core.vocabulary import (
     UNRESOLVED_REASON_REPORTED_COST_MISSING,
 )
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
+from apps.metering.usage.tests._helpers import a_posting
 
 class MembershipIsTheStatusAndNotAFilterTest(
         ATenantWithUnresolvedPostingsMixin, TestCase):
@@ -197,11 +198,11 @@ class ARunReachesOnlyWhatWasNeverResolvedTest(
         #: table: what is asserted about them is MEMBERSHIP, which reads
         #: columns, and neither is a state this tenant's own recording path
         #: produces alongside the three above.
-        self.waived = Posting.objects.create(
+        self.waived = a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="w",
             costing_status=COSTING_STATUS_KNOWN, provider_cost_micros=1,
             pricing_status=PRICING_STATUS_WAIVED, billed_cost_micros=None)
-        self.not_applicable = Posting.objects.create(
+        self.not_applicable = a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="n",
             costing_status=COSTING_STATUS_NOT_APPLICABLE,
             provider_cost_micros=None,
@@ -432,48 +433,86 @@ class ARecordThatKeptNoQuantitiesIsLeftAloneTest(
                          (COSTING_STATUS_KNOWN, 0, PRICING_STATUS_KNOWN, 0))
 
 
-class ARecordThatCannotNameTheRunIsLeftAloneTest(
+class ARecordInAnyOtherShapeIsRefusedNotSkippedTest(
         ATenantWithUnresolvedPostingsMixin, TestCase):
-    """⚠ THE OTHER HALF OF THE SAME GUARD, AND THE ONE REVIEW FOUND.
+    """⚠ THE OTHER HALF OF THE SAME GUARD, AND THE ONE REVIEW FOUND — answered
+    differently since the cutover.
 
-    A receipt in an older shape — or the empty default — is one a completion may
-    not touch: *read, never rewritten*. Before this branch existed the doors
-    still ran, so the money column moved, the outcome counted it, and **nothing
-    anywhere named the run that did it**. "A number a run changed can be
-    explained by the act that changed it" was true of half its subject, and the
-    half it was false for is the oldest postings — exactly where a recovery is
-    most likely to be questioned.
+    A receipt in an older shape — or the empty record — is one a completion
+    cannot name the run in. Before any guard existed the doors still ran, so
+    the money column moved, the outcome counted it, and **nothing anywhere
+    named the run that did it**. Until the cutover (#190) the answer was a
+    branch that LEFT such a posting alone and reported it still unresolved.
+
+    The cutover deleted the older shapes' readers (ruling 8, ADR-0026): no
+    writer produces one and the fresh database holds none, so a record in any
+    other shape is a defect rather than a state to count. A run meeting one
+    RAISES at the guard every receipt reader shares, its transaction rolls
+    back, and nothing moves — the recoverable posting beside it included.
     """
 
     def setUp(self):
         super().setUp()
-        #: A posting with no receipt at all, which is what the column's own
-        #: default is. Built at the table because the recording path always
-        #: writes one — the point is a row whose record cannot carry the act.
-        self.no_record = Posting.objects.create(
-            tenant=self.tenant, customer=self.customer, idempotency_key="none",
-            costing_status=COSTING_STATUS_KNOWN,
-            provider_cost_micros=WHAT_IT_COST,
-            pricing_status=PRICING_STATUS_UNKNOWN, billed_cost_micros=None)
-        #: A posting beside it that IS recoverable, recorded before the rung
-        #: exists — so a run in this fixture has something to complete and
-        #: "nothing happened" cannot pass for "the guard held".
+        #: A posting that IS recoverable, recorded before the rung exists — so
+        #: a run in this fixture has something to complete, and "nothing
+        #: happened" cannot pass for "the run refused".
         self.recoverable = self.a_posting("recoverable")
         declares_a_markup(self.tenant, percentage_micros=0)
 
-    def test_it_is_reached_and_then_left_exactly_as_it_was(self):
+    def unreadable_records(self):
+        """The three records no reader reads any more, each with what the
+        shared guard refuses it with."""
+        stored = self.receipt_of(self.recoverable)
+        return {
+            "schema 1": (dict(stored, receipt_schema_version=1),
+                         "schema version 1;"),
+            "no version": ({"engine_version": "2.1.0",
+                            "cost_source": "calculated",
+                            "price_source": None,
+                            "uncosted_measurement_keys": [],
+                            "provider_cost_micros": WHAT_IT_COST,
+                            "billed_cost_micros": None},
+                           "schema version None;"),
+            "the empty record": ({}, "is not a receipt"),
+        }
+
+    def a_posting_holding(self, record):
+        """A posting whose stored receipt is `record`. Built at the table,
+        because no recording path writes one — `a_posting` uses a receipt it
+        is handed as given."""
+        return a_posting(
+            tenant=self.tenant, customer=self.customer,
+            idempotency_key="planted",
+            costing_status=COSTING_STATUS_KNOWN,
+            provider_cost_micros=WHAT_IT_COST,
+            pricing_status=PRICING_STATUS_UNKNOWN, billed_cost_micros=None,
+            **{Posting.RECEIPT_COLUMN: record})
+
+    def assert_the_run_refuses(self, shape):
+        record, refusal = self.unreadable_records()[shape]
+        planted = self.a_posting_holding(record)
         reachable = set(candidates(self.tenant, RunSelector())
                         .values_list("id", flat=True))
-        run = self.a_run()
 
-        self.assertIn(self.no_record.id, reachable)
-        self.assertEqual(
-            (run.postings_examined, run.prices_resolved,
-             run.postings_left_unresolved), (2, 1, 1))
-        self.assertEqual(self.state_of(self.no_record)[2:],
+        with self.assertRaisesRegex(ReceiptShapeError, refusal):
+            self.a_run()
+
+        self.assertIn(planted.id, reachable)
+        self.assertEqual(self.state_of(planted)[2:],
                          (PRICING_STATUS_UNKNOWN, None))
         self.assertEqual(self.state_of(self.recoverable)[2:],
-                         (PRICING_STATUS_KNOWN, WHAT_IT_COST))
+                         (PRICING_STATUS_UNKNOWN, None))
+        self.assertFalse(ResolutionRun.objects.filter(
+            tenant=self.tenant).exists())
+
+    def test_a_run_over_a_schema_one_record_raises_and_moves_nothing(self):
+        self.assert_the_run_refuses("schema 1")
+
+    def test_a_run_over_a_record_with_no_version_raises_and_moves_nothing(self):
+        self.assert_the_run_refuses("no version")
+
+    def test_a_run_over_the_empty_record_raises_and_moves_nothing(self):
+        self.assert_the_run_refuses("the empty record")
 
     def test_every_completed_posting_carries_the_run_in_its_record(self):
         """The property itself, over the run's own outcome rather than over one
@@ -489,46 +528,46 @@ class ARecordThatCannotNameTheRunIsLeftAloneTest(
         self.assertEqual(run.prices_resolved, 1)
         self.assertEqual(len(named), run.costs_settled + run.prices_resolved)
 
-    def test_removing_the_guard_fails_loudly_rather_than_completing(self):
-        """The mutation, run rather than argued.
-
-        Two mechanisms answer this record and they answer differently. The guard
-        turns *this cannot be recovered* into an honest outcome; the receipt
-        boundary underneath it turns the same record into a refusal. With the
-        guard gone the run raises rather than pricing — which is the safe half
-        of the pair, and exactly why the shape question is asked in ONE place
-        now: it used to be asked here as well, wrongly, by returning `None` and
-        letting both doors write their columns with no receipt at all.
-        """
-        with patch.object(resolution_run,
-                          "_the_record_cannot_account_for_a_completion",
-                          lambda posting, stored: False):
-            with self.assertRaisesRegex(ReceiptShapeError,
-                                        "read, never rewritten"):
-                self.a_run()
-
-        self.assertEqual(self.state_of(self.no_record)[2:],
-                         (PRICING_STATUS_UNKNOWN, None))
-
     def test_the_boundary_refuses_such_a_record_on_its_own(self):
-        """The same answer one layer down, so the guard is not the only thing
-        standing between an unwritable record and a completion."""
-        with self.assertRaisesRegex(ReceiptShapeError, "read, never rewritten"):
-            completed_receipt(
-                {}, sections={"pricing": Resolution(
-                    method=PRICING_METHOD_DIRECT_EVENT_PRICE,
-                    status=PRICING_STATUS_KNOWN, amount_micros=1, detail={})})
+        """The same answer one layer down, so the run's readers are not the
+        only thing standing between an unreadable record and a completion."""
+        for shape, (record, refusal) in self.unreadable_records().items():
+            with self.subTest(shape=shape):
+                with self.assertRaisesRegex(ReceiptShapeError, refusal):
+                    completed_receipt(
+                        record, sections={"pricing": Resolution(
+                            method=PRICING_METHOD_DIRECT_EVENT_PRICE,
+                            status=PRICING_STATUS_KNOWN, amount_micros=1,
+                            detail={})})
 
-    def test_one_predicate_decides_it_for_the_guard_and_the_boundary(self):
+    def test_one_guard_decides_it_for_the_runs_readers_and_the_boundary(self):
         """Which records those are is asked in one place. Two copies of the
-        question is how a caller's idea of *recoverable* and the boundary's idea
+        question is how a caller's idea of *readable* and the boundary's idea
         of *completable* come apart, and the gap between them is where a column
-        moves with no record of why."""
-        self.assertFalse(written_in_the_current_shape({}))
-        self.assertFalse(written_in_the_current_shape(
-            {"receipt_schema_version": LEGACY_SCHEMA_VERSION}))
-        self.assertTrue(written_in_the_current_shape(
-            self.receipt_of(self.a_posting("k1"))))
+        moves with no record of why.
+
+        Until the cutover (#190) the one place was a predicate the run's guard
+        and the completion boundary both called; it is the guard every reader
+        shares now (`receipts._a_receipt`), so the same record is refused in
+        the same words by the two readers a run calls and by the boundary —
+        and a receipt the recording path wrote passes all three."""
+        def the_three(record):
+            return (lambda: recorded_quantities(record),
+                    lambda: pricing_mode_of(record),
+                    lambda: completed_receipt(record, sections={}))
+
+        for shape, (record, refusal) in self.unreadable_records().items():
+            messages = set()
+            for read in the_three(record):
+                with self.assertRaisesRegex(ReceiptShapeError,
+                                            refusal) as caught:
+                    read()
+                messages.add(str(caught.exception))
+            self.assertEqual(len(messages), 1, (shape, messages))
+
+        recorded = self.receipt_of(self.a_posting("k1"))
+        for read in the_three(recorded):
+            read()
 
 
 class ARunRecoversACostForATenantThatBillsNobodyTest(TestCase):
@@ -610,7 +649,7 @@ class ACustomerDeletionTakesTheRunsThatNamedThemTest(
         charge is, and what every sandbox fixture builds. The record and what it
         explains leave in the same statement, and a run that named no customer
         is untouched by either."""
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="k1",
             costing_status=COSTING_STATUS_KNOWN, provider_cost_micros=0)
         scoped = self.a_run(selected_customer=self.customer)

@@ -52,6 +52,7 @@ from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_KILLED, TASK_TYPE_KIND_TASK,
     TRIGGER_SOURCE_USAGE_INGEST)
 from apps.platform.tenants.tests._rails import RailActivated
+from apps.metering.usage.tests._helpers import a_posting
 
 #: The ceiling assessment beside the stop facts — also the original's on a
 #: replay (ADR-0019 §5).
@@ -436,7 +437,7 @@ class TheStopAcknowledgementIsKeptOnceTest(RailActivated, PoolTestBase):
     def test_the_rule_fires_before_each_update_and_delete_and_never_on_insert(self):
         """`BEFORE UPDATE OR DELETE ... FOR EACH ROW`, read out of `tgtype`'s
         bits. The INSERT bit being OFF is the load-bearing half: the
-        migration's cost argument is that the recording path's one insert per
+        rule's cost argument is that the recording path's one insert per
         recorded result never enters the function (`django-patterns.md`: a
         rule asserts its statement mask rather than describing it)."""
         tgtype, _ = rule_on_the_table("trg_stop_acknowledgement_is_insert_only",
@@ -455,8 +456,8 @@ class TheStopAcknowledgementIsKeptOnceTest(RailActivated, PoolTestBase):
         sandbox = Tenant.objects.create(name="live sandbox", is_sandbox=True,
                                         parent_tenant=live)
         customer = Customer.objects.create(tenant=sandbox, external_id="c1")
-        posting = Posting.objects.create(tenant=sandbox, customer=customer,
-                                         idempotency_key="k")
+        posting = a_posting(tenant=sandbox, customer=customer,
+                            idempotency_key="k")
         StopAcknowledgement.objects.create(posting=posting, stop=False)
 
         Customer.all_objects.filter(id=customer.id).delete()
@@ -468,9 +469,9 @@ class TheStopAcknowledgementIsKeptOnceTest(RailActivated, PoolTestBase):
         """Never reconstructed from live facts: a recording-path posting the
         record is missing for raises a named error, on the service and on
         the route."""
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                               idempotency_key="no-record",
-                               billing_owner_id=self.customer.id)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                  idempotency_key="no-record",
+                  billing_owner_id=self.customer.id)
 
         with self.assertRaises(StopAcknowledgementMissing):
             UsageService.replay(self.tenant, self.customer, "no-record")

@@ -3,7 +3,8 @@ from django.test import TestCase
 
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
-from apps.metering.usage.models import Posting, Refund
+from apps.metering.usage.models import  Refund
+from apps.metering.usage.tests._helpers import a_posting
 
 
 class PostingModelTest(TestCase):
@@ -15,7 +16,7 @@ class PostingModelTest(TestCase):
         )
 
     def test_create_event(self):
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant,
             customer=self.customer,
             idempotency_key="idem_abc123",
@@ -26,7 +27,7 @@ class PostingModelTest(TestCase):
         self.assertIsNotNone(event.effective_at)
 
     def test_event_immutability_save(self):
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant,
             customer=self.customer,
             idempotency_key="idem_abc123",
@@ -37,7 +38,7 @@ class PostingModelTest(TestCase):
             event.save()
 
     def test_event_immutability_delete(self):
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant,
             customer=self.customer,
             idempotency_key="idem_abc123",
@@ -47,7 +48,7 @@ class PostingModelTest(TestCase):
             event.delete()
 
     def test_new_fields_have_defaults(self):
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant,
             customer=self.customer,
             idempotency_key="idem_defaults",
@@ -62,14 +63,14 @@ class PostingModelTest(TestCase):
         # surfaces, not about one model's defaults.
 
     def test_idempotency_constraint(self):
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant,
             customer=self.customer,
             idempotency_key="idem_duplicate",
             billed_cost_micros=500_000,
         )
         with self.assertRaises(IntegrityError):
-            Posting.objects.create(
+            a_posting(
                 tenant=self.tenant,
                 customer=self.customer,
                 idempotency_key="idem_duplicate",
@@ -77,7 +78,7 @@ class PostingModelTest(TestCase):
             )
 
     def test_the_posting_prints_the_identifier_it_was_given(self):
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=self.tenant,
             customer=self.customer,
             idempotency_key="idem_str",
@@ -89,7 +90,8 @@ class PostingModelTest(TestCase):
 
 class RefundModelTest(TestCase):
     """The refund's string reads a field on its PARENT, which is why it lives
-    here rather than only in `test_posting_rename.py`.
+    here rather than only in `test_the_usage_record_is_the_posting.py` (which
+    replaced `test_posting_rename.py` at the cutover, #190).
 
     #269 renamed the parent and the foreign key pointing at it, and this is the
     one assertion in that change that spells the identifier field by name. The
@@ -106,7 +108,7 @@ class RefundModelTest(TestCase):
             tenant=self.tenant, external_id="user_1")
 
     def test_the_refunds_string_resolves_against_its_parent(self):
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=self.tenant,
             customer=self.customer,
             idempotency_key="idem_refunded",

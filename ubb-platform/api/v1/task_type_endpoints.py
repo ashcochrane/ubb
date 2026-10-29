@@ -61,9 +61,9 @@ expression.
 **NO PUBLISH RECORD, NO DRAFT STATE AND NO EFFECTIVE-DATING LIVE HERE.** The
 regime is frozen instead, and changing it is a retirement plus a new
 declaration. The argument for that — including why this slice may not mint a
-third publish mechanism — is stated once, at the column and at the rule that
-keeps it: ``apps/platform/work/models.py:TaskType.pricing_mode`` and
-``work/migrations/0021_a_kind_of_work_declares_how_it_is_sold.py``.
+third publish mechanism — is stated once, at the column:
+``apps/platform/work/models.py:TaskType.pricing_mode``. The rule that keeps it
+is the trigger ``trg_task_type_declared_transitions``.
 """
 from django.db import transaction
 from ninja import Router
@@ -214,11 +214,7 @@ def declare_kinds(tenant, payload):
                     "uncapped": tt.uncapped,
                     "silence_window_seconds": tt.silence_window_seconds,
                     "absolute_deadline_seconds": tt.absolute_deadline_seconds,
-                    # THE BRIDGE, WRITE SIDE. `apps/platform/work/queries.py`
-                    # is the read side of the same fact: the wire and the
-                    # kernel's read contract spell the registry's word, the
-                    # column still spells #277's, and the cutover moves it.
-                    "required_dimensions": tt.required_grouping_fields,
+                    "required_grouping_fields": tt.required_grouping_fields,
                     **declaration.retirement_over(standing),
                 })
             # ⚠ THE LOOP READS ITS OWN WRITES, BECAUSE A BODY MAY NAME ONE

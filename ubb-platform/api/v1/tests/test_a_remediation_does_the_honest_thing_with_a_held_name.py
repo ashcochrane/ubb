@@ -37,8 +37,7 @@ ORM's doors.
 from datetime import timedelta
 
 import pytest
-from django.db import IntegrityError, connection, migrations, transaction
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, connection, transaction
 
 from api.v1.tests._helpers import DeclaringTenantCase, OnTheSingleRoute
 from apps.metering.pricing.services.resolution_run import (
@@ -351,9 +350,14 @@ class ADeclarationIsNotDeletedFromUnderItsHeldNamesTest(
         OnTheSingleRoute, DeclaringTenantCase):
     """Row 3, at every door a deletion has. No route deletes an Event Type,
     so these are the ORM's: an instance, a queryset and raw SQL. The rule is
-    asked when the deletion commits (`event_types/0011`), so each door is
-    driven inside a savepoint and the deferred check is run before it ends —
-    which is what a commit would do."""
+    asked when the deletion commits (`trg_event_type_keeps_its_held_names`, a
+    deferred constraint trigger), so each door is driven inside a savepoint and
+    the deferred check is run before it ends — which is what a commit would do.
+
+    The rule's reverse — uninstalled, the same deletion lands; re-installed, it
+    is refused again — was driven here through `event_types/0011` until the
+    cutover (#190). Every rule's reverse is proven in one place now:
+    `apps/platform/tests/test_the_database_rules_are_carried.py`."""
 
     def setUp(self):
         super().setUp()
@@ -418,33 +422,6 @@ class ADeclarationIsNotDeletedFromUnderItsHeldNamesTest(
                                            quantities=(INPUT,)))
 
         self.assertNotEqual(self.declaration().pk, original)
-
-    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
-        """`docs/conventions/django-patterns.md`: a reverse that a test runs.
-        Asserted by behaviour at both ends — reversed out, the deletion lands;
-        re-applied, the same deletion of another declaration is refused again.
-        Postgres runs the DDL inside this test's transaction, which takes it
-        back, so no other test sees the table without its rule."""
-        migration = MigrationLoader(connection).get_migration(
-            "event_types",
-            "0011_a_declaration_is_not_deleted_from_under_its_held_names")
-        (run_python,) = [operation for operation in migration.operations
-                         if isinstance(operation, migrations.RunPython)]
-
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        self.committed(lambda: self.declaration().delete())
-        self.assertIsNone(self.declaration())
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        second = "acme.second"
-        self.declared(second, quantities=(INPUT,))
-        self.send("k2", event_type=second,
-                  measurements={INPUT: "1", OUTPUT_MISSPELT: "1"})
-        with self.assertRaises(IntegrityError):
-            self.committed(lambda: self.declaration(second).delete())
-        self.assertIsNotNone(self.declaration(second))
 
     def test_an_event_type_held_at_a_draft_key_does_not_hold_the_draft(self):
         """An unrecognised EVENT TYPE is held because no publication answers

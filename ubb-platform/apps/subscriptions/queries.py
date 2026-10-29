@@ -80,9 +80,13 @@ REVENUE_FINEST_BUCKET = "day"
 # `apps.subscriptions.economics.alerting`, inside this product. Nothing outside
 # reads it, which is why neither of these grew a replacement here.
 #
-# ⚠ AND THE ROWS THEMSELVES ARE #190's. Slice 7 removed the reader (#502); the
-# cutover removes the rows for the periods nothing alerts on. Neither half is
-# complete without the other.
+# ⚠ AND THE ROWS THEMSELVES: slice 7 removed the reader (#502), and the
+# cutover's fresh database removed every row written before it (#190). From the
+# cutover on, the evaluator keeps the rows it always kept — one per evaluated
+# period — and nothing prunes them; ruled 2026-10-29 (#190 §0.3 point 19): no
+# retention or pruning rule is invented here, and a period keeps its row until a
+# product requirement says otherwise. It is a known data-growth characteristic,
+# not an open slice-8 invariant.
 
 
 def revenue_contributions(tenant_id, *, windows, basis, customer_ids=None) -> list[dict]:

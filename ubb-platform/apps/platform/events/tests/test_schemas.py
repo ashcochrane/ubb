@@ -224,7 +224,8 @@ class TestFromPayload:
         # A legacy queued payload written before a field existed constructs
         # with the class default — no consumer restates it. (Its
         # `pricing_status_reason` is the one required field a migration
-        # stamped onto every queued payload, `events/0010`, #603.)
+        # stamped onto every queued payload, `events/0010` before the cutover
+        # squash, #190; #603.)
         from apps.platform.events.schemas import UsageRecorded
 
         event = UsageRecorded.from_payload({

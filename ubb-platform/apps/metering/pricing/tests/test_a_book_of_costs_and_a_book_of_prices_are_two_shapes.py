@@ -30,13 +30,17 @@ It replaces `test_rate_card_container_model.py`, whose two cases were about the
 single container and the record that assigned one to a customer — one entity
 that no longer exists and one record this commit deletes.
 """
+import re
+
 import pytest
 from django.db import IntegrityError, transaction
 
 from apps.metering.pricing.models import (
     NAMES_ITS_CURRENCY_CHECK, SITS_IN_AT_MOST_ONE_BOOK_CHECK,
     CostBook, PricingBook, Rate)
-from apps.metering.pricing.tests._helpers import retired_kind_column
+from api.v1.tests._helpers import retired_aliases
+from apps.metering.pricing.tests._helpers import (
+    retired_container_noun, retired_kind_column)
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
@@ -76,9 +80,9 @@ def test_a_pricing_book_accepts_neither():
     assert "provider_key" not in columns
     assert "currency" not in columns
     # And the word that used to stand in for both is on neither entity.
-    # DERIVED FROM THE MIGRATION THAT DELETED IT, never spelled (#374): this
-    # module is a living surface, and naming the token here would put its
-    # ledger count over an entry that reaches zero in that same commit.
+    # DERIVED FROM THE REGISTRY THAT RETIRED IT, never spelled (#374): this
+    # module is a living surface, and naming the token here would put it back
+    # over a ledger entry that reached zero.
     assert retired_kind_column() not in columns
     assert retired_kind_column() not in _columns(CostBook)
 
@@ -275,36 +279,23 @@ def test_a_book_says_which_column_points_at_it():
 #: The three acts, by their ordinary verbs. None of these is a retired word.
 THE_VERBS_THAT_CEASED = ("created", "assigned", "published")
 
-#: The migration that split the container, which is where the retired noun is
-#: still legitimately written down.
-THE_SPLIT = "0028_the_container_becomes_a_pricing_book_and_a_cost_book"
-
 
 def the_retired_container():
-    """The noun the deleted actions were named for, DERIVED from the rename.
+    """The noun the deleted actions were named for, DERIVED from the registry.
 
     ⚠ **NOT SPELLED, AND THAT IS THE FIRST OF THE THREE TECHNIQUES RATHER THAN
-    A FLOURISH.** The counts this slice pays are ceilings on SPREAD, not only
+    A FLOURISH.** The counts this slice paid are ceilings on SPREAD, not only
     on what is left to fix: a new module writing the word puts its ledger count
     over an entry, and the sweep refuses the rise outright — it is not a
     "record it and move on" finding. Deriving it costs one import and no
-    authorisation, and it is what `test_the_rates_quantity_name_takes_the_
-    canonical_name.py` already does for the column it renames.
+    authorisation.
 
-    The name comes off the migration's OWN from-state, so no future rename
-    needs an edit here: the table the container sat on before the split was the
-    retired noun with a namespace prefix and a suffix that was only ever there
-    to make room for the misnamed original.
+    The name comes off the registry that retired it
+    (`_helpers.retired_container_noun`). Until the cutover (#190) it came off
+    the split migration's own from-state, which the squash deleted; the
+    registry is where the word is still legitimately written down.
     """
-    from django.db import connection
-    from django.db.migrations.loader import MigrationLoader
-
-    from apps.metering.pricing.tests._helpers import the_state_before
-
-    migration = MigrationLoader(connection).get_migration("pricing", THE_SPLIT)
-    was = the_state_before(migration).models[
-        ("pricing", "ratecard")].options["db_table"]
-    return was.removeprefix("ubb_").removesuffix("_container") + "."
+    return retired_container_noun() + "."
 
 
 def the_acts_that_ceased():
@@ -318,7 +309,10 @@ def test_the_derivation_reaches_three_names_that_look_like_actions():
 
     A derivation that came back empty, or with a prefix that stopped being the
     retired noun, would make every case below true by iterating nothing — the
-    exact shape a derived fixture has to be defended against.
+    exact shape a derived fixture has to be defended against. The last line
+    is the positive control: each derived name is one the registry itself
+    lists as a RETIRED audit action, so the cases below assert the absence of
+    names that really were once recordable rather than of names nobody wrote.
     """
     names = the_acts_that_ceased()
 
@@ -327,6 +321,7 @@ def test_the_derivation_reaches_three_names_that_look_like_actions():
         noun, _, verb = name.partition(".")
         assert noun and verb, name
         assert verb in THE_VERBS_THAT_CEASED, name
+    assert set(names) <= set(retired_aliases("governance", "audit_action"))
 
 
 def test_the_registry_knows_none_of_the_three():
@@ -404,23 +399,42 @@ def test_a_new_tenant_starts_with_no_books_no_rules_and_no_markup():
     assert seeded == {}, seeded
 
 
-def test_the_migration_that_split_the_container_creates_no_row():
+def test_no_pricing_migration_seeds_a_row():
     """The other half, and the one a fixture cannot see.
 
-    A data migration seeding a starter book would leave every EXISTING tenant
-    with one, which no per-tenant assertion above would catch. This asserts the
-    migration writes nothing at all: it carries no `RunPython`, forwards or in
-    reverse.
+    A data migration seeding a starter book would leave every tenant with one,
+    which no per-tenant assertion above would catch. Before the cutover (#190)
+    this asked it of the one migration that split the container; the squash
+    left this app two migrations, and the claim is now asked of both, which is
+    every way a row could arrive with the schema: no `RunPython` at all, and
+    every `RunSQL` statement — the database rules — installs a function or a
+    trigger and inserts nothing.
     """
-    from django.db import migrations
+    from django.db import connection, migrations
     from django.db.migrations.loader import MigrationLoader
-    from django.db import connection
 
-    migration = MigrationLoader(connection).get_migration(
-        "pricing", "0028_the_container_becomes_a_pricing_book_and_a_cost_book")
+    loader = MigrationLoader(connection)
+    ours = [loader.get_migration(app, name)
+            for app, name in loader.disk_migrations if app == "pricing"]
+    assert ours, "the walk found no pricing migration, so it asserts nothing"
 
-    assert not [op for op in migration.operations
-                if isinstance(op, (migrations.RunPython, migrations.RunSQL))]
+    statements = []
+    for migration in ours:
+        assert not [op for op in migration.operations
+                    if isinstance(op, migrations.RunPython)], migration.name
+        for op in migration.operations:
+            if isinstance(op, migrations.RunSQL):
+                statements += (list(op.sql) if isinstance(op.sql, (list, tuple))
+                               else [op.sql])
+
+    assert statements, "no database rule was found, so the walk is vacuous"
+    for sql in statements:
+        # `BEFORE INSERT` names the statement a trigger fires on, which is not
+        # a write — what would seed a row is a statement that writes one.
+        assert not re.search(
+            r"\bINSERT\s+INTO\b|\bUPDATE\s+\w+\s+SET\b|\bDELETE\s+FROM\b",
+            sql, re.IGNORECASE), sql[:80]
+        assert sql.lstrip().startswith("CREATE FUNCTION"), sql[:80]
 
 
 # --------------------------------------------------------------------------

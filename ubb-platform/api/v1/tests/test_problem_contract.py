@@ -88,10 +88,10 @@ class RegistryDocumentTest(TestCase):
         registry) plus the one UBB-produced verdict an acknowledgement can
         carry that is deliberately not a registry value (`task_not_active`,
         argued in `apps/platform/work/reasons.py`), and to nothing else: no
-        retired spelling survives here because the stored rows that carried
-        them were migrated (`work/migrations/0026`), so a reader compares by
-        constant identity and never by a legacy map. Mutate either side and
-        this goes red.
+        retired spelling survives here because no stored row carries one —
+        `work/0026` migrated the rows that did, and the cutover (#190) started
+        from a fresh database — so a reader compares by constant identity and
+        never by a legacy map. Mutate either side and this goes red.
         """
         self.assertEqual(set(VERDICTS["reason_codes"]),
                          set(REASON_CODE_KNOWN_VALUES) | {reasons.TASK_NOT_ACTIVE})

@@ -119,7 +119,7 @@ COSTING_STATUS_COLUMN = SUPPLIER_COST.status_column
 
 def _tenant_and_customer():
     tenant = Tenant.objects.create(name="T")
-    # ⚠ **THE PRUNE RULE READS THE PRICE STATUS TOO** (`usage/migrations/0041`),
+    # ⚠ **THE PRUNE RULE READS THE PRICE STATUS TOO** (`trg_posting_measurement_pruning`),
     # so a tenant with no markup rung declared cannot prune anything: every
     # posting it records resolves to `unknown` (#356), which is one of the two
     # states the rule refuses to let a measurement leave. A rung of nothing —

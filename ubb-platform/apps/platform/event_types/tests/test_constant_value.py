@@ -13,15 +13,17 @@ here is what a route cannot reach:
   rule). Every case writes through the ORM with no ``full_clean``, which is
   the writer the constraints exist for.
 * **A publication kept before the value existed** answers ``None`` for it.
-* **The migration's guard**, over states no route can produce any more.
+
+(Before the cutover, #190, this module also drove ``event_types/0009``'s guard,
+which refused to add the rules over a tree holding a constant without its
+value. A fresh database has no such tree; the rule itself is the
+``ck_measurement_constant_value_iff_constant`` case below.)
 """
 from decimal import Decimal
-from importlib import import_module
 
 import pytest
-from django.apps import apps as live_apps
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, connection, migrations, transaction
+from django.db import IntegrityError, transaction
 
 from apps.platform.event_types.exact_decimals import (
     NotAnExactDecimal, canonical)
@@ -36,10 +38,6 @@ from core.vocabulary import (
     SOURCE_KIND_CONSTANT,
     UNIT_CALL,
 )
-
-THE_MIGRATION = import_module(
-    "apps.platform.event_types.migrations."
-    "0009_a_constant_declares_its_value")
 
 #: Twelve, written in two other scripts' digits. Built from code points so the
 #: characters this module is about are never typed into it.
@@ -219,9 +217,9 @@ def test_the_model_reads_no_number_as_text_on_the_way_to_the_rule(value):
 @pytest.mark.django_db
 def test_a_copy_kept_before_the_value_existed_answers_none_for_it():
     """A copy `publish` kept before #571 has no `constant_value` at all. The
-    migration that added it refused to run over any copy pinning a constant,
-    so every quantity such a copy holds is one with no value: the read says
-    `None`, and makes nothing up."""
+    migration that added it (`event_types/0009`, before the cutover) refused to
+    run over any copy pinning a constant, so every quantity such a copy holds
+    is one with no value: the read says `None`, and makes nothing up."""
     event_type = _event_type()
     _written(event_type, code="searches",
              source_kind=SOURCE_KIND_CALLER_SUPPLIED, constant_value=None)
@@ -239,102 +237,3 @@ def test_a_copy_kept_before_the_value_existed_answers_none_for_it():
 
     assert [(quantity.code, quantity.constant_value)
             for quantity in read.measurements] == [("searches", None)]
-
-
-# ---------------------------------------------------------------------------
-# The migration's guard
-# ---------------------------------------------------------------------------
-
-guard = THE_MIGRATION.refuse_a_constant_without_a_value
-
-
-def test_the_guard_runs_after_the_column_and_before_the_rules():
-    """The order is the whole of what makes the guard honest: after the
-    column exists, so the rows it reads are the rows the rules will judge,
-    and before any rule is added, so its refusal — naming what it found —
-    arrives instead of a bare constraint violation."""
-    operations = THE_MIGRATION.Migration.operations
-
-    assert [type(operation) for operation in operations] == [
-        migrations.AddField, migrations.RunPython, migrations.AddConstraint,
-        migrations.AddConstraint, migrations.AddConstraint]
-    assert operations[1].code is guard
-    assert operations[0].name == "constant_value"
-
-
-@pytest.mark.django_db
-def test_the_guard_lets_a_tree_with_no_valueless_constant_through():
-    event_type = _event_type()
-    _written(event_type, constant_value="2")
-    _written(event_type, code="searches",
-             source_kind=SOURCE_KIND_CALLER_SUPPLIED, constant_value=None)
-    EventType.objects.get(pk=event_type.pk).publish()
-
-    guard(live_apps, None)
-
-
-def _without_the_rule_that_a_constant_owes_a_value():
-    """Drop the rule for the rest of this test's transaction, which rolls it
-    back. A constant row with no value is a state the database now refuses,
-    so this is the only way to plant the tree the guard exists for."""
-    (rule,) = [constraint for constraint in Measurement._meta.constraints
-               if constraint.name
-               == "ck_measurement_constant_value_iff_constant"]
-    with connection.schema_editor() as editor:
-        editor.remove_constraint(Measurement, rule)
-
-
-@pytest.mark.django_db
-def test_the_guard_refuses_a_constant_row_with_no_value_and_names_it():
-    """Named by everything it takes to find it — the tenant's id and name,
-    the Event Type, the quantity and the row — and by how to clear it, with
-    nothing repaired."""
-    tenant = Tenant.objects.create(name="Acme pre-launch")
-    event_type = _event_type(tenant, key="acme.flat")
-    _without_the_rule_that_a_constant_owes_a_value()
-    # Written through the ORM: no route can declare a constant without its
-    # value any more, which is the point of the rule just dropped.
-    held = _written(event_type, constant_value=None)
-
-    with pytest.raises(THE_MIGRATION.ConstantWithoutAValue) as refused:
-        guard(live_apps, None)
-
-    said = str(refused.value)
-    assert (f"declared quantity 'flat_fee' (Measurement {held.pk}) under "
-            f"Event Type 'acme.flat' of tenant {tenant.pk} "
-            f"('Acme pre-launch')") in said
-    assert "never invents one, and repairs nothing" in said
-    assert "DELETE /api/v1/event-types/<key>/measurements/<code>" in said
-    assert "with the build BEFORE this migration's" in said
-    assert "POST /api/v1/sandbox/reset with keep_config false" in said
-    assert Measurement.objects.get(pk=held.pk).constant_value is None
-
-
-@pytest.mark.django_db
-def test_the_guard_refuses_a_kept_publication_pinning_a_valueless_constant():
-    tenant = Tenant.objects.create(name="Acme pre-launch")
-    event_type = _event_type(tenant, key="acme.flat")
-    _written(event_type, code="searches",
-             source_kind=SOURCE_KIND_CALLER_SUPPLIED, constant_value=None)
-    EventType.objects.get(pk=event_type.pk).publish()
-    kept = dict(EventType.objects.get(pk=event_type.pk).published_declaration)
-    # Written through the ORM: a copy is composed only by `publish`, from rows
-    # that can no longer hold a constant without its value. This is a copy as
-    # a tree before #571 kept it — no `constant_value` key at all.
-    kept["measurements"] = [{
-        "code": "flat_fee", "value_type": MEASUREMENT_VALUE_TYPE_DECIMAL,
-        "unit": UNIT_CALL, "required_for_costing": False,
-        "source_kind": SOURCE_KIND_CONSTANT, "source_path": []}]
-    EventType.objects.filter(pk=event_type.pk).update(
-        published_declaration=kept)
-
-    with pytest.raises(THE_MIGRATION.ConstantWithoutAValue) as refused:
-        guard(live_apps, None)
-
-    said = str(refused.value)
-    assert (f"kept publication of Event Type 'acme.flat' (EventType "
-            f"{event_type.pk}) of tenant {tenant.pk} ('Acme pre-launch'), "
-            f"pinning quantity 'flat_fee'") in said
-    assert "POST /api/v1/event-types/<key>/publish" in said
-    assert EventType.objects.get(pk=event_type.pk).published_declaration \
-        == kept

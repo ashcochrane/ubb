@@ -7,7 +7,8 @@ metering-only tenant's fixed-price work recorded the tenant's posture
 owner's C2 ruling superseded it: whether UBB may know a customer's price is
 not decided by whether UBB collects it, so the regime decides the reason and
 the billing mode is not encoded again in the pricing result. The posture value
-lost its last producer and was removed (`usage/0047`).
+lost its last producer and was removed (the postings holding it were rewritten
+by `usage/0047`, before the cutover squash, #190).
 
 What is left is one fact and one answer, and the case where the fact is false
 has no reason at all — the price applies. Both are asserted, and the posture is

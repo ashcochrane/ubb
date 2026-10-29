@@ -2,7 +2,7 @@
 
 The tenant route (trigger ``manual``) and the widget route (``widget``) run
 the identical flow: the required ``idempotency_key`` is unique per customer
-on ``TopUpAttempt`` (``uq_topup_attempt_idempotency``), so a retried call
+on ``TopUpAttempt`` (``uq_top_up_attempt_idempotency``), so a retried call
 re-uses the original attempt — the checkout branch re-renders its session
 (Stripe's own idempotency on ``checkout-{attempt.id}`` returns the same
 session) and the event branch never re-emits (attempt + outbox event land in

@@ -107,7 +107,8 @@ class TenantDefaultMarkup(BaseModel):
 #:
 #: ⚠ **NOT A CLOSED LIST, DELIBERATELY, AND IT USED TO READ LIKE ONE.** This
 #: comment named five — the partial unique index, this check, the reference's
-#: own foreign key and the two triggers `0018` and `0020` install — and #355
+#: own foreign key and the two triggers `trg_rate_declared_transitions` and
+#: `trg_rate_names_a_declaration` — and #355
 #: added two more checks below without that enumeration being wrong so much as
 #: OUT OF DATE, which is the failure mode of writing a count in prose at all.
 #: Every foreign key and every `NOT NULL` on this table answers the same
@@ -176,7 +177,7 @@ NEVER_COMPOSES_CHECK = "ck_rate_never_composes"
 #: and only if it is in a Pricing Book. Null on a selling rule used to MEAN
 #: `direct_event_price`, read so at resolution; the owner ruled that implicit
 #: encoding out, and `pricing/0034` stated the method on every such row before
-#: this check went on.
+#: this check went on (before the cutover squash, #190).
 STATES_ITS_SELLING_METHOD_CHECK = "ck_rate_a_selling_rule_states_its_method"
 
 #: HOW A PRICING RULE DERIVES A CUSTOMER PRICE, DERIVED FROM THE REGISTRY rather
@@ -298,7 +299,9 @@ class Rate(BaseModel):
     # looking configured, because there is nothing for it to point at.
     #
     # NULLABLE FOR ONE POPULATION AND NO LIVE WRITER MAY PRODUCE IT: the rows
-    # the conversion found naming a quantity no declaration matched. They keep
+    # the conversion found naming a quantity no declaration matched
+    # (`pricing/0019`, before the cutover squash, #190; a fresh database holds
+    # none, and the column keeps the shape for the rule below). They keep
     # their row and their name (below) and stop resolving, because deleting them
     # would destroy the evidence a tenant needs to fix them and repointing them
     # would invent a declaration the tenant never made. `ck_rate_names_one_
@@ -319,13 +322,15 @@ class Rate(BaseModel):
     # mutually exclusive, so exactly one of them says which quantity a rate
     # names and no row has both.
     #
-    # ITS ONLY WRITER IS MIGRATION `0019`, AND THAT IS ENFORCED RATHER THAN
+    # ITS ONLY WRITER WAS MIGRATION `pricing/0019` (before the cutover squash,
+    # #190), AND NO INSERT MAY WRITE IT — THAT IS ENFORCED RATHER THAN
     # ASSERTED. The check cannot do it: it is evaluated against one row and
     # cannot tell the conversion's UPDATE from a fresh INSERT carrying a loose
-    # name, which is the same defect wearing the new column. `0020` installs a
-    # `BEFORE INSERT` trigger refusing any rate that references no declaration,
-    # and that is what makes a rate naming an undeclared quantity unwritable at
-    # every door rather than only at the route.
+    # name, which is the same defect wearing the new column.
+    # `trg_rate_names_a_declaration` is a `BEFORE INSERT` trigger refusing any
+    # rate that references no declaration, and that is what makes a rate naming
+    # an undeclared quantity unwritable at every door rather than only at the
+    # route.
     undeclared_measurement_key = models.CharField(max_length=100, blank=True,
                                                   default="")
     # HOW THIS RULE DERIVES A CUSTOMER PRICE — one of exactly two, or nothing
@@ -344,9 +349,8 @@ class Rate(BaseModel):
     # of those is read off the price STATUS beside the amount on the posting
     # (`usage/models.py`), which already carries `waived`, `unknown` and
     # `not_applicable`. THIS IS THE ONE PLACE THAT ARGUMENT IS MADE IN FULL; the
-    # migration, the published schema and the receipt module state the rule and
-    # point here, because seven copies of a paragraph are seven things that can
-    # go false separately. It is the shape the cost side already ships: the
+    # published schema and the receipt module state the rule and point here,
+    # because copies of a paragraph are things that can go false separately. It is the shape the cost side already ships: the
     # derivation lives on the declaration and the receipt snapshots it.
     #
     # ⚠ STATED ON EVERY SELLING RULE, AND NULL ONLY WHERE NO SELLING METHOD
@@ -354,8 +358,9 @@ class Rate(BaseModel):
     # `margin_over_cost` or `direct_event_price`; a cost book's rate, and a row
     # in no book, carry null — `STATES_ITS_SELLING_METHOD_CHECK` holds both
     # halves. Until R10-W4 a null on a selling rule MEANT `direct_event_price`
-    # and resolution read it so; `0034` stated the method on every such row,
-    # the publish writes it wherever a body is silent, and the resolver refuses
+    # and resolution read it so; `pricing/0034` stated the method on every such
+    # row (before the cutover squash, #190), the publish writes it wherever a
+    # body is silent, and the resolver refuses
     # a selling rule with none rather than defaulting.
     #
     # ⚠ NOT DECLARED INTO A TRANSITION CLASS, AND THAT IS AN ANSWER RATHER THAN
@@ -461,7 +466,7 @@ class Rate(BaseModel):
     #: decision §6.5 describes. Named, with the choice it leaves open, in
     #: `test_a_rate_is_effective_from_a_chosen_moment.py`'s slice-4 class.
     #:
-    #: **The enforcement is the trigger installed by `migrations/0018`, not
+    #: **The enforcement is the trigger `trg_rate_declared_transitions`, not
     #: anything here.** ADR-0007 §2 is explicit that a model-level guard is
     #: not enforcement. Both declarations are held across `save()`,
     #: `QuerySet.update()` and raw SQL alike, on BOTH halves of this table —
@@ -538,7 +543,8 @@ class Rate(BaseModel):
             # This holds the SHAPE of a row, at all times, including across an
             # update that would blank a placeless rate's name and leave it
             # pricing nothing and saying nothing. WHO MAY BE BORN is a
-            # different question and a check cannot answer it — see `0020`.
+            # different question and a check cannot answer it — see the
+            # trigger `trg_rate_names_a_declaration`.
             models.CheckConstraint(
                 condition=(
                     models.Q(measurement__isnull=False,
@@ -874,8 +880,9 @@ class TaskPrice(BaseModel):
     #: opened and closed it — is read by the planner, the read and the Code
     #: Builder, and a window moved in place would make the publish record and
     #: the line disagree about what was in force. So `valid_from` is FROZEN and
-    #: `valid_to` is SET_ONCE, held by the trigger `migrations/0032` installs
-    #: on this table across `save()`, `QuerySet.update()` and raw SQL alike.
+    #: `valid_to` is SET_ONCE, held by the trigger
+    #: `trg_task_price_declared_transitions` on this table across `save()`,
+    #: `QuerySet.update()` and raw SQL alike.
     transition_classes = {
         "valid_from": FROZEN,
         "valid_to": SET_ONCE,
@@ -952,15 +959,15 @@ class Charge(BaseModel):
     WINNING transition into the delivered state (`TaskService._flip` returns
     which call won), the partial uniqueness below makes a second primary charge
     a database error rather than a double charge, and the projected posting
-    takes THIS row's key so `uq_usage_event_idempotency_v2` refuses a second
+    takes THIS row's key so `uq_posting_idempotency` refuses a second
     projection of one charge.
 
     ⚠ **CORRECTIONS ARE COMPENSATING RECORDS, NEVER EDITS.** Every economic
     column is declared `FROZEN` — ADR-0007 §2's *none after insert* — and
-    `pricing/0031` holds the declaration at the database across `save()`,
-    `QuerySet.update()` and raw SQL alike. A wrong charge therefore leaves a
-    trail: the original stands, and what corrects it is another row of this
-    table naming it. See `compensates` below.
+    `trg_charge_declared_transitions` holds the declaration at the database
+    across `save()`, `QuerySet.update()` and raw SQL alike. A wrong charge
+    therefore leaves a trail: the original stands, and what corrects it is
+    another row of this table naming it. See `compensates` below.
 
     **UBB'S OWN PLATFORM FEE APPLIES TO IT**, and #417 made that an explicit
     property of the projection rather than something the projection inherits by
@@ -1091,10 +1098,10 @@ class Charge(BaseModel):
     grouping_field_10 = models.CharField(max_length=100, blank=True, default="")
 
     #: EVERY ECONOMIC COLUMN IS `FROZEN`, AND THE DATABASE HOLDS IT
-    #: (`pricing/0031`). ADR-0007 §2 is explicit that a model-level guard alone
-    #: is not enforcement, so the declaration here is a statement and the trigger
-    #: is the enforcement — G19 walks this mapping and fails on any column no
-    #: rule on this table names.
+    #: (`trg_charge_declared_transitions`). ADR-0007 §2 is explicit that a
+    #: model-level guard alone is not enforcement, so the declaration here is a
+    #: statement and the trigger is the enforcement — G19 walks this mapping and
+    #: fails on any column no rule on this table names.
     #:
     #: ⚠ THE THREE POINTERS ARE SPELLED AS THEIR COLUMNS (`tenant_id`,
     #: `task_id`, `compensates_id`) RATHER THAN AS THEIR FIELDS. This vocabulary
@@ -1214,9 +1221,12 @@ class CostBook(BaseModel):
     **THE CURRENCY IS DECLARED, NOT STAMPED, AND THE DATABASE HOLDS IT.**
     `ck_cost_book_names_its_currency` refuses the empty string: a cost book
     that does not say which currency its supplier bills in prices nothing it
-    can be trusted about. This is why the container's line leaves the unowned
-    currency-column list rather than following the rename — see
-    `usage/tests/test_posting_rename.py`.
+    can be trusted about. This is why the container's line left the unowned
+    currency-column list rather than following the rename; #555 has since
+    retired that list, and every currency column is held in
+    `apps/platform/tests/test_v1_is_usd_only.py` (the posting's own, by shape
+    and default, in
+    `apps/metering/usage/tests/test_the_usage_record_is_the_posting.py`).
 
     ⚠ **THE PROVIDER IS REQUIRED TO BE STATED AND `""` IS A STATED VALUE.**
     The empty provider is the tenant's provider-agnostic cost book — a real
@@ -1734,8 +1744,8 @@ class ResolutionRun(BaseModel):
     column declares `RECORD_RULE` — not a class of its own, because the honest
     answer per column is *"nothing this column decides; read the record's
     rule"* — and the record's rule is that after the insert nothing may change,
-    ever. `pricing/migrations/0025` holds it across every door. That is not
-    tidiness: a run is irreversible under the receipt's sealing rule and this
+    ever. `trg_resolution_run_is_never_edited` holds it across every door. That
+    is not tidiness: a run is irreversible under the receipt's sealing rule and this
     row is the only surviving explanation of it, so a record that could be
     edited afterwards would make the traceability a claim rather than a fact.
     `updated_at` can therefore never differ from `created_at`, which is what the
@@ -1783,8 +1793,10 @@ class ResolutionRun(BaseModel):
     #: Of those examined, how many the run completed nothing on. TWO REASONS
     #: PRODUCE THAT AND THIS COLUMN DELIBERATELY DOES NOT SEPARATE THEM: nothing
     #: the tenant has since configured resolves the posting, or the posting's
-    #: own record cannot support a completion (an older shape, or an unresolved
-    #: cost whose quantities it never kept). What they have in common is the
+    #: own record cannot support a completion (an unresolved cost whose
+    #: quantities it never kept; before the cutover, #190, also a receipt in an
+    #: older shape, which a fresh database no longer holds). What they have in
+    #: common is the
     #: whole of what this number claims — the run examined it and left it as it
     #: was. Separating them would put a diagnosis on the act's record, where a
     #: reader would take it for a count of what is recoverable; what is
@@ -1806,11 +1818,11 @@ class ResolutionRun(BaseModel):
     #: WHAT MAY HAPPEN TO THIS RECORD (ADR-0007 §2). Nothing, on every column,
     #: which is why none of them takes a class of its own: `RECORD_RULE` is the
     #: absence of a class said out loud, and the record's rule is stated in the
-    #: docstring above and held by `pricing/migrations/0025`. A column-level
-    #: `FROZEN` would be that one claim written sixteen times, and G19's walk
-    #: would then require each column to be NAMED by the rule — which a blanket
-    #: refusal deliberately does not do, because it refuses every update
-    #: whatever it touched.
+    #: docstring above and held by `trg_resolution_run_is_never_edited`. A
+    #: column-level `FROZEN` would be that one claim written sixteen times, and
+    #: G19's walk would then require each column to be NAMED by the rule —
+    #: which a blanket refusal deliberately does not do, because it refuses
+    #: every update whatever it touched.
     transition_classes = {
         "id": RECORD_RULE,
         "created_at": RECORD_RULE,

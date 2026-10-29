@@ -23,6 +23,12 @@ Three claims, one class each:
    passed by a write that never happened.
 3. **A tenant's own `save()` refuses by the domain rule**, so the admin form and
    a seed meet a named validation error rather than a database exception.
+
+Before the cutover (#190) a fourth class drove the seven migrations that
+installed these `CHECK`s (R10-W3) through the executor, proving each stopped on
+a foreign row, named it and relabelled nothing. A fresh database is created
+with every `CHECK` in place, so no row can predate one; the inventory above and
+the doors below are the end state those migrations reached.
 """
 
 import uuid
@@ -31,7 +37,6 @@ from datetime import date
 from django.apps import apps
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, models, transaction
-from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase
 from django.utils import timezone
 
@@ -45,7 +50,6 @@ from apps.metering.pricing.tests._helpers import (
     cost_book,
     rate_in_default_book,
 )
-from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.models import ReportedCostMapping
 from apps.platform.event_types.tests._helpers import declares_a_caller_supplied_cost
@@ -58,6 +62,7 @@ from core.vocabulary import (
     RECOGNITION_METHOD_ON_RECEIPT,
     TASK_STATUS_COMPLETED,
 )
+from apps.metering.usage.tests._helpers import a_posting
 
 #: A currency UBB can REPRESENT (`core.money` knows its minor unit) and does not
 #: ADMIT, so every refusal below is the policy's and never "an unknown code".
@@ -201,8 +206,8 @@ class _Rows:
         return cost_book(self.tenant)
 
     def _posting(self):
-        return Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                      idempotency_key=f"i-{uuid.uuid4()}")
+        return a_posting(tenant=self.tenant, customer=self.customer,
+                         idempotency_key=f"i-{uuid.uuid4()}")
 
     def _reported_cost_mapping(self):
         declares_a_caller_supplied_cost(self.tenant, "reported")
@@ -242,8 +247,9 @@ ROWS = (
 
 #: The one table whose UPDATE doors meet a rule ahead of the CHECK: a charge's
 #: currency is FROZEN by `trg_charge_declared_transitions`, a BEFORE trigger
-#: (`pricing/0031`), so an existing charge is refused by that rule first. The
-#: INSERT doors are the CHECK's alone, and they are what proves it here.
+#: (`pricing/0002_the_database_rules`), so an existing charge is refused by that
+#: rule first. The INSERT doors are the CHECK's alone, and they are what proves
+#: it here.
 UPDATE_REFUSED_FIRST_BY = {"ubb_charge": r"frozen.*\bcurrency\b"}
 
 
@@ -388,99 +394,6 @@ class ATenantIsRefusedByTheDomainRuleBeforeTheDatabaseTest(TestCase):
             with transaction.atomic():
                 _insert_a_copy(self.tenant, default_currency=FOREIGN)
         self.assertFalse(Tenant.objects.filter(name="Euros").exists())
-
-
-#: ``(app, the migration that installs the CHECKs, its predecessor, table,
-#: builder)`` — one row per app, so each reconciliation is driven for real.
-#: The tenant row is the fixture's own (``None``).
-INSTALLED_BY = (
-    ("tenants", "0028_a_tenant_holds_usd_only",
-     "0027_admission_control_comes_to_the_kernel", "ubb_tenant", None),
-    ("wallets", "0012_wallet_money_is_usd_only",
-     "0011_a_prepaid_start_reserves_the_agreed_price", "ubb_wallet", "_wallet"),
-    ("pricing", "0033_rules_charges_and_cost_books_are_usd_only",
-     "0032_an_agreed_price_is_published_with_provenance", "ubb_cost_book",
-     "_cost_book"),
-    ("usage", "0051_a_posting_is_usd_only",
-     "0050_a_held_price_states_its_reason", "ubb_posting", "_posting"),
-    ("event_types", "0013_a_reported_cost_is_pinned_to_usd_only",
-     "0012_a_publication_keeps_its_supplier", "ubb_reported_cost_mapping",
-     "_reported_cost_mapping"),
-    ("subscriptions", "0017_supplied_revenue_is_usd_only",
-     "0016_the_snapshot_stops_freezing_who_sends_the_invoice",
-     "ubb_tenant_supplied_revenue", "_supplied_revenue"),
-    ("invoicing", "0010_a_usage_invoice_is_usd_only",
-     "0009_invoice_lines_take_the_one_grouping_vocabulary",
-     "ubb_customer_usage_invoice", "_usage_invoice"),
-)
-
-#: The column each table's reconciliation reads.
-HELD_BY_COLUMN = {table: column for (table, column) in HELD_BY}
-
-
-def _migrate_to(app, name):
-    with connection.cursor() as cursor:
-        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-    MigrationExecutor(connection).migrate([(app, name)])
-
-
-def _stored(table, column, pk):
-    with connection.cursor() as cursor:
-        cursor.execute(f"SELECT {column} FROM {table} WHERE id = %s", [str(pk)])
-        return cursor.fetchone()[0]
-
-
-def _store(table, column, pk, value):
-    with connection.cursor() as cursor:
-        cursor.execute(f"UPDATE {table} SET {column} = %s WHERE id = %s",
-                       [value, str(pk)])
-
-
-class TheMigrationsReconcileByRefusingTest(_Rows, TestCase):
-    """The reconciliation each migration runs before its `CHECK`, run for real
-    — through Django's executor, back to the predecessor and forward again,
-    inside the test's transaction (PostgreSQL runs the DDL transactionally, so
-    it leaves with the test; `work`'s #562 module is the precedent).
-
-    A row is planted in another currency while the `CHECK` is gone, which is
-    the only state in which one could exist. The forward migration must stop
-    and name it, convert nothing and relabel nothing; once a person corrects
-    the row it must go through."""
-
-    def _plant(self, app, predecessor, table, builder, value):
-        record = self.tenant if builder is None else getattr(self, builder)()
-        column = HELD_BY_COLUMN[table]
-        _migrate_to(app, predecessor)
-        _store(table, column, record.pk, value)
-        return record, column
-
-    def test_each_migration_stops_on_a_foreign_row_and_rewrites_nothing(self):
-        for app, installer, predecessor, table, builder in INSTALLED_BY:
-            with self.subTest(app=app):
-                record, column = self._plant(app, predecessor, table, builder,
-                                             FOREIGN)
-                with self.assertRaisesRegex(
-                        RuntimeError, rf"{table}\.{column}.*'{FOREIGN}' x1"):
-                    _migrate_to(app, installer)
-                self.assertEqual(_stored(table, column, record.pk), FOREIGN)
-                self.assertNotIn(HELD_BY[(table, column)],
-                                 _checks_on(table, column))
-                _store(table, column, record.pk, ECONOMIC_CURRENCY)
-                _migrate_to(app, installer)
-                self.assertIn(HELD_BY[(table, column)],
-                              _checks_on(table, column))
-
-    def test_a_stored_capital_usd_is_refused_rather_than_relabelled(self):
-        """`'USD'` names the right currency in another spelling, and a
-        migration that lower-cased it would be deciding a row's meaning on a
-        reader's behalf. It is named like any other row."""
-        app, installer, predecessor, table, builder = INSTALLED_BY[1]
-        record, column = self._plant(app, predecessor, table, builder, "USD")
-        with self.assertRaisesRegex(RuntimeError, r"'USD' x1"):
-            _migrate_to(app, installer)
-        self.assertEqual(_stored(table, column, record.pk), "USD")
-        _store(table, column, record.pk, ECONOMIC_CURRENCY)
-        _migrate_to(app, installer)
 
 
 class TheSourceFactsPairTheirAmountWithTheirCurrencyTest(TestCase):

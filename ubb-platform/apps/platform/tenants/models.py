@@ -286,8 +286,8 @@ class PaymentRailActivation(BaseModel):
         return f"{self.rail} ({self.environment}, {state})"
 
 # Tier-2 real-time spend control (D1): the SINGLE program kill switch — two
-# positions (#42, spec §G; `advisory` retired, mapped to `off` by migration
-# 0019).
+# positions (#42, spec §G; `advisory` retired, mapped to `off` by
+# `tenants/0019` before the cutover squash, #190).
 #   off       — byte-for-byte pre-enforcement behavior: no counters, no
 #               signals, no tagging — the live ledger / stop flag / per-task
 #               cap are never touched.
@@ -419,9 +419,9 @@ class Tenant(BaseModel):
     # a kernel concept a tenant that does not bill through UBB is owed like
     # every other — so it lives here beside the tenant's other kernel rungs,
     # read by `work/admission.py` for every start. It sat on billing's risk
-    # row until #462 (`gating/migrations/0015` carried each tenant's value
-    # here), where the composition layer reached it only for a tenant with a
-    # wallet, so a tenant without one had no bound at all.
+    # row until #462 (`gating/0015` carried each tenant's value here, before
+    # the cutover squash, #190), where the composition layer reached it only
+    # for a tenant with a wallet, so a tenant without one had no bound at all.
     #
     # It bounds the RATE of new work and says nothing about supplier cost:
     # never spend protection, never a mitigation for the blind window. A

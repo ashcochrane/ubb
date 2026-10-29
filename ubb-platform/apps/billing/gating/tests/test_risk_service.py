@@ -196,6 +196,7 @@ import pytest
 from django.core.cache import cache as django_cache
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.live_counter import LiveCounter
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.usefixtures("rail_activated")
@@ -219,8 +220,8 @@ class TestRiskServiceCustomerSpendPool:
 
     def _spend(self, c, amount):
         from apps.metering.usage.models import Posting
-        Posting.objects.create(tenant=c.tenant, customer=c, idempotency_key="i",
-                                  provider_cost_micros=amount, billed_cost_micros=amount)
+        a_posting(tenant=c.tenant, customer=c, idempotency_key="i",
+                     provider_cost_micros=amount, billed_cost_micros=amount)
         LiveCounter.spend_pool_incr(c.tenant_id, c.id, amount)
 
     def test_no_budget_config_allows(self):
@@ -265,8 +266,8 @@ class TestRiskServiceCustomerSpendPool:
         t = Tenant.objects.create(name="PP", products=["metering", "billing"], billing_mode="postpaid")
         c = Customer.objects.create(tenant=t, external_id="pp")
         CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=1_000, enforce_mode="blocking")
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i",
-                                  provider_cost_micros=1_000, billed_cost_micros=1_000)
+        a_posting(tenant=t, customer=c, idempotency_key="i",
+                     provider_cost_micros=1_000, billed_cost_micros=1_000)
         LiveCounter.spend_pool_incr(t.id, c.id, 1_000)
         res = RiskService.check(c)
         assert res["allowed"] is False

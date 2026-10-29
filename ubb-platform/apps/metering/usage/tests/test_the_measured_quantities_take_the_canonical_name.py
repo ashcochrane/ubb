@@ -10,34 +10,35 @@ container; the new one names a lookup.
 `continue` on the price side and still contributes nothing, silently. Naming the
 field for the declaration it keys into is what makes that mismatch *describable*;
 slice 3 is what makes it *visible*. This module is deliberately quiet about it —
-what a caller may still send is `test_negative_quantity_rejection.py`'s subject,
-and that module now records both halves of it.
+what a caller may still send is `api/v1/tests/test_a_recorded_quantity_is_exact_text.py`'s
+subject (the module this once cited went with #603, which admitted negatives).
 
-**ADR-0007 §1 governs the move:** `RenameField`, never add-plus-remove. The
-pre-squash exemption is spent, and :class:`TheMoveIsARenameTest` is what holds
-the migration to it rather than trusting the commit message.
+**THE RETIRED NAMES ARE NEVER SPELLED HERE.** They are read off the registry
+that retired them instead — `retired.yaml`'s `measurement_key`, whose
+`retired_aliases` include the bag's old name — through
+`api.v1.tests._helpers.retired_aliases`. Every alias of the concept is asserted
+absent, which is wider than the one column name the rename moved and is the
+true claim: the bag answers to none of them. The reason for not spelling one is
+about *this* file: a test module is a living surface, so spelling a retired
+word here would re-open an extent that was paid off, and the choice would then
+be a hand-written exclusion or a false ledger count.
 
-**THE RETIRED NAME IS NEVER SPELLED HERE.** It is read off the rename operation
-instead. Not because this module would be the only file left carrying the word —
-it would not; the migrations tree and the contract gate's reviewed-break block
-both still carry it, legitimately, and both are declared sweep exclusions. The
-reason is narrower and it is about *this* file: a test module is a living
-surface, so spelling the word here would re-open an extent the same commit is
-paying off, and the choice would then be a hand-written exclusion or a false
-ledger count. Deriving it costs one import and takes no seeding authorisation.
+Before the cutover (#190) the old name was read off `usage/0034`'s
+`RenameField`, and a class here held that migration to ADR-0007 §1 — a rename
+and never an add-plus-remove, with a row written before it read after it. Those
+were facts about one migration's operations, and they retired with the chain.
 """
 
 from functools import cache
-from importlib import import_module
 from unittest.mock import patch
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db import connection, migrations as operations
-from django.db.migrations.loader import MigrationLoader
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from api.v1.openapi_export import GIT_ROOT
+from api.v1.tests._helpers import retired_aliases
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
 from apps.platform.customers.models import Customer
@@ -47,23 +48,14 @@ from apps.platform.event_types.models import Measurement
 from apps.platform.tenants.models import Tenant, TenantApiKey
 
 import json
+from apps.metering.usage.tests._helpers import a_posting
 
-APP_LABEL = "usage"
-RENAME_MIGRATION = "0034_the_measured_quantities_take_the_canonical_name"
-PARENT_MIGRATION = "0033_the_second_open_bag_folds"
+#: The canonical name, which is free to be written down.
+CANONICAL_COLUMN = "measurements"
 
-#: The two names, both read off the rename itself.
-#:
-#: Unpacked from a one-element tuple on purpose: a migration that ever grew a
-#: second `RenameField` would make `next(...)` pick one silently, and every
-#: assertion below would then be about a column nobody meant.
-(_RENAME,) = tuple(
-    op for op in
-    import_module(
-        f"apps.metering.usage.migrations.{RENAME_MIGRATION}").Migration.operations
-    if isinstance(op, operations.RenameField))
-RETIRED_COLUMN = _RENAME.old_name
-CANONICAL_COLUMN = _RENAME.new_name
+#: The retired names, read off the registry — every alias the concept retired,
+#: the bag's old column name among them. A tuple, so a case asks about each.
+RETIRED_COLUMNS = tuple(retired_aliases("retired", "measurement_key"))
 
 #: The three published schemas the bag appears on. Named rather than discovered:
 #: a walk that found two would report success just as loudly.
@@ -77,9 +69,9 @@ PUBLISHED_SCHEMAS = (
 def schemas():
     """The published contract's schema block.
 
-    Read on first use rather than at import, because two other test modules
-    import `RETIRED_COLUMN` from here and neither of them should acquire a
-    dependency on the spec file to get it.
+    Read on first use rather than at import, because another test module
+    imports `RETIRED_COLUMNS` from here and should not acquire a dependency on
+    the spec file to get it.
     """
     return json.loads(
         (GIT_ROOT / "openapi" / "v1.json").read_text(encoding="utf-8")
@@ -107,86 +99,6 @@ def _live_columns():
                     cursor, PostingMeasurement._meta.db_table)}
 
 
-class TheMoveIsARenameTest(TestCase):
-    """ADR-0007 §1, checked against the migration rather than the message."""
-
-    def setUp(self):
-        self.migration = MigrationLoader(connection).get_migration(
-            APP_LABEL, RENAME_MIGRATION)
-
-    def test_it_carries_no_add_plus_remove(self):
-        """The failure this rule exists to stop leaves no trace afterwards.
-
-        An `AddField` beside a `RemoveField` produces a column of the right
-        name holding none of the data, and every assertion in every other class
-        here would pass over it.
-        """
-        for op in self.migration.operations:
-            with self.subTest(operation=type(op).__name__):
-                self.assertNotIsInstance(
-                    op, (operations.AddField, operations.RemoveField))
-
-    def test_it_is_the_rename_and_nothing_else(self):
-        self.assertEqual([type(op).__name__ for op in self.migration.operations],
-                         ["RenameField"])
-
-    def test_it_renames_the_bag_on_the_measurement_record(self):
-        self.assertEqual(_RENAME.model_name.lower(),
-                         PostingMeasurement._meta.model_name)
-
-    def test_a_row_written_before_the_rename_still_reads_after_it(self):
-        """THE CLAIM ADR-0007 §1 IS ACTUALLY MAKING, run against a real table.
-
-        `assertTrue(op.reversible)` would look like this test and prove nothing:
-        `reversible` is a class attribute on `Operation` that `RenameField` never
-        overrides, so it is `assertTrue(True)` — the sibling test above already
-        pins the operation list, which is the whole of what that would add.
-
-        So this drives the operation itself. A row is written, the column is
-        renamed back to what it was before this migration, the row is read under
-        the OLD name, and then the rename is re-applied and it is read under the
-        new one. An add-plus-remove wearing a rename's clothes fails at the
-        first read, which is the failure the rule exists to catch.
-
-        PostgreSQL runs DDL inside the transaction this `TestCase` rolls back, so
-        the column ends where it started no matter how this test exits.
-        """
-        tenant, customer = _tenant_and_customer()
-        posting = Posting.objects.create(
-            tenant=tenant, customer=customer, idempotency_key="idem_rename")
-        PostingMeasurement.objects.create(
-            posting=posting, recorded_at=timezone.now(),
-            **{CANONICAL_COLUMN: {"input_tokens": "1200"}})
-
-        loader = MigrationLoader(connection)
-        before = loader.project_state((APP_LABEL, PARENT_MIGRATION))
-        after = before.clone()
-        _RENAME.state_forwards(APP_LABEL, after)
-
-        table = PostingMeasurement._meta.db_table
-        with connection.schema_editor() as editor:
-            _RENAME.database_backwards(APP_LABEL, editor, after, before)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT {connection.ops.quote_name(RETIRED_COLUMN)} "
-                f"FROM {connection.ops.quote_name(table)} WHERE posting_id = %s",
-                [posting.id])
-            (carried,) = cursor.fetchone()
-        # A raw cursor hands JSONB back as text — the model field's decoder is
-        # what usually parses it, and the whole point here is to read the column
-        # without going through a model that knows this name.
-        if isinstance(carried, str):
-            carried = json.loads(carried)
-        self.assertEqual(carried, {"input_tokens": "1200"})
-
-        with connection.schema_editor() as editor:
-            _RENAME.database_forwards(APP_LABEL, editor, before, after)
-        self.assertEqual(
-            getattr(PostingMeasurement.objects.get(posting=posting),
-                    CANONICAL_COLUMN),
-            {"input_tokens": "1200"})
-
-
 class TheNameIsTheDeclarationsOwnTest(TestCase):
     """The rename's actual claim, and the only one worth making about a word.
 
@@ -212,18 +124,23 @@ class TheColumnCarriesTheCanonicalNameTest(TestCase):
         self.assertEqual(field.get_internal_type(), "JSONField")
 
     def test_the_retired_column_is_gone_from_the_model(self):
-        with self.assertRaises(FieldDoesNotExist):
-            PostingMeasurement._meta.get_field(RETIRED_COLUMN)
+        for retired in RETIRED_COLUMNS:
+            with self.subTest(retired=retired):
+                with self.assertRaises(FieldDoesNotExist):
+                    PostingMeasurement._meta.get_field(retired)
 
     def test_the_table_carries_the_canonical_column_and_not_the_retired_one(self):
         """The model and the table are two separate claims.
 
-        A field renamed on the model with no migration behind it leaves the old
-        column in the database, where a raw query would still find it.
+        A field named on the model one way while the schema carries another
+        leaves the old column in the database, where a raw query would still
+        find it.
         """
         columns = _live_columns()
         self.assertIn(CANONICAL_COLUMN, columns)
-        self.assertNotIn(RETIRED_COLUMN, columns)
+        for retired in RETIRED_COLUMNS:
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, columns)
 
     # The column's ADR-0007 §2 transition class is NOT re-asserted here.
     # `test_posting_measurement.py::TransitionClassesAreDeclaredTest` already
@@ -238,7 +155,7 @@ class ThePostingReadsItsQuantitiesUnderTheCanonicalNameTest(TestCase):
 
     def setUp(self):
         self.tenant, self.customer = _tenant_and_customer()
-        self.posting = Posting.objects.create(
+        self.posting = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="idem_1", provider_cost_micros=1_000_000)
 
@@ -254,7 +171,9 @@ class ThePostingReadsItsQuantitiesUnderTheCanonicalNameTest(TestCase):
 
     def test_the_retired_accessor_is_gone(self):
         self._measure({"input_tokens": "1200"})
-        self.assertFalse(hasattr(self.posting, RETIRED_COLUMN))
+        for retired in RETIRED_COLUMNS:
+            with self.subTest(retired=retired):
+                self.assertFalse(hasattr(self.posting, retired))
 
     def test_the_accessor_is_still_read_only(self):
         """One encoding of the quantities, and it lives on the child.
@@ -297,7 +216,9 @@ class TheRecordingPathWritesTheCanonicalColumnTest(TestCase):
             provider_cost_micros=1_000_000,
             **{CANONICAL_COLUMN: {"input_tokens": "7"}})
         self.assertEqual(result[CANONICAL_COLUMN], {"input_tokens": "7"})
-        self.assertNotIn(RETIRED_COLUMN, result)
+        for retired in RETIRED_COLUMNS:
+            with self.subTest(retired=retired):
+                self.assertNotIn(retired, result)
 
 
 class TheContractCarriesTheFinalNameTest(SimpleTestCase):
@@ -316,8 +237,9 @@ class TheContractCarriesTheFinalNameTest(SimpleTestCase):
 
     def test_no_published_schema_carries_the_retired_property(self):
         for name, schema in schemas().items():
-            with self.subTest(schema=name):
-                self.assertNotIn(RETIRED_COLUMN, schema.get("properties", {}))
+            for retired in RETIRED_COLUMNS:
+                with self.subTest(schema=name, retired=retired):
+                    self.assertNotIn(retired, schema.get("properties", {}))
 
     def test_the_detail_response_pairs_the_bag_with_its_status(self):
         """The status field was named for this bag before the bag was.
@@ -373,11 +295,13 @@ class TheStaleCallerIsAcceptedAndItsQuantitiesAreDroppedTest(TestCase):
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_the_retired_key_is_ignored_rather_than_refused(self, mock_process):
-        response = self._post(RETIRED_COLUMN)
+        for retired in RETIRED_COLUMNS:
+            with self.subTest(retired=retired):
+                response = self._post(retired)
 
-        self.assertEqual(response.status_code, 200)
-        posting = Posting.objects.get(idempotency_key=f"idem_{RETIRED_COLUMN}")
-        self.assertEqual(getattr(posting, CANONICAL_COLUMN), {})
+                self.assertEqual(response.status_code, 200)
+                posting = Posting.objects.get(idempotency_key=f"idem_{retired}")
+                self.assertEqual(getattr(posting, CANONICAL_COLUMN), {})
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_the_canonical_key_is_the_one_that_lands(self, mock_process):

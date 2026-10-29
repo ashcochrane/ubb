@@ -26,7 +26,7 @@ from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.metering.pricing.models import CostBook, PricingBook, Rate
-# The kind word neither body publishes, read off the migration that deleted it
+# The kind word neither body publishes, read off the registry that retired it
 # rather than spelled (#374) — see the function's own docstring for why.
 from apps.metering.pricing.tests._helpers import retired_kind_column
 

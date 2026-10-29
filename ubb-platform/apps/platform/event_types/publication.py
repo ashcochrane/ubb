@@ -83,8 +83,10 @@ class PublishedDeclaration(NamedTuple):
     #: published — `""` for an Event Type naming none. What recording admits a
     #: call's supplier against and costs under (#572): a later rename or
     #: re-pointing is a revision, and takes effect when published (#605).
-    #: `None` only for a copy kept before the supplier was pinned, which
-    #: `event_types/0012` wrote it into.
+    #: `None` only for a copy written without the key, and no copy `publish`
+    #: composes is one: before the cutover squash (#190) `event_types/0012`
+    #: wrote the key into every copy kept before the supplier was pinned, and
+    #: a fresh database holds no such copy.
     provider_key: str | None
     #: Which publication this is, and when it happened. Both are the row's
     #: own: a revision returns the Event Type to draft and moves neither.
@@ -102,11 +104,12 @@ def last_published_declaration(*, tenant, key):
     """What `key` declared for `tenant` at its current publication, or `None`.
 
     `None` is *nothing published*: the key is not declared, or it is and has
-    never been published, or it was published before copies were kept and
-    revised since (#573). A caller that must tell those apart asks the
+    never been published. (Before the cutover, #190, it was also a key
+    published before copies were kept and revised since, #573; a fresh
+    database holds none.) A caller that must tell those apart asks the
     catalogue whether the key exists; what this refuses to do is make up the
     difference from a draft. Recording deliberately does not tell them apart
-    (#605): all three take the path a key nobody declared takes.
+    (#605): both take the path a key nobody declared takes.
 
     One query, on the ``uq_event_type_key`` unique index, and no join: the
     parts beneath the Event Type are not consulted, because they are the draft
@@ -161,8 +164,9 @@ def _in_the_reads_shape(pinned, *, published_revision, published_at):
     own = dict(pinned)
     measurements = own.pop(MEASUREMENTS)
     mapping = own.pop(REPORTED_COST_MAPPING)
-    # A copy kept before the supplier was pinned carries none; `0012` wrote it
-    # into every one, so `None` is only what a copy written some other way says.
+    # Every copy `publish` composes carries the key (`event_types/0012` wrote
+    # it into the older ones before the cutover squash, #190), so `None` is
+    # only what a copy written some other way says.
     supplier = own.pop(PROVIDER_KEY, None)
     return PublishedDeclaration(
         **own,
@@ -173,10 +177,10 @@ def _in_the_reads_shape(pinned, *, published_revision, published_at):
             PublishedMeasurement(**{
                 **measurement,
                 "source_path": tuple(measurement["source_path"]),
-                # A copy kept before #571 has no value at all. The migration
-                # that added it refused to run over any copy pinning a
-                # constant, so every quantity such a copy holds is one with no
-                # value: `None`, and nothing made up.
+                # A copy without the key has no value at all: `None`, and
+                # nothing made up. Before the cutover squash (#190) that was a
+                # copy kept before #571, whose migration refused to run over
+                # any copy pinning a constant; a fresh database holds none.
                 "constant_value": measurement.get("constant_value")})
             for measurement in measurements),
         reported_cost_mapping=(None if mapping is None else

@@ -16,8 +16,9 @@ Deriving them costs one import and no authorisation, which is the first and
 cheapest of the three techniques ticket 19 lists; the alternative — admitting
 this file to the sweep's *checks-whose-subject-is-a-retired-word* rule — would
 grow a PERMANENT exclusion, which #155 §3.2 forbids. #368 did exactly this for
-the three book acts that ceased, and the derivation here takes the noun off the
-DELETING migration's own from-state, so no future rename needs an edit.
+the three book acts that ceased. The noun is read off the registry that
+retired the two actions; until the cutover (#190) it came off the deleting
+migration's own from-state, which the squash deleted.
 
 **THE ROUTER HALF IS IN `api/v1/tests/test_the_markup_routes_that_ceased.py`**,
 which asserts that none of the five paths is on the live API and that no
@@ -29,22 +30,22 @@ either — it walks the live API and asks what is NOT there.
 import pytest
 from django.apps import apps as django_apps
 from django.db import connection
-from django.db.migrations.loader import MigrationLoader
 
-from apps.metering.pricing.tests._helpers import the_state_before
+from api.v1.tests._helpers import retired_aliases
+from apps.metering.pricing.models import TenantDefaultMarkup
 from apps.platform.customers.models import Customer
 from apps.platform.plans.models import Plan
 from apps.platform.plans.tests._helpers import a_plan
 from apps.platform.tenants.models import Tenant
 
-#: The migration that deletes the record — where the retired noun is still
-#: legitimately written down, because the migrations tree is a declared sweep
-#: exclusion and a deletion migration has to name what it deletes.
-THE_DELETION = "0029_the_markup_record_is_deleted"
-
 #: The two acts, as ordinary English verbs. Neither is a retired token on its
 #: own; what was retired is each one joined to the noun below.
 THE_VERBS_THAT_CEASED = ("set", "deleted")
+
+#: The namespace prefix and tenant scope the record's table carried before the
+#: noun — `TenantDefaultMarkup`'s own table carries the same two, which is what
+#: lets the gone table be named by the noun alone.
+TENANT_SCOPED_TABLE_PREFIX = "ubb_tenant_"
 
 
 def _tenant():
@@ -52,17 +53,22 @@ def _tenant():
 
 
 def the_retired_record():
-    """The noun the deleted actions were named for, DERIVED from the deletion.
+    """The noun the deleted actions were named for, DERIVED from the registry.
 
-    The name comes off the migration's OWN from-state: the table the record sat
-    on was the tenant scope and the retired noun, in that order, under the
-    project's namespace prefix. A rename of any part of that moves this with it.
+    The registry retired the audit actions it recorded (`governance.yaml`,
+    `audit_action`'s `retired_aliases`), and the record's noun is the one whose
+    retired acts are exactly these two verbs — no other retired noun was both
+    set and deleted. Until the cutover (#190) it came off the deleting
+    migration's own from-state, which the squash deleted; the one-element
+    unpack fails loudly if the registry ever stops picking out exactly one.
     """
-    migration = MigrationLoader(connection).get_migration("pricing",
-                                                          THE_DELETION)
-    was = the_state_before(migration).models[
-        ("pricing", "tenantmarkup")].options["db_table"]
-    return was.removeprefix("ubb_tenant_") + "."
+    acts = {}
+    for action in retired_aliases("governance", "audit_action"):
+        noun, _, verb = action.partition(".")
+        acts.setdefault(noun, set()).add(verb)
+    (noun,) = [noun for noun, verbs in acts.items()
+               if verbs == set(THE_VERBS_THAT_CEASED)]
+    return noun + "."
 
 
 def the_acts_that_ceased():
@@ -88,31 +94,32 @@ def test_the_derivation_reaches_two_names_that_look_like_actions():
 
 
 @pytest.mark.django_db
-def test_the_derived_noun_is_the_one_the_records_own_columns_were_named_for():
+def test_the_derived_noun_is_the_trailing_segment_of_the_rung_that_replaced_it():
     """The POSITIVE control, and the reason it is needed.
 
     Every case below asserts an ABSENCE, and a derivation that quietly answered
     the wrong noun would make all of them true against a registry that still
-    held the retired names. This ties the derivation to a SECOND independent
-    fact in the same from-state: the record's percentage column led with the
-    same noun. A `removeprefix` that failed to strip the tenant scope would
-    answer `tenant_markup`, which is not the leading segment of any column on
-    that model, and this goes red.
+    held the retired names. This ties the derivation to two independent LIVE
+    facts about the record that replaced this one: its table is the tenant
+    scope, the word `default` and the same noun; and its own two actions are
+    registered under that whole name. A derivation answering any other noun
+    reaches neither.
 
-    ⚠ It is a corroboration rather than the whole proof. The other half is
-    measured: pointing `test_no_surviving_action_names_the_retired_record` at
-    `"tenant_default_" + the derived noun` turns it RED naming the live rung's
-    two actions — which can only happen if the derived noun really is the
-    trailing segment of that rung's own name.
+    Before the cutover (#190) the second fact was the deleted record's own
+    percentage column, read off the deleting migration's from-state; the squash
+    deleted that state, and the replacement rung is what still carries the
+    noun. It is the measurement the earlier docstring recorded made into the
+    assertion: `"tenant_default_" + the derived noun` names the live rung's
+    actions.
     """
     noun = the_retired_record().rstrip(".")
-    migration = MigrationLoader(connection).get_migration("pricing",
-                                                          THE_DELETION)
-    columns = dict(the_state_before(migration).models[
-        ("pricing", "tenantmarkup")].fields)
+    from apps.platform.audit.actions import AUDIT_ACTIONS
 
     assert noun
-    assert [name for name in columns if name.startswith(noun + "_")]
+    assert TenantDefaultMarkup._meta.db_table == (
+        f"{TENANT_SCOPED_TABLE_PREFIX}default_{noun}")
+    assert [name for name in AUDIT_ACTIONS
+            if name.startswith(f"tenant_default_{noun}.")]
 
 
 @pytest.mark.django_db
@@ -192,12 +199,19 @@ def test_the_record_is_not_in_the_model_registry_at_all():
 
 @pytest.mark.django_db
 def test_the_table_is_gone_from_the_database():
-    """The migration ran, asked of the database rather than of the graph."""
-    was = the_state_before(
-        MigrationLoader(connection).get_migration("pricing", THE_DELETION)
-    ).models[("pricing", "tenantmarkup")].options["db_table"]
+    """Asked of the database rather than of the model registry.
 
-    assert was not in connection.introspection.table_names()
+    The table the record sat on was the tenant scope and the retired noun under
+    the project's namespace prefix. Until the cutover (#190) its name came off
+    the deleting migration's from-state; it is assembled from the derived noun
+    now, and the replacement rung's table is asserted PRESENT beside it, so an
+    introspection that read nothing could not pass this.
+    """
+    noun = the_retired_record().rstrip(".")
+    tables = connection.introspection.table_names()
+
+    assert f"{TENANT_SCOPED_TABLE_PREFIX}{noun}" not in tables
+    assert TenantDefaultMarkup._meta.db_table in tables
 
 
 @pytest.mark.django_db

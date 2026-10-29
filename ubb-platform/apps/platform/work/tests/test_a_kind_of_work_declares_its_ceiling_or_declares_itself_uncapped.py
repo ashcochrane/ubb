@@ -13,7 +13,8 @@ exclusive-or as a check constraint rather than a serializer rule (ADR-0007
 the registry route renders as a validation problem.
 
 **Every refusal asserts the CONSTRAINT'S OWN NAME.** This table already
-carries one rule (the frozen regime's trigger, `0021`), so *something refused
+carries one rule (the frozen regime's trigger,
+`trg_task_type_declared_transitions`), so *something refused
 this* stopped being evidence the moment a second rule landed (#352). A check
 is evaluated on INSERT as well as UPDATE and no trigger on this table fires on
 an INSERT, so the insert cases meet the check directly; the update cases go

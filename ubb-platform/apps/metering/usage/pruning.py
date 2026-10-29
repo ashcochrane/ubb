@@ -23,10 +23,11 @@ and nothing in this module reads it.
   the database refuses it since W5).
 
 ⚠⚠ **PROTECTED ROWS ARE FILTERED OUT BY THE QUERY; THE TRIGGER IS NEVER THE
-FILTER** (ruling 9). The `usage/0041` delete trigger refuses an unresolved
-measurement, but a refusal aborts the whole statement, so leaning on it would
-make one protected row fail every batch it sat in. Selecting only eligible rows
-is also what keeps an old unresolved row from STARVING younger eligible rows:
+FILTER** (ruling 9). The delete trigger `trg_posting_measurement_pruning`
+refuses an unresolved measurement, but a refusal aborts the whole statement,
+so leaning on it would make one protected row fail every batch it sat in.
+Selecting only eligible rows is also what keeps an old unresolved row from
+STARVING younger eligible rows:
 the batch is filled from rows that can go, oldest first, however many protected
 rows are older still. The trigger stays as the backstop beneath.
 

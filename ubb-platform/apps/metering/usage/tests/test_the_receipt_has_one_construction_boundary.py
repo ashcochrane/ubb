@@ -58,7 +58,7 @@ from pathlib import Path
 import pytest
 
 from apps.metering.pricing.receipts import (
-    RECEIPT_SCHEMA_VERSION, uncosted_quantity_keys, validate_receipt,
+    RECEIPT_SCHEMA_VERSION, validate_receipt,
 )
 from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, rate_in_default_book)
@@ -369,42 +369,12 @@ class TestWhatReachesTheColumn:
         assert [r["subject_id"] for r in receipts] == [
             str(first["event_id"]), str(second["event_id"])]
 
-    def test_a_row_in_the_older_shape_is_read_back_exactly_as_written(self):
-        """Historical receipts are READ, never rewritten.
-
-        No production path produces this shape any more, so a row built through
-        the recording service would be asserting about a record the service
-        cannot write. What this stands in for is **a row already on disk**, and
-        it is now written the only way a row gets onto disk: at insert.
-
-        ⚠ It was an `UPDATE` until #353, and that stopped being available on the
-        commit that made this sentence true at the database rather than merely
-        intended. The receipt's sealing rule is a `BEFORE UPDATE` trigger, and a
-        record in a shape with no sections to complete has no move it admits —
-        so the setup that stood in for "already on disk" was the exact statement
-        the rule now refuses. That is #318's lesson a third time: installing a
-        trigger takes `UPDATE` away as a setup technique, and the repair is to
-        move the setup to `INSERT`, which the rule does not fire on and which is
-        what the sentence above always meant.
-
-        The row carries only what this test reads. Every column it leaves out
-        takes the model's own empty value, which is the shape
-        `tests/_helpers.py::committed_posting` already uses for a posting stood
-        up to be read rather than to be recorded.
-        """
-        tenant, customer = _tenant_and_customer()
-        older = {"engine_version": "2.1.0",
-                 "uncosted_measurement_keys": ["image_pixels"],
-                 "provider_cost_micros": 4_000, "billed_cost_micros": 4_800}
-
-        posting = Posting.objects.create(
-            tenant=tenant, customer=customer, idempotency_key="k-old",
-            **{Posting.RECEIPT_COLUMN: older})
-        stored = getattr(Posting.objects.get(id=posting.id),
-                         Posting.RECEIPT_COLUMN)
-
-        assert stored == older
-        assert uncosted_quantity_keys(stored) == ["image_pixels"]
+    # A third case here inserted a row carrying a receipt in the unversioned
+    # legacy shape and read it back as written ("historical receipts are READ,
+    # never rewritten"). The cutover (#190, ruling 8) left ONE receipt shape,
+    # version 2: no older record exists to read, and every reader refuses one
+    # rather than branching for it — which is the receipts module's own
+    # subject, in `apps/metering/pricing/tests/`.
 
 
 @pytest.mark.django_db

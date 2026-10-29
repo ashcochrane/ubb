@@ -160,8 +160,9 @@ def declaration_of(published):
         reported_cost_source_kind=(None if mapping is None
                                    else mapping.source_kind),
         declared_quantity_codes=declared_codes,
-        # `0012` wrote the key into every copy kept before the supplier was
-        # pinned; a copy saying nothing names no supplier.
+        # Every copy `publish` composes carries the key (`event_types/0012`
+        # wrote it into the older ones before the cutover squash, #190); a
+        # copy saying nothing names no supplier.
         provider_key=published.provider_key or "",
     )
 

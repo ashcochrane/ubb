@@ -204,27 +204,20 @@ audit_action:
     - webhook_config.updated
     - webhook_config.deleted
     - webhook_config.secret_rotated
-    # The entry that was to open the production ledger at the cutover. Ruled
-    # 2026-10-23 (#190 comment 6354381879): NO opening row is ever written,
-    # because nothing was deployed and no tenant audit trail is being cut
-    # over. The registration stays until W6 retires it with the reset, and
-    # until then it is WITHHELD below: declared, never recordable, never
-    # advertised.
-    - system.preproduction_model_cutover
-  # A closed public concept advertises only values that can occur (R10-W4,
-  # §0.4 C). `record()` refuses a withheld action and the published
-  # `AuditRecordOut.action` enum leaves it out; both read this one list, by way
-  # of the generated `AUDIT_ACTION_WITHHELD_VALUES`. W6 deletes the value above
-  # and this exclusion together.
-  withheld_values:
-    - system.preproduction_model_cutover
+  # NO OPENING ENTRY (#190, ADR-0026). #154 §4.2 had the production ledger open
+  # with a `system.preproduction_model_cutover` row. Ruled 2026-10-23 (#190
+  # comment 6354381879): no opening row is written, because nothing was
+  # deployed and no tenant audit trail was cut over; the cutover deleted the
+  # registration, which no writer could ever record, together with the
+  # exclusion that kept it unadvertised. Every row is still tenant-owned.
   label_key_prefix: audit_action
   retired_aliases:
     # ADR-004 §2 makes these names additive-only and a rename a breaking change.
     # #154 §4.2 spends a one-time, scoped, pre-production exception on them:
     # the ledger is renamed, registrations for concepts that no longer exist are
-    # removed, pre-cutover rows are deleted, and the production ledger opens
-    # with the entry above. Keeping the old names registered-but-retired would
+    # removed and pre-cutover rows are deleted — the cutover's fresh database
+    # (#190) holds none, and per the 2026-10-23 ruling no opening entry is
+    # written (ADR-0026). Keeping the old names registered-but-retired would
     # leave the live codebase carrying a second vocabulary for the sole purpose
     # of interpreting pre-launch history. AFTER the cutover the additive-only
     # rule applies unchanged, and this exception is spent.

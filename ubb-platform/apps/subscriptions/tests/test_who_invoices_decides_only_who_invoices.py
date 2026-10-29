@@ -38,7 +38,6 @@ import datetime
 
 from django.test import TestCase
 
-from apps.metering.usage.models import Posting
 from apps.subscriptions.economics.models import TenantSuppliedRevenue
 from apps.subscriptions.economics.revenue import SuppliedRevenueService
 from apps.subscriptions.economics.services import (
@@ -48,6 +47,7 @@ from apps.subscriptions.tests._helpers import (
     a_tenant_billing_its_customers_elsewhere, a_tenant_ubb_invoices)
 from core.vocabulary import PRICING_STATUS_UNKNOWN
 from apps.platform.tenants.tests._rails import RailActivated
+from apps.metering.usage.tests._helpers import a_posting
 
 #: The whole of April, half-open — the fixture's own month, BOUND rather
 #: than restated, so a supplied figure written by its builder lands inside
@@ -60,7 +60,7 @@ MID = datetime.datetime(2026, 4, 15, tzinfo=datetime.timezone.utc)
 
 def a_priced_event(tenant, customer, *, provider, billed, key="e1"):
     """One posting UBB costed and priced — the ordinary case, for both postures."""
-    return Posting.objects.create(
+    return a_posting(
         tenant=tenant, customer=customer, idempotency_key=key,
         provider_cost_micros=provider, billed_cost_micros=billed,
         effective_at=MID)
@@ -74,7 +74,7 @@ def an_event_ubb_could_not_price(tenant, customer, *, provider, key="e1"):
     declared no price for this work has revenue UBB does not know, and the
     count beside the total is how the surface says so.
     """
-    return Posting.objects.create(
+    return a_posting(
         tenant=tenant, customer=customer, idempotency_key=key,
         provider_cost_micros=provider, billed_cost_micros=None,
         pricing_status=PRICING_STATUS_UNKNOWN, effective_at=MID)

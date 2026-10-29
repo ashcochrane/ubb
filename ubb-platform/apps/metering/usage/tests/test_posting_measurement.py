@@ -1,6 +1,6 @@
 """The measured quantities became a child record with a lifecycle of their own (#270).
 
-Three things are worth proving here and they are not the same thing.
+Two things are worth proving here and they are not the same thing.
 
 1. **The child exists and is shaped as ruled** — singular, one-to-one by a
    unique posting reference, its table tracking its model name, carrying the
@@ -14,15 +14,17 @@ Three things are worth proving here and they are not the same thing.
    — a measured posting recorded through the real path, whose child IS there —
    so that "no child" is a fact about this posting rather than about a table
    that happens to be empty.
-3. **The move carried its data, in both directions.** ADR-0007 §1 refuses a
-   migration that adds a column beside the one it claims to move; the fold's
-   forward and reverse callables are therefore run against a real database with
-   real rows, rather than being asserted to exist.
+
+Before the cutover (#190) a third thing was proved here: **the move carried its
+data, in both directions** — `usage/0031`'s fold, its operation order and its
+forward and reverse callables, run against real rows. That chain is gone and
+those cases retired with it; the child's shape is what the classes below hold.
 
 **The retention horizon has exactly one clock, started on purpose (W5).**
 `prunable_at` was a column with no clock behind it until #190 ruled the number
 (400 days) and the job (a daily prune). It is now the release fact that prune
-writes, SET_ONCE (`pruning.py`, `migrations/0052`); recording still leaves it
+writes, SET_ONCE (`pruning.py`, `trg_posting_measurement_released_once`);
+recording still leaves it
 NULL, and nothing else writes it. `TheHorizonHasExactlyOneClockTest` holds
 that: one scheduled prune, and no deadline stamped at recording.
 
@@ -36,9 +38,7 @@ subject is this child record's presence, and because a new file naming the
 retired quantity token would owe a sixty-sixth entry on a debt this slice is
 paying down rather than adding to.
 """
-from django.db import IntegrityError, connection, transaction
-from django.db import migrations as operations
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, transaction
 from django.db.models import NOT_PROVIDED
 from django.test import TestCase
 
@@ -52,13 +52,6 @@ from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tests._helpers import (
     release_and_prune, settle_the_supplier_cost)
-#: The bag's name in the historical state `TheReverseIsExercisedTest` replays.
-#: #274 renamed it, and only the classes above this one see the new name — a
-#: migration replay must speak the vocabulary of the migration it replays.
-#: Imported rather than spelled so this module keeps out of the retired extent;
-#: the derivation itself lives beside the rename that caused it.
-from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_name import (  # noqa: E501
-    RETIRED_COLUMN as HISTORICAL_BAG)
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from core.amount_status_pairs import CUSTOMER_PRICE, SUPPLIER_COST
@@ -72,13 +65,7 @@ from core.vocabulary import (
     USAGE_EVENT_KIND_TASK_CHARGE,
     USAGE_EVENT_KIND_VALUES,
 )
-
-APP_LABEL = "usage"
-FOLD_MIGRATION = "0031_the_measurements_become_a_child_record"
-PARENT_MIGRATION = "0030_the_usage_row_becomes_the_posting"
-#: The child's whole-record `DELETE` rule (#354), which arrives ten migrations
-#: after the fold and refuses the deletion the fold's own reverse ends with.
-PRUNE_RULE_MIGRATION = "0041_a_measurement_is_pruned_only_when_it_may_be"
+from apps.metering.usage.tests._helpers import a_posting
 
 #: The columns the child was ruled to carry, over and above the ones every
 #: record in this repository inherits.
@@ -88,7 +75,7 @@ DECLARED_COLUMNS = ("posting", "measurements", "recorded_at", "prunable_at")
 def _tenant_and_customer():
     tenant = Tenant.objects.create(name="T")
     # ⚠ **THE CHILD'S RULE READS THE PRICE STATUS AS WELL AS THE COST STATUS**
-    # (`migrations/0041`), so a tenant that has declared no markup rung can
+    # (`trg_posting_measurement_pruning`), so a tenant that has declared no markup rung can
     # prune nothing at all: every posting it records resolves to `unknown`
     # (#356), which is one of the two states the rule refuses to let a
     # measurement leave. A rung of nothing settles the price at the supplier's
@@ -121,7 +108,7 @@ class TheChildRecordTest(TestCase):
 
     def test_a_second_child_for_one_posting_is_refused(self):
         tenant, customer = _tenant_and_customer()
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=tenant, customer=customer, idempotency_key="i")
         PostingMeasurement.objects.create(
             posting=posting, measurements={"input_tokens": "12"},
@@ -135,9 +122,11 @@ class TheChildRecordTest(TestCase):
     def test_recorded_at_is_when_the_quantities_were_recorded(self):
         """Not when this row was written — the two are different facts.
 
-        A row folded out of a posting by 0031 carries the moment its posting
-        arrived, which is long before the fold ran. Only a column of its own can
-        say that, which is why `created_at` does not stand in for it.
+        A row written after its posting — as `usage/0031` once folded every
+        bag out of its posting, long after each arrived, before the cutover
+        squash (#190) — still carries the
+        moment its posting arrived. Only a column of its own can say that,
+        which is why `created_at` does not stand in for it.
         """
         tenant, customer = _tenant_and_customer()
         result = UsageService.record_usage(
@@ -192,7 +181,7 @@ class AbsenceIsExpressedByAbsenceTest(TestCase):
         # lands in a later slice; what makes the charge's child absent is that
         # nothing outside the metered recording path creates one, and that is
         # what this pins.
-        self.charge = Posting.objects.create(
+        self.charge = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="chg_1",
             billed_cost_micros=250_000)
@@ -303,7 +292,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         and deleting it would have removed the only place the change is
         visible as a change.
         """
-        charge = Posting.objects.create(
+        charge = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="chg_1",
             kind=USAGE_EVENT_KIND_TASK_CHARGE,
@@ -367,7 +356,7 @@ class TheDerivedMeasurementsStatusTest(TestCase):
         self.assertEqual(posting_kind(self._fresh()),
                          USAGE_EVENT_KIND_METERED_USAGE)
         self.assertEqual(
-            posting_kind(Posting.objects.create(
+            posting_kind(a_posting(
                 tenant=self.tenant, customer=self.customer,
                 idempotency_key="chg_2",
                 billed_cost_micros=250_000)),
@@ -408,7 +397,7 @@ class EachAmountWentNullableInTheSliceThatOwnedItsMeaningTest(TestCase):
 
     def test_the_measurements_are_optional(self):
         tenant, customer = _tenant_and_customer()
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=tenant, customer=customer,
             idempotency_key="i")
         # 0..1, and the zero is reachable: the row commits and reads back with
@@ -423,7 +412,7 @@ class EachAmountWentNullableInTheSliceThatOwnedItsMeaningTest(TestCase):
 
         A writer that says nothing about supplier cost still records `known`
         and zero — the reading every row had before this column could be null,
-        and the one the migration gives every row that already existed. What
+        and the one every row that already existed kept when it became so. What
         changed is that `NULL` became SAYABLE; who says it is the business of
         the tickets that teach the recording path when a cost is missing.
         """
@@ -533,172 +522,3 @@ class TransitionClassesAreDeclaredTest(TestCase):
 
     def test_the_record_rule_is_not_a_class_the_database_defends(self):
         self.assertNotIn(RECORD_RULE, DATABASE_DEFENDED)
-
-
-class TheFoldCarriesItsDataTest(TestCase):
-    """The migration moves the column rather than adding one beside it."""
-
-    def setUp(self):
-        self.migration = MigrationLoader(connection).get_migration(
-            APP_LABEL, FOLD_MIGRATION)
-
-    def _index_of(self, op_type):
-        for index, op in enumerate(self.migration.operations):
-            if isinstance(op, op_type):
-                return index
-        self.fail(f"the migration carries no {op_type.__name__}")
-
-    def test_the_data_moves_before_the_column_goes(self):
-        """This ordering IS ADR-0007 §1 for a column that changes tables.
-
-        Autodetected, the two operations arrive the other way round — the
-        column is dropped and an empty table is created beside it, which is
-        the add-plus-remove §1 refuses and the pre-squash exemption is spent.
-        """
-        self.assertLess(self._index_of(operations.CreateModel),
-                        self._index_of(operations.RunPython))
-        self.assertLess(self._index_of(operations.RunPython),
-                        self._index_of(operations.RemoveField))
-
-    def test_the_reverse_is_not_a_noop(self):
-        run_python = self.migration.operations[
-            self._index_of(operations.RunPython)]
-        self.assertIsNot(run_python.reverse_code, operations.RunPython.noop)
-
-    def test_every_operation_can_be_reversed(self):
-        for op in self.migration.operations:
-            with self.subTest(operation=type(op).__name__):
-                self.assertTrue(op.reversible)
-
-
-class TheReverseIsExercisedTest(TestCase):
-    """Forward and back, against a real database, with a real row.
-
-    The fold's callables run against the state they see inside the migration:
-    the child created, the posting's own column not yet dropped. The live tables
-    have moved on since — that column went in this migration, another went in
-    #272 and the child's bag was renamed in #274 — so `setUp` reconciles each
-    table with the historical model that writes to it, for the test's own
-    duration. PostgreSQL runs DDL inside the transaction this `TestCase` rolls
-    back, so every change leaves with everything else and no other test ever
-    sees them.
-
-    RECONCILED BY COMPARISON RATHER THAN BY NAME. Naming the columns would make
-    this fixture go red on the next commit that drops one — which is what
-    happened the first time, and the failure read as a broken reverse rather
-    than as a stale fixture.
-
-    BOTH DIRECTIONS, since #274. A drop leaves the table short of a column the
-    old model writes, and a rename does that *and* leaves the table demanding a
-    column the old model has never heard of. So the reconciliation adds what the
-    model has and the table lacks, and lifts NOT NULL on what the table demands
-    and the model cannot supply — which is exactly the difference between
-    replaying a migration and re-running today's schema.
-    """
-
-    def setUp(self):
-        loader = MigrationLoader(connection)
-        self._unapply_the_prune_rule(loader)
-        self.migration = loader.get_migration(APP_LABEL, FOLD_MIGRATION)
-        state = loader.project_state((APP_LABEL, PARENT_MIGRATION))
-        for op in self.migration.operations:
-            if isinstance(op, operations.CreateModel):
-                op.state_forwards(APP_LABEL, state)
-        self.historical = state.apps
-        self.Posting = self.historical.get_model(APP_LABEL, "Posting")
-        self.Measurement = self.historical.get_model(
-            APP_LABEL, "PostingMeasurement")
-        for model in (self.Posting, self.Measurement):
-            self._reconcile(model)
-        self.run_python = next(op for op in self.migration.operations
-                               if isinstance(op, operations.RunPython))
-
-    def _unapply_the_prune_rule(self, loader):
-        """Take the child's prune rule back off, the way `migrate` would.
-
-        `0031`'s reverse ends by removing every measurement record, and since
-        `0041` the database refuses a `DELETE` on that table before the
-        record's horizon. That is not a conflict between the two migrations:
-        reversing to `0030` unapplies `0041` first, so a real `migrate` never
-        meets the rule at all. It is a property of replaying ONE migration's
-        callable in the middle of an applied chain, which is the same reason
-        `_reconcile` below exists — *the difference between replaying a
-        migration and re-running today's schema*, one layer up from a column.
-
-        The rule comes back on its own: this runs inside the test's
-        transaction, and the `TestCase` rolls it back.
-        """
-        rule = loader.get_migration(APP_LABEL, PRUNE_RULE_MIGRATION)
-        run_python = next(op for op in rule.operations
-                          if isinstance(op, operations.RunPython))
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-
-    def _reconcile(self, model):
-        """Make one live table accept one historical model's writes."""
-        table = model._meta.db_table
-        with connection.cursor() as cursor:
-            live = {column.name: column for column in
-                    connection.introspection.get_table_description(
-                        cursor, table)}
-        with connection.schema_editor() as editor:
-            for field in model._meta.local_fields:
-                if field.column not in live:
-                    editor.add_field(model, field)
-        known = {field.column for field in model._meta.local_fields}
-        quote = connection.ops.quote_name
-        with connection.cursor() as cursor:
-            for name, column in live.items():
-                if name not in known and not column.null_ok:
-                    cursor.execute(
-                        f"ALTER TABLE {quote(table)} "
-                        f"ALTER COLUMN {quote(name)} DROP NOT NULL")
-
-    def _run(self, code):
-        with connection.schema_editor() as editor:
-            code(self.historical, editor)
-
-    def test_a_bag_survives_the_round_trip(self):
-        tenant, customer = _tenant_and_customer()
-        posting = self.Posting.objects.create(
-            tenant_id=tenant.id, customer_id=customer.id,
-            idempotency_key="i",
-            **{HISTORICAL_BAG: {"input_tokens": "1200", "searches": "2"}})
-
-        self._run(self.run_python.code)
-
-        measurement = self.Measurement.objects.get(posting_id=posting.id)
-        self.assertEqual(getattr(measurement, HISTORICAL_BAG),
-                         {"input_tokens": "1200", "searches": "2"})
-        self.assertEqual(measurement.recorded_at, posting.created_at)
-        self.assertIsNone(measurement.prunable_at)
-
-        # Blank the column first: otherwise a reverse that wrote nothing at all
-        # would pass this on the value the forward fold never removed.
-        self.Posting.objects.filter(pk=posting.pk).update(**{HISTORICAL_BAG: {}})
-
-        self._run(self.run_python.reverse_code)
-
-        self.assertEqual(
-            self.Posting.objects.values_list(HISTORICAL_BAG, flat=True).get(
-                pk=posting.pk),
-            {"input_tokens": "1200", "searches": "2"})
-        self.assertEqual(self.Measurement.objects.count(), 0)
-
-    def test_a_posting_with_no_bag_folds_to_an_empty_one_rather_than_null(self):
-        """Every posting the fold sees is a measured one — the discriminator
-        that would let it skip a synthetic charge does not exist yet, and
-        inventing one at migration time would be guessing at rows it cannot
-        classify. `{}` is what those postings already stored inline.
-        """
-        tenant, customer = _tenant_and_customer()
-        posting = self.Posting.objects.create(
-            tenant_id=tenant.id, customer_id=customer.id,
-            idempotency_key="i", **{HISTORICAL_BAG: {}})
-
-        self._run(self.run_python.code)
-
-        self.assertEqual(
-            getattr(self.Measurement.objects.get(posting_id=posting.id),
-                    HISTORICAL_BAG),
-            {})

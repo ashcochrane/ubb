@@ -17,8 +17,8 @@ can match, and needs nothing, because the posting refuses every update through
 that door.
 
 The database refuses every *other shape* of write through a trigger
-(`usage/migrations/0037`), which is what makes the rule hold for a data
-migration or a shell session too; what a trigger cannot do is notice that a
+(`trg_posting_declared_transitions`), which is what makes the rule hold for a
+data migration or a shell session too; what a trigger cannot do is notice that a
 correct settlement has been written twice in two places, each tested once. That
 half is what the walk is for.
 
@@ -105,11 +105,13 @@ def settle_provider_cost(*, posting_id, provider_cost_micros,
       posting's receipt cannot come to say a cost is unresolved while the column
       beside it says the amount is known — the exact disagreement the receipt
       exists to remove;
-    * where it is omitted, the posting has no receipt this code may complete —
-      an empty default, or one written in an older shape, which the receipt's own
-      ruling says is *read, never rewritten*. Such a posting's cost still
-      settles. Refusing it would make a shape of record decide whether a supplier
-      cost may be learned.
+    * where it is omitted, only the columns move, and the posting's cost still
+      settles. Refusing it would make a shape of record decide whether a
+      supplier cost may be learned. (Before the cutover, #190, this was the
+      case of a posting with no receipt this code could complete — an empty
+      default, or one in an older shape, *read, never rewritten*. Since it the
+      column has no default and every receipt is in the one shape, and the
+      Resolution Run hands one over on every settlement.)
 
     Raises `Posting.DoesNotExist` if there is no such posting: neither outcome
     above would be true of it, and answering with one anyway is how a settlement

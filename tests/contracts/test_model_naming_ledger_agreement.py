@@ -152,14 +152,29 @@ def programme():
 def test_the_gate_module_exists_and_declares_both_allowlists(gate_source):
     """Vacuity guard. Every assertion below reads these two constants, and a
     renamed module or constant would otherwise turn this file green by making
-    all of its comparisons empty."""
+    all of its comparisons empty.
+
+    ⚠ THE LEDGER COPY IS EMPTY NOW, AND THAT EMPTINESS IS LOAD-BEARING (#190).
+    The cutover paid the ledger's last entry (G9's abbreviated subscription-item
+    table), so this module excuses no debt — the zero G22 holds. The guard used
+    to require at least one excused site; it now requires the copy to be
+    declared for every model-naming gate and to excuse NOTHING, and leans on the
+    permanent exception for its positive control: that constant is read through
+    the same `excused` path, so a copy this file could not read would fail here
+    rather than look empty."""
     ledgered = excused(gate_source, LEDGER_CONSTANT)
     excepted = excused(gate_source, EXCEPTIONS_CONSTANT)
 
     assert set(ledgered) <= set(MODEL_NAMING_GATES), (
         f"{LEDGER_CONSTANT} covers {sorted(ledgered)}, which is not a subset "
         f"of the gates this module installs")
-    assert sum(len(sites) for sites in ledgered.values()) > 0
+    assert {"G9", "G11", "G12"} <= set(ledgered), (
+        f"{LEDGER_CONSTANT} no longer declares the gates it once excused — a "
+        f"renamed constant would read as an empty allowlist")
+    excused_sites = sorted(site for sites in ledgered.values() for site in sites)
+    assert not excused_sites, (
+        f"the ledger is at zero (#190), yet {GATE_MODULE} excuses "
+        f"{excused_sites}")
     assert excepted.get("G9"), "the ConnectOAuthState exception is not excused"
 
 

@@ -1,6 +1,6 @@
 from django.db import models
 
-from core.models import BaseModel
+from core.models import BaseModel, PostgresNamedIndex
 from core.vocabulary import (
     GROUPING_FIELD_SCOPE_EVENT,
     GROUPING_FIELD_SCOPE_VALUES,
@@ -123,20 +123,11 @@ class GroupingField(BaseModel):
 
     class Meta:
         db_table = "ubb_grouping_field"
-        # The CONSTRAINT names still spell the retired noun, and deliberately.
-        # A table is renamed in place (`AlterModelTable` -> `ALTER TABLE ...
-        # RENAME TO`), which carries its rows, keys, indexes and constraints
-        # with it. A constraint has no such operation: Django can only
-        # `RemoveConstraint` then `AddConstraint`, which is a DROP and a CREATE
-        # — the add-plus-remove ADR-0007 §1 refuses, on a unique index that is
-        # load-bearing while it is gone. ADR-0006 §9's rule is about the TABLE
-        # name, and the table now tracks its model; these names are physical
-        # identifiers no query spells and no gate reads.
         constraints = [
             models.UniqueConstraint(fields=["tenant", "key"],
-                                    name="uq_dimension_def_key"),
+                                    name="uq_grouping_field_key"),
             models.UniqueConstraint(fields=["tenant", "slot"],
-                                    name="uq_dimension_def_slot"),
+                                    name="uq_grouping_field_slot"),
         ]
 
     def __str__(self):
@@ -160,13 +151,12 @@ class GroupingFieldValue(BaseModel):
 
     class Meta:
         db_table = "ubb_grouping_field_value"
-        # Kept for the reason stated on the model above.
         constraints = [
             models.UniqueConstraint(fields=["tenant", "key", "value"],
-                                    name="uq_dimension_value"),
+                                    name="uq_grouping_field_value"),
         ]
         indexes = [
-            models.Index(fields=["tenant", "key"], name="idx_dimvalue_tenant_key"),
+            PostgresNamedIndex(fields=["tenant", "key"], name="idx_grouping_field_value_tenant_key"),
         ]
 
     def __str__(self):

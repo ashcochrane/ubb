@@ -25,14 +25,15 @@ class RiskConfig(BaseModel):
     Four columns left it, in three tickets, and none of them was billing's
     to hold: the two tenant-default COGS ceilings went to the tenant row in
     #453 (a ceiling is a kernel concept a tenant without billing still gets,
-    #141 §6.2; carried by `gating/migrations/0011`); the per-owner cap on
+    #141 §6.2; carried by `gating/0011`); the per-owner cap on
     work already running was DELETED in #455 (#150 §12.5 — a count of
     outstanding operations converts to no amount of money, and its existence
     invited the belief that UBB closes a blind window it cannot see into);
     and the per-minute bound on new work went to the tenant row as
     `max_task_starts_per_minute` in #462 (admission control is a property of
     the work's admission, run by the kernel for every tenant; carried by
-    `gating/migrations/0015`). What stays is the one posture #150 §15 keeps
+    `gating/0015`; both migrations left with the cutover squash, #190). What
+    stays is the one posture #150 §15 keeps
     and #141 §7 keeps in billing. §1 permits folding it onto the pool's
     tenant-default row later, provided a customer row that does not fail
     closed still inherits the tenant's answer; that fold is not taken here.
@@ -318,7 +319,8 @@ class CustomerSpendPool(BaseModel):
     seat-level pool, and the tenant default applies to seats only — a
     business with no row of its own has no pool (§4, #459: both levels
     alert, stop and refuse, in every billing mode). Renamed from the retired
-    family word by `gating/migrations/0013` (#456), carrying every row."""
+    family word by #456, carrying every row (`gating/0013`, before the
+    cutover squash, #190)."""
     tenant = models.ForeignKey("tenants.Tenant", on_delete=models.CASCADE, related_name="customer_spend_pools")
     customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE,
                                  related_name="customer_spend_pools", null=True, blank=True)

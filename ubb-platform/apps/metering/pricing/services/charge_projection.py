@@ -165,7 +165,7 @@ def project_the_charge(charge):
 
     **EXACTLY ONE POSTING, AND THE DATABASE IS WHAT SAYS SO.** The posting
     takes the Charge's own derived idempotency key, so
-    `uq_usage_event_idempotency_v2` makes a second projection of one Charge an
+    `uq_posting_idempotency` makes a second projection of one Charge an
     `IntegrityError` rather than a second row moving the money twice. That is
     the third of the three guards #416 named — the winning transition, the
     partial uniqueness on `ubb_charge`, and this one — and it is the only one

@@ -35,6 +35,7 @@ from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import stop_line
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 from apps.platform.tenants.tests._rails import activate_the_rail
+from apps.metering.usage.tests._helpers import a_posting
 
 
 def _tenant(mode="prepaid", enf="enforcing"):
@@ -152,7 +153,7 @@ class TestLiveCounterPostpaid:
         assert s1.resolve_billing_owner().id == biz.id  # pooled -> business
         # Durable events for both seats pin the business as billing owner.
         for i, seat in enumerate((s1, s2)):
-            Posting.objects.create(
+            a_posting(
                 tenant=t, customer=seat, idempotency_key=f"i{i}",
                 provider_cost_micros=5_000_000, billed_cost_micros=5_000_000,
                 billing_owner_id=biz.id)

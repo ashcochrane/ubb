@@ -19,6 +19,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.grouping_fields.models import GroupingField
 from apps.platform.grouping_fields.queries import keys_by_slot
 from apps.platform.tenants.models import Tenant
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 
 @pytest.mark.django_db
@@ -57,7 +58,7 @@ class TestGroupingFieldsFor:
         # slice 5's ledger entry, and its recorded extent may not grow — the
         # column is blank-defaulted, and nothing here reads it.
         c = Customer.objects.create(tenant=tenant, external_id="c1")
-        return Posting.objects.create(
+        return usage_helpers.a_posting(
             tenant=tenant, customer=c, idempotency_key="k1",
             provider="openai", event_type="completion", **slots)
 

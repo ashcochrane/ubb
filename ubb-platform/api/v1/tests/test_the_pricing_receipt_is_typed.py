@@ -6,8 +6,8 @@ closed except the `detail` and `provenance` containers, which ADR-0020's
 additive rule keeps open — and which publish exactly what was stored, so a key
 the record does not carry stays absent rather than arriving as null. The owner's
 ruling 3 (2026-10-27): version 2 only, with no legacy branch, because receipts
-older than 2 exist only on development databases, which are reset at the
-cutover rather than accommodated in the launch contract.
+older than 2 existed only on development databases, which the cutover (#190)
+reset rather than accommodating them in the launch contract.
 """
 import copy
 import json

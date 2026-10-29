@@ -1,20 +1,18 @@
 """A stop names the control that fired — the kernel's half (#458, slice 6 §1,
-§15), and migration `0027` that stamps it on every stored row.
+§15).
 
 The kernel STAMPS the family from the one map in `core.controls` and RECORDS
 the id the caller passed, both beside the cause on the row; a cascade copies
 its parent's; the announcement and the re-mint read the row. The route-driven
 half — every lane through the recording route, the sweeper and the durable
 lanes — is `api/v1/tests/test_every_stop_names_the_control_that_fired.py`;
-this module holds the seams to the rows.
+this module holds the seams to the rows. (Before the cutover, #190, it also
+held `work/0027`'s stamping of every stored row and queued payload; a fresh
+database has none to stamp.)
 """
-import importlib
-
-from django.apps import apps as global_apps
 from django.test import TestCase
 
-from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import TaskExpired, TaskKilled
+from apps.platform.events.schemas import TaskKilled
 from apps.platform.work import reasons
 from apps.platform.work.models import (
     CEILING_BASIS_CHOICES, STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY,
@@ -26,9 +24,6 @@ from core.vocabulary import (
     CEILING_BASIS_COST, CEILING_BASIS_TIME, CEILING_BASIS_VALUES,
     CONTROL_FAMILY_CEILING, TASK_STATUS_KILLED, TASK_TYPE_KIND_SUBTASK,
     TASK_TYPE_KIND_TASK, TRIGGER_SOURCE_USAGE_INGEST)
-
-MIGRATION = importlib.import_module(
-    "apps.platform.work.migrations.0027_a_stopped_unit_records_the_control_that_fired")
 
 
 class TheCeilingsControlIsTheDeclarationTest(WorkTestBase):
@@ -139,91 +134,3 @@ class TheWorkModelHoldsTheBasisTest(TestCase):
                          "Time")
         self.assertEqual(render(None, Task(reason_code=reasons.HARD_FLOOR)), "")
         self.assertEqual(render(None, Task()), "")
-
-
-class Migration0027StampsEveryStoredRowTest(WorkTestBase):
-    """The migration's second encoding of the names, held to the code, and
-    the stamping on rows and queued payloads — called with the live registry
-    as `0026`'s tests are, for the same reason: it changes no schema."""
-
-    def test_the_names_are_the_codes(self):
-        self.assertEqual(MIGRATION.CAUSE_KEY, STOP_CAUSE_KEY)
-        self.assertEqual(MIGRATION.FAMILY_KEY, STOP_CONTROL_FAMILY_KEY)
-        self.assertEqual(MIGRATION.CONTROL_KEY, STOP_CONTROL_ID_KEY)
-        self.assertEqual(MIGRATION.FAMILY_CEILING, CONTROL_FAMILY_CEILING)
-        self.assertEqual(MIGRATION.BASIS_BY_CAUSE, controls.CEILING_BASIS_BY_REASON)
-        self.assertEqual(set(MIGRATION.TERMINAL_STOP_EVENTS),
-                         {TaskKilled.EVENT_TYPE, TaskExpired.EVENT_TYPE,
-                          "subtask.killed", "subtask.expired"})
-        self.assertEqual((MIGRATION.KIND_TASK, MIGRATION.KIND_SUBTASK),
-                         (TASK_TYPE_KIND_TASK, TASK_TYPE_KIND_SUBTASK))
-
-    def _stopped(self, *, cause, task_type="", parent=None, **more):
-        unit = self._task(task_type=task_type, parent=parent)
-        Task.objects.filter(pk=unit.pk).update(
-            status="killed", metadata={STOP_CAUSE_KEY: cause, **more})
-        unit.refresh_from_db()
-        return unit
-
-    def test_a_stopped_row_is_stamped_the_ceilings_family_and_its_declaration(self):
-        kind = TaskType.objects.create(tenant=self.tenant, key="k", uncapped=True)
-        declared = self._stopped(cause=reasons.TASK_COGS_CEILING, task_type="k")
-        undeclared = self._stopped(cause=reasons.SILENCE_WINDOW)
-        untouched = self._task()
-
-        MIGRATION._stamp_the_control(global_apps, None)
-
-        declared.refresh_from_db()
-        undeclared.refresh_from_db()
-        untouched.refresh_from_db()
-        self.assertEqual(declared.metadata[STOP_CONTROL_FAMILY_KEY], CONTROL_FAMILY_CEILING)
-        self.assertEqual(declared.metadata[STOP_CONTROL_ID_KEY], str(kind.id))
-        self.assertEqual(undeclared.metadata[STOP_CONTROL_ID_KEY], str(self.tenant.id))
-        self.assertNotIn(STOP_CONTROL_FAMILY_KEY, untouched.metadata)
-
-    def test_contained_work_a_cascade_stopped_takes_its_parents_control(self):
-        """§1: a cascade inherits its parent's — on the historical rows too.
-        The contained unit runs under its OWN declared kind, which would name
-        a different row; what it records is the parent's."""
-        parents_kind = TaskType.objects.create(tenant=self.tenant, key="pipe", uncapped=True)
-        TaskType.objects.create(tenant=self.tenant, key="piece",
-                                kind=TASK_TYPE_KIND_SUBTASK, uncapped=True)
-        parent = self._stopped(cause=reasons.TASK_COGS_CEILING, task_type="pipe")
-        contained = self._stopped(cause=reasons.PARENT_KILLED, task_type="piece",
-                                  parent=parent)
-
-        MIGRATION._stamp_the_control(global_apps, None)
-
-        contained.refresh_from_db()
-        self.assertEqual(contained.metadata[STOP_CONTROL_FAMILY_KEY], CONTROL_FAMILY_CEILING)
-        self.assertEqual(contained.metadata[STOP_CONTROL_ID_KEY], str(parents_kind.id))
-
-    def test_a_queued_payload_is_stamped_from_its_unit_and_its_own_cause(self):
-        unit = self._stopped(cause=reasons.ABSOLUTE_DEADLINE)
-        # A literal payload on purpose (`docs/conventions/testing.md`'s
-        # exception): the POINT is the legacy shape a row queued before
-        # #458 holds, which the current dataclass can no longer construct.
-        queued = OutboxEvent.objects.create(
-            event_type=TaskExpired.EVENT_TYPE, tenant_id=self.tenant.id,
-            payload={"tenant_id": str(self.tenant.id), "task_id": str(unit.id),
-                     STOP_CAUSE_KEY: reasons.ABSOLUTE_DEADLINE})
-
-        MIGRATION._stamp_the_control(global_apps, None)
-
-        queued.refresh_from_db()
-        self.assertEqual(queued.payload["control_family"], CONTROL_FAMILY_CEILING)
-        self.assertEqual(queued.payload["control_id"], str(self.tenant.id))
-        self.assertEqual(queued.payload["ceiling_basis"], CEILING_BASIS_TIME)
-
-    def test_a_row_already_stamped_is_not_written_and_the_reverse_forgets(self):
-        unit = self._stopped(cause=reasons.TASK_COGS_CEILING,
-                             **{STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
-                                STOP_CONTROL_ID_KEY: "kept"})
-
-        MIGRATION._stamp_the_control(global_apps, None)
-        unit.refresh_from_db()
-        self.assertEqual(unit.metadata[STOP_CONTROL_ID_KEY], "kept")
-
-        MIGRATION._forget_the_control(global_apps, None)
-        unit.refresh_from_db()
-        self.assertEqual(unit.metadata, {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING})

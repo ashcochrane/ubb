@@ -2,8 +2,11 @@
 spec story 28).
 
 `TaskPrice.valid_from` is declared FROZEN and `valid_to` SET_ONCE, exactly as
-the rate's two instants are, and `migrations/0032` installs the trigger that
-holds them. ADR-0007 §2 asks for the rule across every door, so each refusal
+the rate's two instants are, and `trg_task_price_declared_transitions` holds
+them (installed by `pricing/0032` before the cutover, #190; by the pricing
+rules migration since, whose reverse is proven centrally in
+`apps/platform/tests/test_the_database_rules_are_carried.py`). ADR-0007 §2
+asks for the rule across every door, so each refusal
 below is driven through `QuerySet.update()`, raw SQL and `save()` — and the
 transition-class gate (`apps/platform/tests/test_transition_class_declarations.py`)
 covers the two columns by declaration alone, which proves they are NAMED by a
@@ -15,8 +18,7 @@ write outside the publish act can only be shown by making one.
 import re
 from datetime import timedelta
 
-from django.db import IntegrityError, connection, migrations, transaction
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -29,7 +31,6 @@ from core.transitions import FROZEN, SET_ONCE
 
 TABLE = TaskPrice._meta.db_table
 TRIGGER = "trg_task_price_declared_transitions"
-MIGRATION = "0032_an_agreed_price_is_published_with_provenance"
 
 
 def _a_line(**fields):
@@ -120,26 +121,3 @@ class TheRuleIsATriggerOnThisTableTest(TestCase):
         for column in TaskPrice.transition_classes:
             with self.subTest(column=column):
                 self.assertIn(f"NEW.{column}", executable)
-
-    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
-        migration = MigrationLoader(connection).get_migration("pricing",
-                                                              MIGRATION)
-        trigger_ops = [op for op in migration.operations
-                       if isinstance(op, migrations.RunPython)
-                       and op.code.__name__ == "install"]
-        (run_python,) = trigger_ops
-        line = _a_line()
-        moved = timezone.now() - timedelta(days=5)
-
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        through_the_queryset(line, valid_from=moved)
-        line.refresh_from_db()
-        self.assertEqual(line.valid_from, moved)
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                through_the_queryset(line,
-                                     valid_from=moved - timedelta(days=1))

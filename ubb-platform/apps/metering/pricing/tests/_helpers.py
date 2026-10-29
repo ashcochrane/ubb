@@ -1,17 +1,11 @@
-from contextlib import contextmanager
 from functools import cache
-from importlib import import_module
 from uuid import uuid4
 
-from django.apps import apps as django_apps
 from django.db import IntegrityError, connection, transaction
-from django.db import migrations as operations
-from django.db.migrations.loader import MigrationLoader
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
-    CHANGE_REPRICE, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, CostBook, PricingBook,
-    Rate,
+    CHANGE_REPRICE, LINE_RATE, CostBook, PricingBook, Rate,
     TaskPrice, TenantDefaultMarkup)
 from apps.metering.pricing.receipts import (
     ReceiptSubject, Resolution, build_receipt)
@@ -35,52 +29,73 @@ from core.vocabulary import (
     PRICING_STATUS_KNOWN,
 )
 
-#: The migration that split the container, and therefore the one operation that
-#: still names the word this slice retired.
-_SPLIT_MIGRATION = "0028_the_container_becomes_a_pricing_book_and_a_cost_book"
+#: The registry concept whose retired spellings name the container's old kind
+#: and its old noun (`domain-vocabulary/concepts/retired.yaml`).
+_THE_BOOKS_OWN_NAME = "pricing_book_name"
+
+
+def _retired_aliases(concept_file, concept):
+    """The registry's retired spellings of ``concept``, through the platform
+    suite's one reader of them (`api/v1/tests/_helpers.retired_aliases`).
+
+    Imported here rather than at the top because that module imports this one:
+    the call is what needs it, and only the cases that ask pay for it."""
+    from api.v1.tests._helpers import retired_aliases
+    return retired_aliases(concept_file, concept)
 
 
 @cache
 def retired_kind_column():
     """The kind word the split deleted — DERIVED, never spelled (#374).
 
-    Two modules assert that this column reaches neither entity and neither the
-    wire, and a `not in` assertion has to name its subject somehow. Writing the
-    token would put its ledger count over an entry that reaches ZERO in the
-    commit adding this line, so it is read off the operation that deleted it —
-    technique 1 of `docs/conventions/coding-standards.md`'s three. Technique 2
-    was not available: putting the word once in this file would leave a count
-    of one where the entry needs none.
+    Three modules assert that this column reaches neither entity, neither
+    rule and neither the wire, and a `not in` assertion has to name its subject
+    somehow. Writing the token would put it back over a ledger entry that
+    reached ZERO, so it is read off the document that RETIRED it — technique 1
+    of `docs/conventions/coding-standards.md`'s three.
 
-    **HOW IT IS PICKED OUT, AND WHY BY MEANING RATHER THAN BY POSITION.** Three
-    columns left the container in that migration. Two of them are a cost book's
-    — the supplier it records and the currency that supplier bills in — and they
-    went to the new entity rather than away. The third went nowhere, because
-    the split is what replaced it. So it is the removal whose column no cost
-    book has, and the one-element unpack is what fails loudly if that ever
-    stops picking out exactly one.
+    **READ OFF THE REGISTRY SINCE THE CUTOVER (#190).** It was read off the
+    migration that deleted it until the squash deleted that migration; the
+    registry is where the word is still legitimately written, and the
+    platform suite reads retired spellings there and nowhere else (the
+    `retired_aliases` reader beside the composition layer's tests).
 
-    ⚠ **A FUNCTION AND NOT A MODULE CONSTANT, WHICH IS THE WHOLE POINT OF THE
-    LINE ABOVE.** Every pricing test imports this file, so computing the answer
-    at import time would put a migration import and a `CostBook._meta` read on
-    the collection path of the entire app's suite — and both are things a later
-    slice removes. #155 §11.1's cutover squash deletes `0028` outright, which
-    would turn a rename nobody was thinking about into a collection-time
-    `ModuleNotFoundError` across every pricing module at once. Deferred and
-    cached, the blast radius is the two assertions that actually ask, which is
-    where the precedent in
-    `test_the_rates_quantity_name_takes_the_canonical_name.py` keeps its own.
+    **HOW IT IS PICKED OUT, AND WHY BY MEANING RATHER THAN BY POSITION.** The
+    Pricing Book's name retired four spellings. Three are names the container
+    itself went by — a book of costs, of prices, of rates. The fourth named its
+    KIND, and a kind column is spelled `<noun>_type` throughout this tree
+    (`event_type`, `task_type`, `subject_type`). So it is the one retired
+    spelling ending that way, and the one-element unpack is what fails loudly
+    if that ever stops picking out exactly one.
+
+    ⚠ **A FUNCTION AND NOT A MODULE CONSTANT.** Every pricing test imports this
+    file, so computing the answer at import time would put a registry read on
+    the collection path of the entire app's suite. Deferred and cached, the
+    blast radius is the assertions that actually ask.
     """
-    module = import_module(
-        f"apps.metering.pricing.migrations.{_SPLIT_MIGRATION}")
-    survives = {field.name for field in CostBook._meta.concrete_fields}
-    (removal,) = [
-        op for op in module.Migration.operations
-        if isinstance(op, operations.RemoveField)
-        and op.model_name == "pricingbook"
-        and op.name not in survives
-    ]
-    return removal.name
+    (kind,) = [alias for alias in _retired_aliases("retired",
+                                                   _THE_BOOKS_OWN_NAME)
+               if alias.endswith("_type")]
+    return kind
+
+
+@cache
+def retired_container_noun():
+    """The noun the container went by before the split — DERIVED (#374).
+
+    Two claims need it and neither may spell it: the audit acts that ceased
+    with the container are refused, and the rate no longer sits on the table
+    named for the container (G9). Read off the registry, which holds it twice,
+    and that is how it is picked out by meaning rather than by position: it is
+    the one retired spelling of the Pricing Book's name that the registry ALSO
+    retired audit actions under. The other spellings of the book's name were
+    never an audit noun, and the other retired audit nouns were never a name of
+    the book — the one-element unpack fails loudly if either side moves.
+    """
+    nouns = {action.partition(".")[0]
+             for action in _retired_aliases("governance", "audit_action")}
+    (noun,) = nouns & set(_retired_aliases("retired", _THE_BOOKS_OWN_NAME))
+    return noun
 
 #: WHICH QUANTITY A RATE PRICES WHEN THE FIXTURE NEVER SAID (#326).
 #:
@@ -981,222 +996,6 @@ class AForwardDatingBookMixin:
         return base
 
 
-#: The rule's kind column, assembled rather than written. Its file count is a
-#: ceiling as well as a floor and #367 took it down, so a test module that
-#: spelled it whole would put it back into the very set the commit emptied.
-#: Shared from here because two modules need to name it — the one that asserts
-#: the deletion and the one that replays a migration older than it — and two
-#: private copies of one workaround are two things that can drift.
-THE_RULES_KIND_COLUMN = "card" + "_" + "type"
-
-
-def the_state_before(migration):
-    """The project state a migration ran against, built from its own
-    dependencies rather than from a name a caller remembered."""
-    return MigrationLoader(connection).project_state(
-        [tuple(node) for node in migration.dependencies])
-
-
-#: EVERY PRICING TABLE THAT HAS BEEN RENAMED, as (historical model key, live
-#: model). A replay reconstructs each one whose name has moved since the
-#: migration it is replaying.
-#:
-#: The container appears TWICE because the model was renamed as well as its
-#: table (#368): a migration whose from-state predates the split knows it under
-#: its old key, and one after knows it under the new one. Both resolve to the
-#: same live model, so the mapping is what a replay needs rather than a history
-#: it has to reason about.
-RENAMED_PRICING_TABLES = (
-    ("rate", "Rate"),
-    ("ratecard", "PricingBook"),
-    ("pricingbook", "PricingBook"),
-)
-
-
-@contextmanager
-def the_pricing_tables_as_this_migration_saw_them(migration):
-    """The pricing tables, temporarily back under the names this migration knew.
-
-    ⚠ **A TABLE RENAME BREAKS EVERY MIGRATION-REPLAY FIXTURE, AND IT LOOKS
-    NOTHING LIKE A BREAKAGE (#367).** Replaying a migration means reconstructing
-    the table it ran against, and #366 already paid for one half of that — a
-    renamed COLUMN leaves the historical model writing a spelling the table no
-    longer has. A renamed TABLE is the same lesson one level up, and it is
-    louder rather than subtler: the historical model, and any DDL the migration
-    itself spelled, address a relation that does not exist.
-
-    So the fixtures reconstruct the names for as long as they need them, exactly
-    as they already drop the checks and triggers that arrived later. PostgreSQL
-    runs DDL inside the transaction a test rolls back, and this puts the names
-    back on the way out regardless, so nothing here outlives the test and no
-    other test sees a table under an old name.
-
-    **THE NAMES COME OFF THE MIGRATION'S OWN FROM-STATE**, never off a literal:
-    no replay site should have to know which commit renamed which table, and a
-    fixture that carried a name would need an edit per rename. A no-op for any
-    table already under its live name, so a caller does not have to know which
-    side of a rename its migration sits on either.
-
-    ⚠ **IT COVERS MORE THAN ONE TABLE SINCE #368**, which renamed the container
-    as well. The singular form it replaces was correct for exactly one rename
-    and would have gone quietly wrong at the second: the rule's table came back
-    under its old name, the container's did not, and the replay failed on a
-    relation nobody had thought about.
-    """
-    before = the_state_before(migration)
-    renames = []
-    for key, model_name in RENAMED_PRICING_TABLES:
-        state = before.models.get((migration.app_label, key))
-        if state is None:
-            continue
-        was = state.options.get("db_table")
-        live = django_apps.get_model(migration.app_label,
-                                     model_name)._meta.db_table
-        if was and was != live and (live, was) not in renames:
-            renames.append((live, was))
-    if not renames:
-        yield
-        return
-    quote = connection.ops.quote_name
-    with connection.cursor() as cursor:
-        for live, was in renames:
-            cursor.execute(f"ALTER TABLE {quote(live)} RENAME TO {quote(was)}")
-    try:
-        yield
-    finally:
-        with connection.cursor() as cursor:
-            for live, was in renames:
-                cursor.execute(
-                    f"ALTER TABLE {quote(was)} RENAME TO {quote(live)}")
-
-
-def reconcile_the_rate_table_with(model):
-    """Make the live table accept a historical model's writes.
-
-    The mirror image of `the_pricing_tables_as_this_migration_saw_them`: that
-    one restores NAMES, this one restores a SHAPE. Three separate reconstructions, and each is a rule
-    about what the table being replayed actually looked like rather than a
-    convenience.
-
-    * **Columns the historical model has and the table has lost.** A column
-      deleted after the migration being replayed is part of the table that
-      migration ran against.
-    * **`NOT NULL` on columns the historical model has never heard of.** The
-      historical model writes the columns IT knows and Django keeps no
-      database-level defaults, so a column added later is simply absent from
-      the INSERT — harmless while every such column is nullable, and a hard
-      failure the moment one is not. ⚠ A later RENAME is what makes this bite
-      and it looks nothing like one (#366): the loop above helpfully re-adds
-      the OLD spelling while the new column is left out of the INSERT.
-    * **⚠ The INDEX a re-added column collides with (#368).** Postgres keeps an
-      index's name across `ALTER TABLE ... RENAME COLUMN`, so a column renamed
-      after the migration being replayed leaves its index under the OLD
-      column's generated name — and re-adding that column then asks Django to
-      create an index under a name the table already has. The failure reads as
-      `relation "..." already exists` about an index nobody in the test
-      mentioned, which looks like anything except a rename. The stale name is
-      dropped first; this all runs inside the transaction a test rolls back.
-    * **The rules that arrived afterwards.** The check that makes a rule name
-      its quantity exactly once, and the trigger that refuses a rule
-      referencing no declaration, both describe the world AFTER the conversions
-      that installed them — and so does UBB v1's USD rule. The rows a replay writes are pre-conversion rows,
-      which satisfy neither — that is what the conversions are for. A rule
-      added after the migration being replayed is part of what has to come off.
-
-    PostgreSQL runs DDL inside the transaction a test rolls back, so nothing
-    here outlives the test.
-
-    Call it INSIDE `the_rate_table_under`, because it addresses the table by the
-    historical model's own `db_table`.
-    """
-    table = restore_the_shape_of(model)
-    quote = connection.ops.quote_name
-    with connection.cursor() as cursor:
-        cursor.execute(f"ALTER TABLE {quote(table)} DROP CONSTRAINT IF EXISTS "
-                       f"{NAMES_ONE_QUANTITY_CHECK}")
-        cursor.execute(f"DROP TRIGGER IF EXISTS trg_rate_names_a_declaration "
-                       f"ON {quote(table)}")
-        # UBB v1's USD rule (ADR-0023, #555) arrived long after any replay
-        # this serves, over rules that could still carry another currency.
-        cursor.execute(f"ALTER TABLE {quote(table)} DROP CONSTRAINT IF EXISTS "
-                       f"ck_rate_currency_usd")
-
-
-def restore_the_shape_of(model):
-    """Make the live database accept a historical model's writes, columns only.
-
-    The generic half of `reconcile_the_rate_table_with`, split out because a
-    replay now has more than one table to reconstruct (#368): the container
-    split into two entities, so a migration that ran before the split addresses
-    a table whose columns have since gone, and one that ran before the
-    assignment record was deleted addresses a table that has since gone
-    entirely.
-
-    Three reconstructions, each a rule about what the table being replayed
-    actually looked like:
-
-    * **A table the historical model has and the database has lost.** Created
-      outright — there is nothing to rename it from, which is the difference
-      between a deleted table and a renamed one.
-    * **Columns the historical model has and the table has lost**, with the
-      stale index a renamed column leaves behind dropped first (see the
-      caller's docstring).
-    * **`NOT NULL` on columns the historical model has never heard of**, which
-      are simply absent from its INSERTs.
-
-    Returns the table it worked on. PostgreSQL runs DDL inside the transaction
-    a test rolls back, so nothing here outlives the test.
-    """
-    table = model._meta.db_table
-    quote = connection.ops.quote_name
-    with connection.cursor() as cursor:
-        if table not in connection.introspection.table_names(cursor):
-            with connection.schema_editor() as editor:
-                editor.create_model(model)
-            return table
-        live = {column.name: column for column in
-                connection.introspection.get_table_description(cursor, table)}
-    with connection.schema_editor() as editor:
-        for field in model._meta.local_fields:
-            if field.column in live:
-                continue
-            stale = editor._create_index_name(table, [field.column], suffix="")
-            with connection.cursor() as cursor:
-                cursor.execute(f"DROP INDEX IF EXISTS {quote(stale)}")
-            editor.add_field(model, field)
-    known = {field.column for field in model._meta.local_fields}
-    declared = {c.name for c in model._meta.constraints}
-    with connection.cursor() as cursor:
-        for name, column in live.items():
-            if name not in known and not column.null_ok:
-                cursor.execute(f"ALTER TABLE {quote(table)} "
-                               f"ALTER COLUMN {quote(name)} DROP NOT NULL")
-        # UNIQUENESS RULES THAT ARRIVED AFTER THIS MIGRATION (#368). A key is
-        # part of the world AFTER the commit that declared it, and the rows a
-        # replay writes are from before: 0012 groups a tenant into one default
-        # book per provider and currency, which the single-default key the
-        # split introduced refuses. Dropped by asking the HISTORICAL model what
-        # it declares rather than by naming the newcomers, so no future key
-        # needs an edit here.
-        # ⚠ Read from `pg_index`, not `pg_constraint`: Django implements a
-        # `UniqueConstraint` carrying a `condition` as a partial unique INDEX,
-        # which has no `pg_constraint` row at all — so a query for constraints
-        # alone silently misses every conditional key, which is most of them
-        # here.
-        cursor.execute(
-            "SELECT c.relname FROM pg_index i "
-            "JOIN pg_class c ON c.oid = i.indexrelid "
-            "WHERE i.indrelid = %s::regclass AND i.indisunique "
-            "AND NOT i.indisprimary", [table])
-        for (name,) in cursor.fetchall():
-            if name in declared:
-                continue
-            cursor.execute(f"ALTER TABLE {quote(table)} "
-                           f"DROP CONSTRAINT IF EXISTS {quote(name)}")
-            cursor.execute(f"DROP INDEX IF EXISTS {quote(name)}")
-    return table
-
-
 def database_rules_guarding(table):
     """What the catalogue holds about the triggers on `table`, now.
 
@@ -1205,12 +1004,12 @@ def database_rules_guarding(table):
     that ran is evidence that a file executed, not that a rule is on the table.
 
     **SHARED RATHER THAN COPIED, WHICH `docs/conventions/testing.md:22`
-    REQUIRES.** Two modules ask this question of the rate's table — the one
-    that owns the effective-moment rule and the one that owns the table's own
-    name — and two copies of one catalogue query are two things that can drift
-    apart while agreeing with each other. It takes the table as an argument
-    because the caller that cares about a RENAME must be able to ask about a
-    name the model no longer uses.
+    REQUIRES.** Several modules ask this question of the tables in this app —
+    the rate's, the charge's, the agreed price's — and two copies of one
+    catalogue query are two things that can drift apart while agreeing with
+    each other. It takes the table as an argument because a caller asking
+    about the table a rule is named for should say which table that is,
+    rather than inherit whatever the model happens to point at.
     """
     with connection.cursor() as cursor:
         cursor.execute(

@@ -9,15 +9,16 @@ Changing a price that was already asserted is a **correction**, and a correction
 belongs in a record beside the original rather than on top of it.
 
 **WHY A SECOND DOOR AND NOT ONE DOOR WITH A PARAMETER.** The two pairs are
-independent by construction and the database says so: `usage/migrations/0037`
-holds the cost pair, `0039` holds the price pair, their `WHEN` clauses name
+independent by construction and the database says so:
+`trg_posting_declared_transitions` holds the cost pair,
+`trg_posting_price_transitions` holds the price pair, their `WHEN` clauses name
 disjoint columns, and dropping either leaves the other standing. Their permitted
 moves are also different statements — `unresolved` to `known` there, `unknown`
 to `known` here — and their zero-row answers are different sets, because the
 price side has THREE terminal statuses and the cost side has one. A single
 parametrised door would have to establish which pair it was looking at before it
-could say anything, which is the shape `0039` refused at the database and it is
-no better one layer up.
+could say anything, which is the shape the price pair's rule refused at the
+database and it is no better one layer up.
 
 **THE THREE TERMINAL ANSWERS ARE NOT ONE ANSWER.** A zero-row resolution is an
 ANSWER rather than an error to retry, and which state the row is in is what a
@@ -46,8 +47,8 @@ other module writing a cost column: the transition trigger stops a second writer
 corrupting a posting, but not resolving one, and then "this price is now known"
 is decided in two places and tested in one. The owner re-scoped the price side's
 answer (#557, `5785065807`): a behavioural or database rule, never a second
-tree walk. So the price pair's trigger (`usage/migrations/0049`) admits the move
-from `unknown` to `known` only on a statement this door has marked — a
+tree walk. So the price pair's trigger (`trg_posting_price_transitions`) admits
+the move from `unknown` to `known` only on a statement this door has marked — a
 transaction-local setting (:data:`PRICE_DOOR_SETTING`) set to
 :data:`PRICE_DOOR_MARK` immediately before the one `UPDATE` below and cleared
 immediately after. Any other writer, through any door — `save()`, a queryset,
@@ -80,8 +81,9 @@ from core.vocabulary import (
 
 #: THE SETTING THE PRICE PAIR'S TRIGGER READS, and the value that is this door
 #: (#557). Named once, here, because the migration that installs the rule
-#: freezes both literals and every reader of them — the door, the measurement
-#: script, the tests — must spell what the table asks for.
+#: (`usage/migrations/0002_the_database_rules.py`) freezes both literals and
+#: every reader of them — the door, the measurement script, the tests — must
+#: spell what the table asks for.
 PRICE_DOOR_SETTING = "ubb.price_door"
 PRICE_DOOR_MARK = "resolve_customer_price"
 
@@ -148,9 +150,12 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
 
     `pricing_receipt` is the posting's stored receipt with its **pricing section
     completed** (`receipts.completed_receipt`), written in the SAME statement as
-    the columns so the record and the columns move together. Omitted where the
-    posting carries no receipt this code may complete — an empty default, or one
-    in an older shape, which is read and never rewritten.
+    the columns so the record and the columns move together. Where it is
+    omitted only the columns move. (Before the cutover, #190, that was a
+    posting with no receipt this code could complete — an empty default, or
+    one in an older shape, read and never rewritten. Since it the column has
+    no default and every receipt is in the one shape, and the Resolution Run
+    hands one over on every resolution.)
 
     Raises `Posting.DoesNotExist` if there is no such posting: none of the four
     outcomes would be true of it, and answering with one anyway is how a recovery
@@ -178,11 +183,12 @@ def resolve_customer_price(*, posting_id, billed_cost_micros,
     # qualifies the status being left behind. Here the reason belongs to
     # `not_applicable`, a status this statement can neither start from nor
     # arrive at, so a row reaching this door has a null reason already and
-    # `0039` refuses the statement outright if it does not.
+    # `trg_posting_price_transitions` refuses the statement outright if it
+    # does not.
     #
     # AND `pricing_status_reason` IS CLEARED WITH THEM (#603), which IS the
-    # cost side's shape: it qualifies the `unknown` being left behind, and
-    # `0046` refuses a `known` row that still carries one. The normal resolver
+    # cost side's shape: it qualifies the `unknown` being left behind, and the
+    # same trigger refuses a `known` row that still carries one. The normal resolver
     # never hands this door a price whose reason is `negative_price_unsupported`
     # (`resolution_run.NOT_RETRIED`); the capability that one day carries a
     # negative price completes it through here, and the reason goes with it.

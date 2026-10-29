@@ -115,11 +115,6 @@ def events_whose_payload_declares(field):
     return found
 
 
-#: The migration ledger, for the two modules that hold a migration's own map to
-#: the debts still recorded against the gate it pays.
-LEDGER_PATH = "gates/migration-ledger.yaml"
-
-
 # ---------------------------------------------------------------------------
 # Reading a document that cites tests, shared by the two walkers
 # ---------------------------------------------------------------------------
@@ -131,8 +126,7 @@ LEDGER_PATH = "gates/migration-ledger.yaml"
 # spans, the pin ledger joins them with `::` — so each owns its own reader for
 # that. What they must NOT own two of is the part below: *what names a module
 # defines* and *which of a document's citations fail to resolve*. Two copies of
-# one read are how the two come to disagree while both suites stay green, which
-# is the reason `module_literal` above is here rather than in either caller.
+# one read are how the two come to disagree while both suites stay green.
 
 
 def defined_in(path):
@@ -200,24 +194,6 @@ def unresolved(modules, cases):
     return missing_modules, len(present), missing_cases
 
 
-def module_literal(path, name):
-    """The value bound to a module-level ``name`` in ``path``, as a literal.
-
-    ``ast.literal_eval`` rather than an import, for the reason #204 gives: a
-    migration is read and never imported, so nothing here needs Django
-    settings, a database or the app registry — and a migration's map is a dict
-    of strings, which is exactly what a literal reader is for.
-    """
-    import ast
-
-    source = (REPO_ROOT / path).read_text(encoding="utf-8")
-    for node in ast.parse(source).body:
-        for target in getattr(node, "targets", []):
-            if isinstance(target, ast.Name) and target.id == name:
-                return ast.literal_eval(node.value)
-    raise AssertionError(f"{path} declares no module-level `{name}`")
-
-
 def the_webhook_catalogue():
     """The registry's `webhook_event_type` concept — its values and the names
     it retired.
@@ -229,19 +205,6 @@ def the_webhook_catalogue():
     """
     return load_registry(REPO_ROOT / "domain-vocabulary").concepts[
         "webhook_event_type"]
-
-
-def names_a_gate_still_owes(gate):
-    """The `found` values of every ledger entry recorded against ``gate``.
-
-    What a migration may NOT move: a debt is paid by rewriting the name AND
-    deleting its entry, in one act, so an entry surviving a rewrite would
-    excuse a violation that no longer exists.
-    """
-    document = yaml.safe_load(
-        (REPO_ROOT / LEDGER_PATH).read_text(encoding="utf-8"))
-    return {entry["found"] for entry in document["entries"]
-            if entry["gate"] == gate}
 
 
 def concept(**overrides):
