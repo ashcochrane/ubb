@@ -133,10 +133,19 @@ moved or deleted. The dated compatibility note stays until platform admission (W
 
 The release is the annotated tag `sdk-v4.0.0` on the same commit, and a wheel built reproducibly from
 it; nothing publishes it. This is R2's rule (#190 spec part 3 §9 and part 4). The recipe,
-`ubb-sdk/release/build_wheel.py`, is committed with the code it builds: it exports the tag cleanly,
-verifies the export is the tag's tree byte for byte, builds twice in a fresh environment holding exactly
-the pinned and hashed `ubb-sdk/release/build-requirements.txt` on Python 3.13 with
-`SOURCE_DATE_EPOCH` set to the tagged commit's committer time, and refuses on any difference. The tree's
+`ubb-sdk/release/build_wheel.py`, is committed with the code it builds and runs only as the tag's
+own copy: it exports the tag cleanly, verifies the export is the tag's tree byte for byte, and builds
+twice on Python 3.13 with `SOURCE_DATE_EPOCH` set to the tagged commit's committer time, refusing on any
+difference. **The build environment is the tag's lock and nothing else** (the owner's review of the
+first pull request, 2026-10-29): `ubb-sdk/release/build-requirements.txt` pins and hashes every package
+the build frontend and the setuptools backend import; the virtual environment is created without pip
+and the release Python's own pip installs the lock into it from outside, so the environment holds no
+installer and the check that it holds exactly the lock exempts nothing; `pyproject.toml`'s
+`[build-system] requires` must be exactly a pin in the lock; and no `PYTHON*`, `PIP_*`, `SETUPTOOLS*`,
+`DISTUTILS*` or hook-override setting from the builder's shell reaches the install or the build. The
+release evidence names the tag and its commit, the Python's major.minor and exact version, the lock's
+SHA-256 with every package it installed, the installer that ran outside the environment, the wheel's
+filename and its SHA-256. The tree's
 earlier number, 3.0.0, was never released. The Integration Blueprint's Python target names SDK major 4,
 so every Python Blueprint's fingerprint moved, the renderer catalogue moved to version 10 because one of
 its members did, and the renderer contract stayed 3: what generated code does did not change.
@@ -152,7 +161,7 @@ its members did, and the renderer contract stayed 3: what generated code does di
 | §5 — every receipt states its subject: required and never null, null only on a rejected batch item | `ubb-platform/api/v1/tests/test_the_pricing_receipt_is_typed.py` — `EveryReceiptStatesWhatItExplainsTest`; `ubb-platform/apps/metering/pricing/tests/test_the_pricing_receipt_explains_an_amount.py` — `TestTheBoundaryRefusesARecordThatExplainsNothing` |
 | §6 — no opening entry, and none can be written | `ubb-platform/api/v1/tests/test_the_audit_catalogue_is_the_registrys.py` — `test_no_opening_entry_can_be_written`, `test_the_recordable_set_is_the_registrys` |
 | G21 — the five assertions, each with a planted violation | `ubb-platform/api/v1/tests/test_the_cutover_assertions.py` — `NoOldPostingReachesABalanceOrAReportTest`, `NoUndeclaredMeasurementSurvivesTest`, `EveryNewEventValidatesAgainstItsEventTypeTest`; `tests/contracts/test_no_retired_posting_or_receipt_reader_survives.py` — `test_no_production_sql_reads_an_old_posting`, `test_no_production_code_reads_a_legacy_receipt` |
-| §8 — v4.0.0, the recipe's refusals, the Blueprint's major | `ubb-sdk/tests/test_release.py` — `test_sdk_is_v4`, `TestTheReleaseRecipe`; `tests/contracts/test_the_blueprint_targets_the_sdk_that_ships.py` — `test_the_python_target_names_the_major_of_the_sdk_in_this_tree` |
+| §8 — v4.0.0, the recipe's refusals (a backend or package outside the lock, an installer in the environment, an outside setting), the evidence, the Blueprint's major | `ubb-sdk/tests/test_release.py` — `test_sdk_is_v4`, `TestTheReleaseRecipe`; `tests/contracts/test_the_blueprint_targets_the_sdk_that_ships.py` — `test_the_python_target_names_the_major_of_the_sdk_in_this_tree` |
 
 ## Consequences
 

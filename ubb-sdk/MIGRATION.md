@@ -1296,7 +1296,9 @@ v3.0 is a coordinated release with the one integrating tenant:
    migration window. **Record that conversation on issue #85** before shipping.
 3. **Cut the release** — the annotated tag `sdk-v4.0.0` on the cutover's
    merge commit on `main` (#190), and the wheel built from it by
-   `release/build_wheel.py`, which records the tag, the commit, the Python, the
-   toolchain and the wheel's SHA-256. The tag's `ubb.__spec_revision__` is the
+   `release/build_wheel.py`, which records the tag, the commit, the Python
+   (major.minor and exact), the lock's SHA-256 with every package it installed,
+   the installer that ran outside the build environment and the wheel's
+   filename and SHA-256. The tag's `ubb.__spec_revision__` is the
    verifiable spec stamp for the build. Nothing publishes it (R2): the wheel is
    handed to the client.

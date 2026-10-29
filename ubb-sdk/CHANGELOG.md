@@ -17,11 +17,14 @@ then, and ADR-0026 records the departure from its "v3.x at launch".
 **The release is a tag and a wheel, and nothing publishes it** (R2, #190 spec
 part 3 §9). The tag is `sdk-v4.0.0`, annotated, on the cutover's merge commit
 on `main`. The wheel is built from a clean export of that tag by
-`release/build_wheel.py`, twice, in a fresh environment holding exactly
-`release/build-requirements.txt` (pinned and hashed) on Python 3.13, with
-`SOURCE_DATE_EPOCH` set to the tagged commit's committer time; the recipe
-refuses a dirty export, a tag on another commit, an unpinned environment and two
-builds that differ.
+`release/build_wheel.py` — the tag's own copy — twice, on Python 3.13, with
+`SOURCE_DATE_EPOCH` set to the tagged commit's committer time, in a fresh
+environment holding exactly the tag's lock, `release/build-requirements.txt`
+(every package pinned and hashed, and no installer: the environment is created
+without pip and filled from outside), with no outside Python, pip or setuptools
+setting reaching it. The recipe refuses a dirty export, a tag on another
+commit, another Python, a backend `pyproject.toml` requires outside the lock, an
+environment that is not exactly the lock, and two builds that differ.
 
 **Release stamp** (verifiable on the release):
 

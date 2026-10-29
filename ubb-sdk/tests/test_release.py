@@ -26,6 +26,7 @@ This file pins only that the public release surface re-exports it.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import re
 from pathlib import Path
@@ -98,10 +99,24 @@ class TestTheReleaseRecipe:
         assert set(windows) - set(pins) == {"colorama"}
 
     def test_the_backend_pyproject_names_is_the_pinned_one(self):
-        """An isolated build resolves the same backend the recipe pins."""
-        pins = _recipe().pinned(BUILD_REQUIREMENTS.read_text(encoding="utf-8"), "posix")
-        assert f'requires = ["setuptools=={pins["setuptools"]}"]' in PYPROJECT.read_text(
-            encoding="utf-8")
+        """The backend the wheel is built by is one the lock installs."""
+        recipe = _recipe()
+        for os_name in ("posix", "nt"):
+            recipe.refuse_unless_the_backend_is_locked(
+                PYPROJECT.read_text(encoding="utf-8"),
+                recipe.pinned(BUILD_REQUIREMENTS.read_text(encoding="utf-8"), os_name))
+
+    def test_planted_a_backend_requirement_the_lock_does_not_pin_is_refused(self):
+        """Changing or ADDING a build dependency outside the lock is refused
+        before anything is installed: a range, another version, an unpinned
+        extra package, or no requirement at all."""
+        recipe = _recipe()
+        pins = recipe.pinned(BUILD_REQUIREMENTS.read_text(encoding="utf-8"), "posix")
+        for requires in ('["setuptools>=80"]', '["setuptools==81.0.0"]',
+                         '["setuptools==80.9.0", "wheel==0.45.1"]', "[]"):
+            planted = f'[build-system]\nrequires = {requires}\n'
+            with pytest.raises(recipe.RefusedRelease, match="build-system|lock"):
+                recipe.refuse_unless_the_backend_is_locked(planted, pins)
 
     def test_the_release_python_is_stated(self):
         assert _recipe().RELEASE_PYTHON == (3, 13)
@@ -165,6 +180,50 @@ class TestTheReleaseRecipe:
                 ({**pins, "setuptools": "81.0.0"}, "different \\['setuptools'\\]")):
             with pytest.raises(recipe.RefusedRelease, match=reason):
                 recipe.refuse_unless_exactly_pinned(installed, pins)
+
+    def test_planted_an_installer_in_the_environment_is_refused(self):
+        """No package is set aside: the environment is created without pip, so
+        a pip found in it is an extra like any other."""
+        recipe = _recipe()
+        pins = {"build": "1.2.2.post1", "setuptools": "80.9.0"}
+        with pytest.raises(recipe.RefusedRelease, match="extra \\['pip'\\]"):
+            recipe.refuse_unless_exactly_pinned({**pins, "pip": "26.1.2"}, pins)
+
+    def test_no_outside_python_setting_reaches_the_build(self):
+        recipe = _recipe()
+        builder = {"PATH": "/usr/bin", "SystemRoot": "C:\\Windows", "HOME": "/home/x",
+                   "PYTHONPATH": "/elsewhere", "PYTHONSTARTUP": "/x.py",
+                   "PYTHONHASHSEED": "random", "PIP_INDEX_URL": "https://mirror",
+                   "pip_extra_index_url": "https://other",
+                   "SETUPTOOLS_SCM_PRETEND_VERSION": "9.9.9",
+                   "SETUPTOOLS_USE_DISTUTILS": "stdlib", "DISTUTILS_DEBUG": "1",
+                   "_PYPROJECT_HOOKS_BUILD_BACKEND": "other", "VIRTUAL_ENV": "/venv",
+                   "CONDA_PREFIX": "/conda"}
+
+        assert recipe.release_environment(builder) == {
+            "PATH": "/usr/bin", "SystemRoot": "C:\\Windows", "HOME": "/home/x",
+            "PYTHONHASHSEED": "0", "PYTHONNOUSERSITE": "1", "PYTHONUTF8": "1"}
+
+    def test_the_evidence_names_the_tag_the_commit_the_python_the_lock_and_the_wheel(self):
+        recipe = _recipe()
+        lock = BUILD_REQUIREMENTS.read_bytes()
+        identity = recipe.release_identity(
+            tag="sdk-v4.0.0", commit="a" * 40, epoch=1, python_version="3.13.14",
+            platform_name="any", lock_bytes=lock,
+            installed={"setuptools": "80.9.0", "build": "1.2.2.post1"},
+            installer="26.1.2", recipe_bytes=b"recipe",
+            wheel_name="ubb_sdk-4.0.0-py3-none-any.whl", wheel_sha256="f" * 64)
+
+        assert (identity["tag"], identity["commit"]) == ("sdk-v4.0.0", "a" * 40)
+        assert identity["python"] == {"release": "3.13", "exact": "3.13.14"}
+        assert identity["lock"]["path"] == "ubb-sdk/release/build-requirements.txt"
+        assert identity["lock"]["sha256"] == hashlib.sha256(lock).hexdigest()
+        assert list(identity["lock"]["installed"]) == ["build", "setuptools"]
+        assert identity["installer"] == {"pip": "26.1.2",
+                                         "in_the_build_environment": False}
+        assert (identity["wheel"], identity["sha256"]) == (
+            "ubb_sdk-4.0.0-py3-none-any.whl", "f" * 64)
+        assert identity["builds_compared"] == 2
 
     def test_planted_two_different_builds_are_refused(self):
         recipe = _recipe()
