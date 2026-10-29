@@ -73,11 +73,12 @@ from ubb.webhooks import verify_webhook, verify_webhook_legacy
 from ubb._core.types import UNSET
 from ubb._models import is_unset
 
-# The SDK's own semver. v3.0 is the coordinated breaking cut (#85): the
-# generated core (#84) and the problem+json error model (#78) migrate the one
-# integrating tenant exactly once. Kept in lockstep with pyproject's version by
+# The SDK's own semver. 4.0.0 is the release cut at the cutover (#190,
+# ADR-0026), the first one tagged (`sdk-v4.0.0`) and built reproducibly
+# (`release/build_wheel.py`); 3.0.0 was the tree's pre-release number and was
+# never released. Kept in lockstep with pyproject's version by
 # tests/test_release.py — bumping the release means bumping both.
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 
 # The exact committed-spec revision this build was generated from (issue #84).
 # Paired with __version__, this makes the release self-describing: which SDK

@@ -1,6 +1,6 @@
 {
   "blueprint": "reported-cost",
-  "configuration_fingerprint": "sha256:13c17962f9cd8ca21c61cdf7848bf8b4990f3316ffe3da1e8f9e32d9880ad077",
+  "configuration_fingerprint": "sha256:a66b16e9d40b15edf896147b035f8122452144855749f60b031c4bd613f40098",
   "request": {
     "records": [
       {
@@ -15,7 +15,7 @@
   },
   "status": 200,
   "answer": {
-    "configuration_fingerprint": "sha256:13c17962f9cd8ca21c61cdf7848bf8b4990f3316ffe3da1e8f9e32d9880ad077",
+    "configuration_fingerprint": "sha256:a66b16e9d40b15edf896147b035f8122452144855749f60b031c4bd613f40098",
     "verified": true,
     "unexercised_event_types": [],
     "unexercised_subtask_types": [],
@@ -164,42 +164,42 @@
             "searches": "3"
           },
           "pricing_receipt": {
-            "totals": {
-              "billed_cost_micros": null,
-              "provider_cost_micros": 1250000
-            },
+            "receipt_schema_version": 2,
+            "pricing_engine_version": "3.0.0",
+            "subject_type": "usage_event",
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "currency": "usd",
             "costing": {
+              "method": "reported",
+              "status": "known",
               "detail": {
                 "components": [],
-                "unresolved_reason": null,
+                "uncosted_measurement_keys": [],
                 "uncosted_quantities": {},
                 "undeclared_quantities": {},
-                "reported_cost_source_kind": "caller_supplied",
-                "uncosted_measurement_keys": []
-              },
-              "method": "reported",
-              "status": "known"
+                "unresolved_reason": null,
+                "reported_cost_source_kind": "caller_supplied"
+              }
             },
             "pricing": {
+              "method": null,
+              "status": "unknown",
               "detail": {
                 "components": [],
                 "pricing_mode": "event_priced",
                 "not_applicable_reason": null,
                 "pricing_status_reason": null
-              },
-              "method": null,
-              "status": "unknown"
+              }
             },
-            "currency": "usd",
+            "totals": {
+              "provider_cost_micros": 1250000,
+              "billed_cost_micros": null
+            },
             "provenance": {
               "cost_rate_ids": {},
               "price_rate_ids": {}
-            },
-            "subject_id": "00000000-0000-4000-8000-000000000002",
-            "effective_at": "2026-09-01T12:30:00Z",
-            "subject_type": "usage_event",
-            "pricing_engine_version": "3.0.0",
-            "receipt_schema_version": 2
+            }
           },
           "pricing_receipt_subject_type": "usage_event",
           "uncosted_measurement_keys": [],

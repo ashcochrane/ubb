@@ -1,6 +1,6 @@
 {
   "blueprint": "fixed-price-priced",
-  "configuration_fingerprint": "sha256:f0431428892185022ebe6736de85d362950103d6dcdcbab262fdd71d81f9aa99",
+  "configuration_fingerprint": "sha256:1577361496fcfe5d68591cb0bcdf5490e259579af555f824d23bd229828a9680",
   "request": {
     "records": [
       {
@@ -14,7 +14,7 @@
   },
   "status": 200,
   "answer": {
-    "configuration_fingerprint": "sha256:f0431428892185022ebe6736de85d362950103d6dcdcbab262fdd71d81f9aa99",
+    "configuration_fingerprint": "sha256:1577361496fcfe5d68591cb0bcdf5490e259579af555f824d23bd229828a9680",
     "verified": true,
     "unexercised_event_types": [],
     "unexercised_subtask_types": [],
@@ -174,53 +174,53 @@
             "replies": "4"
           },
           "pricing_receipt": {
-            "totals": {
-              "billed_cost_micros": null,
-              "provider_cost_micros": 8000
-            },
+            "receipt_schema_version": 2,
+            "pricing_engine_version": "3.0.0",
+            "subject_type": "usage_event",
+            "subject_id": "00000000-0000-4000-8000-000000000002",
+            "effective_at": "2026-09-01T12:30:00Z",
+            "currency": "usd",
             "costing": {
+              "method": "calculated",
+              "status": "known",
               "detail": {
                 "components": [
                   {
-                    "units": "4",
-                    "micros": 8000,
-                    "fixed_micros": 0,
-                    "unit_quantity": 1,
-                    "rate_structure": "per_unit",
                     "measurement_key": "replies",
-                    "rate_per_unit_micros": 2000
+                    "units": "4",
+                    "rate_structure": "per_unit",
+                    "rate_per_unit_micros": 2000,
+                    "unit_quantity": 1,
+                    "fixed_micros": 0,
+                    "micros": 8000
                   }
                 ],
-                "unresolved_reason": null,
+                "uncosted_measurement_keys": [],
                 "uncosted_quantities": {},
                 "undeclared_quantities": {},
-                "uncosted_measurement_keys": []
-              },
-              "method": "calculated",
-              "status": "known"
+                "unresolved_reason": null
+              }
             },
             "pricing": {
+              "method": null,
+              "status": "not_applicable",
               "detail": {
                 "components": [],
                 "pricing_mode": "fixed",
                 "not_applicable_reason": "fixed_task_pricing",
                 "pricing_status_reason": null
-              },
-              "method": null,
-              "status": "not_applicable"
+              }
             },
-            "currency": "usd",
+            "totals": {
+              "provider_cost_micros": 8000,
+              "billed_cost_micros": null
+            },
             "provenance": {
               "cost_rate_ids": {
                 "replies": "00000000-0000-4000-8000-000000000003"
               },
               "price_rate_ids": {}
-            },
-            "subject_id": "00000000-0000-4000-8000-000000000002",
-            "effective_at": "2026-09-01T12:30:00Z",
-            "subject_type": "usage_event",
-            "pricing_engine_version": "3.0.0",
-            "receipt_schema_version": 2
+            }
           },
           "pricing_receipt_subject_type": "usage_event",
           "uncosted_measurement_keys": [],

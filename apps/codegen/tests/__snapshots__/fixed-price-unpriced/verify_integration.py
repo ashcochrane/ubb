@@ -3,7 +3,7 @@
 # It calls nothing: no supplier and no UBB. Save one real response as
 # JSON and pass it:
 #   python verify_integration.py EVENT_TYPE captured-response.json
-# configuration_fingerprint = "sha256:bc6eb9f43d033964d21504e87c9657c39a2832221e14b8f5a3a80cba13ff2c13"
+# configuration_fingerprint = "sha256:73a3efe8bbf56b44c055085399aa2b2eb291c41f785a86f657e4dbe460f15833"
 
 import json
 import re

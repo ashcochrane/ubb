@@ -299,7 +299,7 @@ describe("the header", () => {
       expect.arrayContaining([
         "schema_version = 1",
         "renderer_contract_version = 3",
-        "sdk_major_version = 3",
+        "sdk_major_version = 4",
         'target = "python_sdk"',
         `configuration_fingerprint = "${blueprint.configuration_fingerprint}"`,
         'readiness = "complete"',
@@ -684,9 +684,9 @@ describe("what the renderer refuses", () => {
     ],
     [
       "an SDK major it is not written against",
-      /written against SDK major 3, and the Blueprint names 4/,
+      /written against SDK major 4, and the Blueprint names 5/,
       (b) => {
-        b.sdk_major_version = 4;
+        b.sdk_major_version = 5;
       },
     ],
     [
