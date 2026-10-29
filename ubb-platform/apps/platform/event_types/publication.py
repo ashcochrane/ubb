@@ -42,7 +42,7 @@ composition layer resolving an integration from published configuration.
 from datetime import datetime
 from typing import NamedTuple
 
-from .models import MEASUREMENTS, PROVIDER_KEY, REPORTED_COST_MAPPING, EventType
+from .models import MEASUREMENTS, REPORTED_COST_MAPPING, EventType
 
 
 class PublishedMeasurement(NamedTuple):
@@ -83,11 +83,10 @@ class PublishedDeclaration(NamedTuple):
     #: published — `""` for an Event Type naming none. What recording admits a
     #: call's supplier against and costs under (#572): a later rename or
     #: re-pointing is a revision, and takes effect when published (#605).
-    #: `None` only for a copy written without the key, and no copy `publish`
-    #: composes is one: before the cutover squash (#190) `event_types/0012`
-    #: wrote the key into every copy kept before the supplier was pinned, and
-    #: a fresh database holds no such copy.
-    provider_key: str | None
+    #: Every copy `publish` composes names it, so it is read by name like every
+    #: other element (#190: the copy without the key, which a deleted migration
+    #: once rewrote, cannot be produced on a fresh database).
+    provider_key: str
     #: Which publication this is, and when it happened. Both are the row's
     #: own: a revision returns the Event Type to draft and moves neither.
     #: `None` only on `draft_declaration`'s answer, which is no publication.
@@ -164,24 +163,19 @@ def _in_the_reads_shape(pinned, *, published_revision, published_at):
     own = dict(pinned)
     measurements = own.pop(MEASUREMENTS)
     mapping = own.pop(REPORTED_COST_MAPPING)
-    # Every copy `publish` composes carries the key (`event_types/0012` wrote
-    # it into the older ones before the cutover squash, #190), so `None` is
-    # only what a copy written some other way says.
-    supplier = own.pop(PROVIDER_KEY, None)
     return PublishedDeclaration(
         **own,
-        provider_key=supplier,
         published_revision=published_revision,
         published_at=published_at,
         measurements=tuple(
+            # `constant_value` is read by name too: every copy `publish`
+            # composes names it for every quantity (`Measurement.PINNED`), so a
+            # copy without it — which only a write around `publish` can leave —
+            # fails here rather than reading as `None` (#190: the pre-#571 copy
+            # it once answered for cannot be produced on a fresh database).
             PublishedMeasurement(**{
                 **measurement,
-                "source_path": tuple(measurement["source_path"]),
-                # A copy without the key has no value at all: `None`, and
-                # nothing made up. Before the cutover squash (#190) that was a
-                # copy kept before #571, whose migration refused to run over
-                # any copy pinning a constant; a fresh database holds none.
-                "constant_value": measurement.get("constant_value")})
+                "source_path": tuple(measurement["source_path"])})
             for measurement in measurements),
         reported_cost_mapping=(None if mapping is None else
                                PublishedReportedCostMapping(**{

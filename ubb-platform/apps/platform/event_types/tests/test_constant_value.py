@@ -12,7 +12,10 @@ here is what a route cannot reach:
 * **The database's half of the rule** (ADR-0007 §2: the constraint is the
   rule). Every case writes through the ORM with no ``full_clean``, which is
   the writer the constraints exist for.
-* **A publication kept before the value existed** answers ``None`` for it.
+* **Every kept publication names the value**, and the read takes it by name: a
+  copy without it is refused, never read as ``None``. (Before the cutover, #190,
+  the read answered ``None`` for a copy kept before #571; that copy cannot be
+  produced on a fresh database, so the tolerance went with it.)
 
 (Before the cutover, #190, this module also drove ``event_types/0009``'s guard,
 which refused to add the rules over a tree holding a constant without its
@@ -27,7 +30,7 @@ from django.db import IntegrityError, transaction
 
 from apps.platform.event_types.exact_decimals import (
     NotAnExactDecimal, canonical)
-from apps.platform.event_types.models import EventType, Measurement
+from apps.platform.event_types.models import PROVIDER_KEY, EventType, Measurement
 from apps.platform.event_types.publication import last_published_declaration
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import (
@@ -211,29 +214,51 @@ def test_the_model_reads_no_number_as_text_on_the_way_to_the_rule(value):
 
 
 # ---------------------------------------------------------------------------
-# A publication kept before the value existed
+# Every kept publication names the value
 # ---------------------------------------------------------------------------
 
-@pytest.mark.django_db
-def test_a_copy_kept_before_the_value_existed_answers_none_for_it():
-    """A copy `publish` kept before #571 has no `constant_value` at all. The
-    migration that added it (`event_types/0009`, before the cutover) refused to
-    run over any copy pinning a constant, so every quantity such a copy holds
-    is one with no value: the read says `None`, and makes nothing up."""
+def _published_with_a_constant_and_a_supplied_quantity():
     event_type = _event_type()
+    _written(event_type, constant_value="2.5")
     _written(event_type, code="searches",
              source_kind=SOURCE_KIND_CALLER_SUPPLIED, constant_value=None)
-    event_type = EventType.objects.get(pk=event_type.pk).publish()
-    kept = dict(EventType.objects.get(pk=event_type.pk).published_declaration)
-    kept["measurements"] = [
-        {name: value for name, value in quantity.items()
-         if name != "constant_value"}
-        for quantity in kept["measurements"]]
-    EventType.objects.filter(pk=event_type.pk).update(
-        published_declaration=kept)
+    return EventType.objects.get(pk=event_type.pk).publish()
 
+
+@pytest.mark.django_db
+def test_every_copy_publish_keeps_names_the_value_and_the_read_hands_it_back():
+    """The copy `publish` keeps is composed from `Measurement.PINNED`, which
+    names `constant_value` for EVERY quantity — the value for a constant, `None`
+    for every other kind — and names the supplier, `""` for none. So the read
+    takes both by name, like every other pinned element."""
+    event_type = _published_with_a_constant_and_a_supplied_quantity()
+    kept = EventType.objects.get(pk=event_type.pk).published_declaration
+
+    assert all("constant_value" in quantity for quantity in kept["measurements"])
+    assert kept[PROVIDER_KEY] == ""
     read = last_published_declaration(tenant=event_type.tenant,
                                       key=event_type.key)
-
     assert [(quantity.code, quantity.constant_value)
-            for quantity in read.measurements] == [("searches", None)]
+            for quantity in read.measurements] == [("flat_fee", "2.5"),
+                                                   ("searches", None)]
+    assert read.provider_key == ""
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("element", ["constant_value", PROVIDER_KEY])
+def test_a_copy_missing_a_pinned_element_is_refused_not_read_as_none(element):
+    """Only a write around `publish` can leave a copy without one of them,
+    and the read refuses it rather than making up `None` for what the copy
+    does not say."""
+    event_type = _published_with_a_constant_and_a_supplied_quantity()
+    kept = dict(EventType.objects.get(pk=event_type.pk).published_declaration)
+    if element == PROVIDER_KEY:
+        del kept[PROVIDER_KEY]
+    else:
+        kept["measurements"] = [
+            {name: value for name, value in quantity.items() if name != element}
+            for quantity in kept["measurements"]]
+    EventType.objects.filter(pk=event_type.pk).update(published_declaration=kept)
+
+    with pytest.raises(TypeError, match=element):
+        last_published_declaration(tenant=event_type.tenant, key=event_type.key)
