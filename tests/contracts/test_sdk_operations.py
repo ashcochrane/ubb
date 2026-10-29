@@ -415,23 +415,28 @@ def test_the_gate_owes_nothing_and_the_family_is_declared_empty():
     `test_model_naming.py`'s `LEDGERED_VIOLATIONS` holds the same shape for G11
     and G12 next door: a paid family stays visible as an empty one, so its
     absence is a declaration rather than a silence.
+
+    **It is G22's second zero** — "the SDK invalid-call list at zero" (#155
+    §11.3, #190 spec part 3 §5) — and a site of that row. The list was this
+    family from the day #204 seeded it, and slice 8 landing closed the way a
+    new entry could reach it: every slice has landed, so none can own one.
     """
     ledger = yaml.safe_load((REPO_ROOT / LEDGER_PATH).read_text("utf-8"))
     owed = [entry["site"] for entry in ledger["entries"]
             if entry["gate"] == "G17"]
     assert owed == [], (
         f"G17 carries {len(owed)} entries again: {sorted(owed)}. The family "
-        f"was emptied in #373 and a call to a route nothing publishes now "
-        f"needs a seeding authorisation, which is a decision somebody signs "
-        f"rather than a debt this ledger quietly absorbs.")
+        f"was emptied in #373 and every slice has landed since (#190), so no "
+        f"slice can owe such a debt: a call to a route nothing publishes is a "
+        f"defect to remove, not an entry this ledger quietly absorbs.")
 
     # Vacuity guard: the assertion above is satisfied by a ledger with no G17
     # entries AND by a ledger this reader failed to parse at all. Reading
     # something in the same document that is NOT empty separates the two — it
     # fails on an unparsed document and passes only where entries really were
     # read. The sibling was G7 until R10-W3 paid its last five, then G6 until
-    # R10-W4 paid its last twenty-three; the one family still owed is G9's,
-    # which the cutover pays, so any debt family goes vacuous here in turn.
+    # R10-W4 paid its last twenty-three, then G9 until the cutover paid the
+    # ledger's last entry (#190) — every debt family went vacuous here in turn.
     # The seeding authorisations do not: they are the ledger's audit trail of
     # every reviewed addition (`gates/README.md`), history rather than debt,
     # and nothing pays them down.

@@ -302,9 +302,9 @@ jobs:
   # The spec-as-truth ratchet (#77, ADR-002): the committed openapi/v1.json is
   # the single source of truth for the tenant surface. Three gates:
   #   drift    — offline regeneration must produce zero diff (code == document)
-  #   breaking — oasdiff against the immutable `api-v1-launch` baseline, so the
-  #              question is "has every break since the contract was published
-  #              been reviewed?", not "did this PR break it?" (#195); the
+  #   breaking — oasdiff against the immutable `api-v1-cutover` baseline, so the
+  #              question is "has every break since the contract was baselined
+  #              been reviewed?", not "did this PR break it?" (#195, #190); the
   #              committed suppression files make accepting a break a visible,
   #              reviewed change; severity-levels encodes the open-enum stance
   #   TS smoke — the committed spec must generate clean TypeScript types
@@ -325,7 +325,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # Full history AND tags: the breaking gate resolves the immutable
-          # `api-v1-launch` baseline by tag. Without the tag the gate cannot
+          # `api-v1-cutover` baseline by tag. Without the tag the gate cannot
           # run — and it fails rather than skipping, since a silently skipped
           # comparison is how breaks reach main unreviewed.
           fetch-depth: 0
@@ -379,10 +379,12 @@ jobs:
           tar -xzf /tmp/oasdiff.tar.gz -C /tmp oasdiff
           sudo mv /tmp/oasdiff /usr/local/bin/oasdiff
 
-      # Cumulative, against `api-v1-launch` — every break since the contract
-      # was published must be recorded as reviewed, and every committed entry
-      # must still suppress something (openapi/README.md).
-      - name: Breaking gate — cumulative vs the api-v1-launch baseline
+      # Cumulative, against `api-v1-cutover` — every break since the cutover
+      # tagged the re-modelled contract must be recorded as reviewed, and every
+      # committed entry must still suppress something (openapi/README.md). The
+      # suppression files were reset to zero with the repoint (#190), so on
+      # that day this step asserts no difference at all — which is G22's.
+      - name: Breaking gate — cumulative vs the api-v1-cutover baseline
         run: python openapi/contract_gate.py
 
       - uses: actions/setup-node@v4

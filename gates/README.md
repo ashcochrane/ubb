@@ -76,16 +76,16 @@ every gate is accounted for. Locations may vary; accountability may not.
 construction rather than by a second check somebody has to remember to write.
 
 **A gate whose subject does not exist is recorded against its owner, never
-installed as a test that passes on nothing.** Of the three rows #191 decision 6
-named for it, one still says so: ADR-0007 §1 states the data-carrying migration
-rule does not bind before the cutover squash (slice 8). The other two left by
-installation, each when its subject arrived. Slice 3 gave G19 the first columns
-declared into a class the database defends, with a trigger holding them (#318),
-and #319 flipped that row to `installed`. G14 left in two stages: #417 landed
+installed as a test that passes on nothing.** All three rows #191 decision 6
+named for it have left by installation, each when its subject arrived. Slice 3
+gave G19 the first columns declared into a class the database defends, with a
+trigger holding them (#318), and #319 flipped that row to `installed`. G14 left in two stages: #417 landed
 the `kind` column, found only two of the row's four pins had a subject, and
 re-owned it from slice 5 to slice 7 rather than install half a gate; slice 7
 built the one economic query the other two pin (#499, #501), and #511 wrote
-them and flipped the row to `installed`.
+them and flipped the row to `installed`. G20 left last, when the cutover squash
+(slice 8, #190) gave ADR-0007 §1's data-carrying migration rule the fresh
+initial set it binds from. No row is owed now.
 
 ### Flipping a row
 
@@ -197,8 +197,10 @@ payment nor a debt, and moving a site is an addition. And an entry's **owner
 slice may move earlier but never later**: deferring a debt towards the cutover is
 not shrinking the ledger, it is #155 §17's failure with an extra step.
 
-The ledger reaches zero at slice 8, before platform admission. It is a finite
-migration plan, not permission for the old architecture to survive.
+The ledger reached zero at slice 8 (#190), before platform admission, and G22
+holds it there: every slice has landed, so rule 3 leaves no owner a new entry
+could name. It was a finite migration plan, not permission for the old
+architecture to survive.
 
 ### Adding entries: the reviewed override
 

@@ -719,7 +719,7 @@ gates:
   G15:
     statement: >-
       OpenAPI drift, oasdiff breaking (cumulative against the immutable
-      `api-v1-launch` baseline), TypeScript smoke, UI contract snapshot and UI
+      `api-v1-cutover` baseline), TypeScript smoke, UI contract snapshot and UI
       typecheck.
     oracle: openapi/v1.json
     source: ADR-002, ADR-0008 §8, ci.yml
@@ -727,12 +727,15 @@ gates:
     notes: >-
       The cumulative comparison #191 decision 11 adds landed with #195; the
       breaking step below already compares against the tag rather than against
-      the previous commit.
+      the previous commit. Its baseline was `api-v1-launch` until the cutover
+      (#190) cut `api-v1-cutover` on slice 8's merge commit, repointed this step
+      at it and reset both suppression files to zero; `api-v1-launch` itself
+      was never moved.
     enforced_by:
       - job: contract
         step: Drift gate — offline regeneration produces zero diff
       - job: contract
-        step: Breaking gate — cumulative vs the api-v1-launch baseline
+        step: Breaking gate — cumulative vs the api-v1-cutover baseline
       - job: contract
         step: TypeScript smoke gate — committed spec generates clean types
       - job: contract
@@ -1152,14 +1155,49 @@ gates:
       unexplained oasdiff difference.
     oracle: "#155"
     source: "#155 §11.3"
-    status: owned_by_slice_8
-    blocked_on: >-
-      The migration ledger reaches zero AT slice 8 (#158 §11.3). Asserting zero
-      before then would fail every slice from 0 to 7 by design.
+    status: installed
     notes: >-
       This is the gate the ledger exists to make reachable, and the reason
       permanent reasoned exceptions are a separate list — mixing them in would
-      make zero unachievable by construction.
+      make zero unachievable by construction. Installed by slice 8's second
+      pull request (#190), after the first paid the ledger's last entry and was
+      tagged `api-v1-cutover`. Three zeros, each with its own sites. (1) The
+      seeded allowlists: the migration ledger holds no entry in ANY family,
+      read raw rather than through the loader (which, with every slice landed,
+      refuses an entry for a different reason), with the ledger's seeding
+      authorisations and the permanent exceptions as its vacuity guards; and
+      the one hand-held copy of a ledger family, the platform's
+      `LEDGERED_VIOLATIONS`, excuses nothing. (2) The SDK invalid-call list:
+      the ledger's G17 family is empty, and the shell reaches no route the
+      contract omits. (3) No unexplained oasdiff difference: CI's breaking step
+      compares `api-v1-cutover` against the working tree, the gate defaults to
+      that tag and CI names no other, and a break the committed suppression
+      files do not record is reported rather than absorbed — on the day of the
+      reset both files held zero entries and the step reported zero breaks, so
+      there was no difference at all. Shown red on one planted violation per
+      zero: a G9 table-name entry in the ledger, a G17 entry excusing a route
+      the contract does not publish, and a breaking edit to `openapi/v1.json`
+      with no suppression to hide it. Permanent exceptions are not debts and
+      are outside it, as are G18's unwrapped operations: they seed a manifest
+      that #155 §8.2 says "need not reach zero", only stay visible and grow by
+      review.
+    enforced_by:
+      - suite: contracts
+        node: tests/contracts/test_migration_ledger.py::test_the_shipped_ledger_is_at_zero
+      - suite: contracts
+        node: tests/contracts/test_model_naming_ledger_agreement.py::test_the_gate_module_exists_and_declares_both_allowlists
+      - suite: contracts
+        node: tests/contracts/test_sdk_operations.py::test_the_gate_owes_nothing_and_the_family_is_declared_empty
+      - suite: contracts
+        node: tests/contracts/test_sdk_operations.py::test_no_hand_written_call_resolves_to_a_route_the_contract_omits
+      - job: contract
+        step: Breaking gate — cumulative vs the api-v1-cutover baseline
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_contract_gate.py::TestTheCutoverBaseline::test_the_gate_compares_against_the_cutover_tag
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_contract_gate.py::TestTheCutoverBaseline::test_a_planted_break_has_no_suppression_to_hide_behind
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_contract_gate.py::TestCiWiring::test_the_breaking_step_compares_against_the_committed_baseline
 
   G23:
     statement: >-
