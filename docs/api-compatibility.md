@@ -2,10 +2,10 @@
 
 > **This is the public compatibility contract for the UBB `/v1/` API.** It states, in
 > plain terms, what may change without warning, what may never change silently, and how
-> much notice you get when something must go. It binds from the **launch tag** — the
-> `openapi/v1.json` revision tagged at self-serve launch (ADR-003 §5). The internal
-> rationale lives in [ADR-003](adr/0003-versioning-and-deprecation.md); this page is the
-> version we make to you.
+> much notice you get when something must go. It binds from the **active baseline**,
+> `api-v1-cutover` — the `openapi/v1.json` revision tagged at the cutover (ADR-003 §5,
+> ADR-0026). The internal rationale lives in [ADR-003](adr/0003-versioning-and-deprecation.md);
+> this page is the version we make to you.
 
 > **Status, as of 2026-07-28: no tenant is live on v1 yet.** The `api-v1-launch` tag was
 > cut on 2026-07-22 in preparation for self-serve launch, but nothing is integrated
@@ -89,8 +89,9 @@ The tenant audit trail (who changed what on your account) is retained for a mini
 ## 6. The spec is the contract; the SDK carries its own version
 
 `openapi/v1.json` in our repository is the **single source of truth** for the surface, and
-the launch-tagged revision is the binding v1 contract ([ADR-002](adr/0002-openapi-spec-as-truth.md),
-ADR-003 §5). Our CI mechanically forbids an un-declared breaking change from shipping.
+the revision tagged `api-v1-cutover`, the active baseline, is the binding v1 contract
+([ADR-002](adr/0002-openapi-spec-as-truth.md), ADR-003 §5, ADR-0026). Our CI mechanically
+forbids an un-declared breaking change from shipping.
 
 The **SDK keeps its own version line** with honest semver: API additions arrive as SDK
 minor releases, SDK-only fixes as patches, and an SDK major only when the SDK's own
