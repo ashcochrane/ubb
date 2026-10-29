@@ -407,7 +407,9 @@ And **`audit_action` has no positive owner** — the second time this shape has
 appeared, after #206's `meter_only`. Its fifty-eight actions name subjects across
 every slice, so no one slice rebuilds the catalogue, and it is recorded against
 the cutover for want of an owner rather than because anyone chose one. Any slice
-may take it earlier; none may take it later.
+may take it earlier; none may take it later. *(R10-W4 took it; the ledger reached
+zero at the cutover, #190, when the fresh initial set created the last abbreviated
+table under its canonical name.)*
 
 **What the census cannot see is counted rather than merely admitted.** It walks
 the consumers the registry *declares*, so a `choices=` list for a concept

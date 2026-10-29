@@ -36,7 +36,7 @@ from django.utils import timezone
 from apps.metering.pricing.services.cost_settlement import settle_provider_cost
 from apps.metering.pricing.services.price_resolution import (
     PriceResolution, resolve_customer_price)
-from apps.metering.usage.models import BackfillDirtyPeriod, Posting
+from apps.metering.usage.models import BackfillDirtyPeriod
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
@@ -51,6 +51,7 @@ from core.vocabulary import (
     UNRESOLVED_REASON_COST_RATE_MISSING,
     WEBHOOK_EVENT_TYPE_CUSTOMER_UNPROFITABLE,
     WEBHOOK_EVENT_TYPE_PROVIDER_COST_SPIKE)
+from apps.metering.usage.tests._helpers import a_posting
 
 # apps/subscriptions/tests/test_the_snapshot_is_an_alerting_record.py
 # -> ubb-platform/
@@ -391,8 +392,10 @@ class TestTheCacheIsInvalidatableAtAnyAge:
     tenant reading `GET /metering/analytics/economics` sees the mirror as it
     stands. What can go stale is the alerting record's copy, and what that costs
     is an alarm computed against a subscription amount that has since changed.
-    **The rows are #190's**, and this is one of the reasons the cutover is the
-    right place to decide what a period keeps.
+    **The cutover decided what a period keeps** (#190 §0.3 point 19): the rows
+    written before it went with the fresh database, and from then on the
+    evaluator keeps one per evaluated period, as it always did — no retention
+    rule was invented, and none is owed.
     """
 
     @pytest.fixture(autouse=True)
@@ -413,7 +416,7 @@ class TestTheCacheIsInvalidatableAtAnyAge:
         self.closes = (opens + datetime.timedelta(days=32)).replace(day=1)
 
     def _an_unresolved_posting(self, *, billed):
-        return Posting.objects.create(
+        return a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="k1",
             event_type="chat.completion", billed_cost_micros=billed,
             provider_cost_micros=None,
@@ -484,7 +487,7 @@ class TestTheCacheIsInvalidatableAtAnyAge:
         (#603) — so the customer named unprofitable while a price was missing
         may have been fine all along.
         """
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="k2",
             event_type="chat.completion", provider_cost_micros=250_000,
             costing_status=COSTING_STATUS_KNOWN, billed_cost_micros=None,

@@ -20,7 +20,8 @@ something a reader of each module has to agree to.
 are `delete()`, `QuerySet.delete()` and raw SQL rather than the three below —
 its own module owns those. What is here is `release_the_horizon` — the one TEST
 writer of `prunable_at`; the other writer is the daily prune itself
-(`usage/pruning.py`, W5), and the column is SET_ONCE since `usage/0052` — and
+(`usage/pruning.py`, W5), and the column is SET_ONCE, held by
+`trg_posting_measurement_released_once` — and
 `release_and_prune` over it. Three modules prune and a fourth releases without
 pruning; each one inventing that for itself is four chances to invent a
 different prune.
@@ -56,6 +57,8 @@ from django.utils import timezone
 
 from apps.metering.pricing.services.price_resolution import (
     marked_as_the_price_door)
+from apps.metering.pricing.receipts import ReceiptShapeError
+from apps.metering.pricing.tests._helpers import a_receipt_agreeing_with
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
@@ -63,12 +66,49 @@ from apps.platform.tenants.models import Tenant
 TABLE = Posting._meta.db_table
 
 
+def a_posting(**columns):
+    """A posting a test ASSEMBLES, carrying the receipt its own columns state.
+
+    The receipt column has no default since the cutover (#190): `{}` is not a
+    receipt, and a creator that omits one fails at its insert rather than
+    persisting a record that explains nothing. So a fixture writes a version-2
+    receipt through the one construction boundary (`a_receipt_agreeing_with`,
+    which calls `build_receipt`), agreeing with the amounts and statuses the row
+    is built with — the model's own defaults where the test names none. A test
+    whose subject IS the receipt passes its own, and that one is used as given.
+
+    A row the test builds ILLEGAL on purpose — an amount and a status that
+    disagree, a status outside its set — has no receipt that agrees with it:
+    the boundary refuses to build one. Such a test is about the table's own
+    refusal, so the row carries the model defaults' valid receipt instead, and
+    the database refuses the row before anything could read the mismatch.
+    """
+    if Posting.RECEIPT_COLUMN not in columns:
+        field = Posting._meta.get_field
+
+        def stated(name):
+            return columns.get(name, field(name).get_default())
+
+        try:
+            receipt = a_receipt_agreeing_with(
+                provider_cost_micros=stated("provider_cost_micros"),
+                billed_cost_micros=stated("billed_cost_micros"),
+                costing_status=stated("costing_status"),
+                pricing_status=stated("pricing_status"))
+        except ReceiptShapeError:
+            receipt = a_receipt_agreeing_with(
+                provider_cost_micros=field("provider_cost_micros").get_default(),
+                billed_cost_micros=field("billed_cost_micros").get_default())
+        columns[Posting.RECEIPT_COLUMN] = receipt
+    return Posting.objects.create(**columns)
+
+
 def committed_posting(**columns):
     """A committed posting, each with a tenant and customer of its own."""
     tenant = Tenant.objects.create(name="T")
     customer = Customer.objects.create(tenant=tenant, external_id="c1")
     columns.setdefault("idempotency_key", "k")
-    return Posting.objects.create(tenant=tenant, customer=customer, **columns)
+    return a_posting(tenant=tenant, customer=customer, **columns)
 
 
 # --- The three doors ADR-0007 §2 names, each writing the same columns --------
@@ -161,7 +201,8 @@ def release_the_horizon(posting):
 
     The one test writer of the release fact besides the prune itself
     (`pruning.py`). Since W5 the column is SET_ONCE and never a future instant
-    (`migrations/0052`), so this writes it once, from NULL, a day in the past —
+    (`trg_posting_measurement_released_once`), so this writes it once, from
+    NULL, a day in the past —
     the legal move — and a second call on the same record is refused by the
     database, as the prune's own would be.
 
@@ -216,9 +257,9 @@ def rules_on_the_table(table=TABLE):
 def rule_on_the_table(trigger, table=TABLE):
     """One rule's `(tgtype, prosrc)`, asked for BY NAME, or `None`.
 
-    By name and never by index: with three rules on this table, anything
+    By name and never by index: with several rules on this table, anything
     reading "the first row" is reading whichever one Postgres happened to hand
-    back. `None` where the rule is absent, so a reversed-out migration is an
+    back. `None` where the rule is absent, so a rule that is not installed is an
     assertable state rather than an exception from the middle of a test.
     """
     with connection.cursor() as cursor:

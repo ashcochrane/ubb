@@ -49,6 +49,7 @@ from core.vocabulary import (
     PRICING_STATUS_WAIVED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
@@ -69,7 +70,7 @@ def a_posting(tenant, customer, key, **overrides):
               "billed_cost_micros": 500_000,
               "pricing_status": PRICING_STATUS_KNOWN}
     fields.update(overrides)
-    return Posting.objects.create(**fields)
+    return usage_helpers.a_posting(**fields)
 
 
 def grouped_by(tenant, axis):

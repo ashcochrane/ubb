@@ -1,14 +1,18 @@
 """Pin 8 (#42, spec §G/§L): enforcement mode is two-position.
 
-The advisory→off migration lands; the choices are two-position on every
-surface; `off` is byte-for-byte pre-enforcement (Tier-1) behavior — no
-counters, no signals, no tagging — while the Tier-1 baseline (drawdown,
-zero-crossing early warning, level-based suspend) is untouched.
+The choices are two-position on every surface — `advisory` is retired, and the
+config route refuses it; `off` is byte-for-byte pre-enforcement (Tier-1)
+behavior — no counters, no signals, no tagging — while the Tier-1 baseline
+(drawdown, zero-crossing early warning, level-based suspend) is untouched.
+
+Before the cutover (#190) this module also drove `tenants/0019`'s data step,
+which moved every stored `advisory` row to `off`; that step left with the
+squashed chain, and what it left behind — the two-position choice set — is
+pinned below.
 """
 import json
 import uuid
 from dataclasses import asdict
-from importlib import import_module
 
 import pytest
 from django.core.cache import cache
@@ -39,30 +43,6 @@ def _tenant(mode="prepaid", enf="off"):
 @pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestAdvisoryRetired:
-    def test_migration_maps_advisory_to_off(self):
-        from django.apps import apps as live_apps
-        t = _tenant(enf="enforcing")
-        # Seed the retired value the way a pre-migration row holds it
-        # (queryset update — the model choices no longer admit it).
-        Tenant.objects.filter(id=t.id).update(enforcement_mode="advisory")
-        mig = import_module(
-            "apps.platform.tenants.migrations.0019_two_position_enforcement_mode")
-        mig.advisory_to_off(live_apps, None)
-        t.refresh_from_db()
-        assert t.enforcement_mode == "off"
-
-    def test_migration_leaves_both_live_positions_alone(self):
-        from django.apps import apps as live_apps
-        on = _tenant(enf="enforcing")
-        off = _tenant(enf="off")
-        mig = import_module(
-            "apps.platform.tenants.migrations.0019_two_position_enforcement_mode")
-        mig.advisory_to_off(live_apps, None)
-        on.refresh_from_db()
-        off.refresh_from_db()
-        assert on.enforcement_mode == "enforcing"
-        assert off.enforcement_mode == "off"
-
     def test_choices_are_two_position(self):
         from apps.platform.tenants.models import ENFORCEMENT_MODE_CHOICES
         assert [c[0] for c in ENFORCEMENT_MODE_CHOICES] == ["off", "enforcing"]

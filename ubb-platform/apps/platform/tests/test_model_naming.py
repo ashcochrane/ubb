@@ -175,21 +175,13 @@ GATE_OF_RULE = {
 # the agreement test can read these with `ast.literal_eval` without importing
 # Django into a suite that deliberately has none.
 LEDGERED_VIOLATIONS = {
-    "G9": {
-        # ⚠ BOTH HALVES OF THE PRICING INVERSION ARE PAID AND GONE — the rule's
-        # in #367, the container's in #368 — and this gate now owes nothing in
-        # that app. The rule sat on the table named for the container beside
-        # it and moved to the table its own name asks for; the container was
-        # not renamed onto the name it had lent out, because it SPLIT: a
-        # Pricing Book and a cost book, on `ubb_pricing_book` and
-        # `ubb_cost_book`, two entities whose columns disagree. Each entry was
-        # deleted from the ledger and from here in the commit that discharged
-        # it, which is what keeps paying a debt and recording the payment one
-        # act.
-        "ubb-platform/apps/subscriptions/models.py::CustomerSubscriptionItem":
-            ("g9-customer-subscription-item-table-abbreviated",
-             "ubb_customer_sub_item"),
-    },
+    # G9 IS EMPTY, AND ITS LAST ENTRY WAS THE LEDGER'S LAST (#190, W6). Both
+    # halves of the pricing inversion were paid in #367 and #368; the table
+    # `ubb_customer_sub_item` was paid by the cutover's fresh initial set, which
+    # creates it as `ubb_customer_subscription_item`. Each entry was deleted from
+    # the ledger and from here in the commit that discharged it, which is what
+    # keeps paying a debt and recording the payment one act.
+    "G9": {},
     # G11 IS EMPTY, AND BOTH ENTRIES WERE PAID BY DELETION RATHER THAN BY THE
     # RENAME THEIR `expected` COLUMN NAMED (#369). Two columns held millionths
     # of a PERCENT under the money suffix — one on the tenant-level markup

@@ -54,6 +54,7 @@ class UsageBatchItemResponse:
                 holding their method, status and detail BY VALUE, the totals (`provider_cost_micros` and `billed_cost_micros`:
                 the amount each section resolved, null where it is not settled), and a provenance section of cross-reference ids
                 that nothing reads to reconstruct an amount.
+            pricing_receipt_subject_type (None | UsageBatchItemResponsePricingReceiptSubjectTypeType0):
             pricing_status_reason (None | UsageBatchItemResponsePricingStatusReasonType0): Why `pricing_status` applies,
                 where a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
                 calculated a negative customer price exactly and cannot authoritatively carry it, so no price is recorded.
@@ -100,7 +101,6 @@ class UsageBatchItemResponse:
             not_applicable_reason (None | Unset | UsageBatchItemResponseNotApplicableReasonType0):
             parent_task_id (None | str | Unset):
             pricing_method (None | Unset | UsageBatchItemResponsePricingMethodType0):
-            pricing_receipt_subject_type (None | Unset | UsageBatchItemResponsePricingReceiptSubjectTypeType0):
             pricing_status (None | Unset | UsageBatchItemResponsePricingStatusType0):
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
                 canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
@@ -127,6 +127,7 @@ class UsageBatchItemResponse:
 
     accepted: bool
     pricing_receipt: None | PricingReceipt
+    pricing_receipt_subject_type: None | UsageBatchItemResponsePricingReceiptSubjectTypeType0
     pricing_status_reason: None | UsageBatchItemResponsePricingStatusReasonType0
     stop_bound_micros: int | None
     stop_measured_micros: int | None
@@ -146,7 +147,6 @@ class UsageBatchItemResponse:
     not_applicable_reason: None | Unset | UsageBatchItemResponseNotApplicableReasonType0 = UNSET
     parent_task_id: None | str | Unset = UNSET
     pricing_method: None | Unset | UsageBatchItemResponsePricingMethodType0 = UNSET
-    pricing_receipt_subject_type: None | Unset | UsageBatchItemResponsePricingReceiptSubjectTypeType0 = UNSET
     pricing_status: None | Unset | UsageBatchItemResponsePricingStatusType0 = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     stop: bool | Unset = False
@@ -178,6 +178,12 @@ class UsageBatchItemResponse:
             pricing_receipt = self.pricing_receipt.to_dict()
         else:
             pricing_receipt = self.pricing_receipt
+
+        pricing_receipt_subject_type: None | str
+        if isinstance(self.pricing_receipt_subject_type, UsageBatchItemResponsePricingReceiptSubjectTypeType0):
+            pricing_receipt_subject_type = self.pricing_receipt_subject_type.value
+        else:
+            pricing_receipt_subject_type = self.pricing_receipt_subject_type
 
         pricing_status_reason: None | str
         if isinstance(self.pricing_status_reason, UsageBatchItemResponsePricingStatusReasonType0):
@@ -292,14 +298,6 @@ class UsageBatchItemResponse:
         else:
             pricing_method = self.pricing_method
 
-        pricing_receipt_subject_type: None | str | Unset
-        if isinstance(self.pricing_receipt_subject_type, Unset):
-            pricing_receipt_subject_type = UNSET
-        elif isinstance(self.pricing_receipt_subject_type, UsageBatchItemResponsePricingReceiptSubjectTypeType0):
-            pricing_receipt_subject_type = self.pricing_receipt_subject_type.value
-        else:
-            pricing_receipt_subject_type = self.pricing_receipt_subject_type
-
         pricing_status: None | str | Unset
         if isinstance(self.pricing_status, Unset):
             pricing_status = UNSET
@@ -396,6 +394,7 @@ class UsageBatchItemResponse:
         field_dict.update({
             "accepted": accepted,
             "pricing_receipt": pricing_receipt,
+            "pricing_receipt_subject_type": pricing_receipt_subject_type,
             "pricing_status_reason": pricing_status_reason,
             "stop_bound_micros": stop_bound_micros,
             "stop_measured_micros": stop_measured_micros,
@@ -431,8 +430,6 @@ class UsageBatchItemResponse:
             field_dict["parent_task_id"] = parent_task_id
         if pricing_method is not UNSET:
             field_dict["pricing_method"] = pricing_method
-        if pricing_receipt_subject_type is not UNSET:
-            field_dict["pricing_receipt_subject_type"] = pricing_receipt_subject_type
         if pricing_status is not UNSET:
             field_dict["pricing_status"] = pricing_status
         if provider_cost_micros is not UNSET:
@@ -490,6 +487,24 @@ class UsageBatchItemResponse:
             return cast(None | PricingReceipt, data)
 
         pricing_receipt = _parse_pricing_receipt(d.pop("pricing_receipt"))
+
+
+        def _parse_pricing_receipt_subject_type(data: object) -> None | UsageBatchItemResponsePricingReceiptSubjectTypeType0:
+            if data is None:
+                return data
+            try:
+                if not isinstance(data, str):
+                    raise TypeError()
+                pricing_receipt_subject_type_type_0 = UsageBatchItemResponsePricingReceiptSubjectTypeType0(data)
+
+
+
+                return pricing_receipt_subject_type_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(None | UsageBatchItemResponsePricingReceiptSubjectTypeType0, data)
+
+        pricing_receipt_subject_type = _parse_pricing_receipt_subject_type(d.pop("pricing_receipt_subject_type"))
 
 
         def _parse_pricing_status_reason(data: object) -> None | UsageBatchItemResponsePricingStatusReasonType0:
@@ -734,26 +749,6 @@ class UsageBatchItemResponse:
         pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
 
-        def _parse_pricing_receipt_subject_type(data: object) -> None | Unset | UsageBatchItemResponsePricingReceiptSubjectTypeType0:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, str):
-                    raise TypeError()
-                pricing_receipt_subject_type_type_0 = UsageBatchItemResponsePricingReceiptSubjectTypeType0(data)
-
-
-
-                return pricing_receipt_subject_type_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | Unset | UsageBatchItemResponsePricingReceiptSubjectTypeType0, data)
-
-        pricing_receipt_subject_type = _parse_pricing_receipt_subject_type(d.pop("pricing_receipt_subject_type", UNSET))
-
-
         def _parse_pricing_status(data: object) -> None | Unset | UsageBatchItemResponsePricingStatusType0:
             if data is None:
                 return data
@@ -920,6 +915,7 @@ class UsageBatchItemResponse:
         usage_batch_item_response = cls(
             accepted=accepted,
             pricing_receipt=pricing_receipt,
+            pricing_receipt_subject_type=pricing_receipt_subject_type,
             pricing_status_reason=pricing_status_reason,
             stop_bound_micros=stop_bound_micros,
             stop_measured_micros=stop_measured_micros,
@@ -939,7 +935,6 @@ class UsageBatchItemResponse:
             not_applicable_reason=not_applicable_reason,
             parent_task_id=parent_task_id,
             pricing_method=pricing_method,
-            pricing_receipt_subject_type=pricing_receipt_subject_type,
             pricing_status=pricing_status,
             provider_cost_micros=provider_cost_micros,
             stop=stop,

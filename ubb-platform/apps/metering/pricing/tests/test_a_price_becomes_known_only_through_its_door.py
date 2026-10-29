@@ -1,18 +1,23 @@
 """A customer price becomes known only through its door (#557).
 
 `price_resolution.resolve_customer_price` is the one statement in production
-that moves a posting's price from `unknown` to `known`. Until this ticket that
-was a sentence in its docstring: the price pair's rule (`usage/migrations/0039`,
-widened by `0046`) stops a second writer CORRUPTING a resolved price, but it
-admits the first resolution from anyone, so a second writer would have decided
-"this price is now known" somewhere the door's tests never look.
+that moves a posting's price from `unknown` to `known`. Until #557 that was a
+sentence in its docstring: the price pair's rule (`trg_posting_price_transitions`,
+as `usage/0039` installed it and `usage/0046` widened it, before the cutover
+squash, #190) stopped a second writer CORRUPTING a resolved price, but it
+admitted the first resolution from anyone, so a second writer would have
+decided "this price is now known" somewhere the door's tests never look.
 
 The cost side answers the same question with an `ast` walk over the tree. The
 owner ruled the price side's answer is a **behavioural or database** one, and
-never a second tree walk (#557, `5785065807`). So the table now holds it:
-`usage/migrations/0049` admits the move only on a statement the door marked,
-and this module plants the second writer and watches it refused, through each
-of ADR-0007 §2's three doors, with the posting still `unknown` afterwards.
+never a second tree walk (#557, `5785065807`). So the table holds it:
+`trg_posting_price_transitions` admits the move only on a statement the door
+marked (`usage/0049`'s rule before the cutover, #190; the usage rules
+migration's `POSTING_PRICE_TRANSITIONS` now), and this module plants the
+second writer and watches it refused, through each of ADR-0007 §2's three
+doors, with the posting still `unknown` afterwards. The rule's REVERSE is
+proven centrally, with every other rule's
+(`apps/platform/tests/test_the_database_rules_are_carried.py`).
 
 **The door resolving is the control.** A rule refusing every resolution would
 satisfy each refusal below and leave every unknown price unknown forever, which
@@ -24,17 +29,17 @@ refusal is accepted here only if it carries the door's own sentence too — a
 test that could not tell the two apart would be evidence that the table refused
 something, not that it refused a second writer.
 """
+import re
 from unittest.mock import patch
 
-from django.db import (
-    DataError, IntegrityError, connection, migrations, transaction)
-from django.db.migrations.loader import MigrationLoader
+from django.db import DataError, IntegrityError, connection, transaction
 from django.db.models import QuerySet
 from django.test import TestCase
 
 from apps.metering.pricing.services.price_resolution import (
-    PRICE_DOOR_SETTING, PriceResolution, marked_as_the_price_door,
-    resolve_customer_price)
+    PRICE_DOOR_MARK, PRICE_DOOR_SETTING, PriceResolution,
+    marked_as_the_price_door, resolve_customer_price)
+from apps.metering.pricing.tests._helpers import database_rules_guarding
 from apps.metering.usage.models import Posting
 from apps.metering.usage.tests._helpers import (
     DOORS, committed_posting, through_the_queryset)
@@ -52,7 +57,8 @@ RESOLUTION = {PRICE: 4_200, STATUS: PRICING_STATUS_KNOWN}
 #: `resolve_once` and the column too, so those two alone cannot tell them apart.
 THE_DOORS_REFUSAL = "becomes known only through its door"
 
-MIGRATION = "0049_a_customer_price_becomes_known_only_through_its_door"
+#: The rule that holds the door, by the name the catalogue knows it under.
+DOOR_RULE = "trg_posting_price_transitions"
 
 
 def _unknown():
@@ -210,35 +216,24 @@ class AFailedResolutionLeavesNoMarkBehindTest(TestCase):
         self.assert_a_writer_after_it_is_refused()
 
 
-class TheReverseIsExercisedRatherThanMerelyDeclaredTest(TestCase):
-    """`docs/conventions/django-patterns.md`: a reverse that a test runs.
+class TheRuleSpellsTheDoorsOwnMarkTest(TestCase):
+    """The rule and the door agree on ONE spelling of the mark, asked of the
+    rule the database holds.
 
-    Asserted by behaviour at both ends. With `0049` reversed out, the table
-    holds `0046`'s rule again and a second writer resolves a price; with it
-    re-applied, the same writer is refused. Postgres runs the DDL inside the
-    transaction this `TestCase` rolls back, so no other test sees the table
-    without the rule.
+    The door sets `PRICE_DOOR_SETTING` to `PRICE_DOOR_MARK`; the rule compares
+    the same setting with the same value, in SQL text Python never imports. A
+    rename on one side alone would make every price unresolvable (the door
+    refused) or — worse — leave a mark nothing reads. The behavioural cases
+    above would catch the first; this names the agreement itself, on the
+    installed function body rather than on the text of a migration file.
     """
 
-    def test_the_reverse_restores_the_rule_it_widened(self):
-        migration = MigrationLoader(connection).get_migration("usage",
-                                                              MIGRATION)
-        run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython))
+    def test_the_installed_rule_compares_the_setting_the_door_sets_with_its_mark(self):
+        (body,) = [source for name, _, source
+                   in database_rules_guarding(Posting._meta.db_table)
+                   if name == DOOR_RULE]
 
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        reversed_out = _unknown()
-        through_the_queryset(reversed_out, **RESOLUTION)
-        self.assertEqual(_as_stored(reversed_out),
-                         (4_200, PRICING_STATUS_KNOWN))
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        reapplied = _unknown()
-        message = _refusal(lambda: through_the_queryset(reapplied,
-                                                        **RESOLUTION))
-        self.assertIsNotNone(message)
-        self.assertIn(THE_DOORS_REFUSAL, message)
-        self.assertEqual(_as_stored(reapplied),
-                         (None, PRICING_STATUS_UNKNOWN))
+        self.assertRegex(
+            body,
+            rf"current_setting\('{re.escape(PRICE_DOOR_SETTING)}', true\)"
+            rf"\s+IS DISTINCT FROM '{re.escape(PRICE_DOOR_MARK)}'")

@@ -75,6 +75,7 @@ from core.vocabulary import (
     UNRESOLVED_REASON_COST_RATE_MISSING,
     UNRESOLVED_REASON_VALUES,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 COST = "provider_cost_micros"
 STATUS = "costing_status"
@@ -97,7 +98,7 @@ def _tenant_and_customer():
 
 def _posting_for_a_new_customer(**kwargs):
     tenant, customer = _tenant_and_customer()
-    return Posting.objects.create(tenant=tenant, customer=customer, **kwargs)
+    return usage_helpers.a_posting(tenant=tenant, customer=customer, **kwargs)
 
 
 class TheColumnsAreShapedAsRuledTest(TestCase):

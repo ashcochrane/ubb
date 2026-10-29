@@ -6,12 +6,14 @@ closed except the `detail` and `provenance` containers, which ADR-0020's
 additive rule keeps open — and which publish exactly what was stored, so a key
 the record does not carry stays absent rather than arriving as null. The owner's
 ruling 3 (2026-10-27): version 2 only, with no legacy branch, because receipts
-older than 2 exist only on development databases, which are reset at the
-cutover rather than accommodated in the launch contract.
+older than 2 existed only on development databases, which the cutover (#190)
+reset rather than accommodating them in the launch contract.
 """
 import copy
 import json
+from pathlib import Path
 
+from django.conf import settings
 from django.test import Client, TestCase
 from pydantic import ValidationError
 
@@ -21,9 +23,12 @@ from apps.metering.pricing.tests._helpers import (
     cost_rate_in_default_book, declares_a_markup)
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
-from core.vocabulary import PRICING_METHOD_MARGIN_OVER_COST
+from core.vocabulary import (
+    PRICING_METHOD_MARGIN_OVER_COST, PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
 
 VERSION = 2
+SPEC = Path(settings.BASE_DIR).parent / "openapi" / "v1.json"
+SUBJECT = "pricing_receipt_subject_type"
 
 
 class _ARecordingTenantTestCase(TestCase):
@@ -93,6 +98,60 @@ class EveryRouteCarryingTheRecordPublishesItTypedTest(_ARecordingTenantTestCase)
         self.assertFalse(rejected["accepted"])
         self.assertIn("pricing_receipt", rejected)
         self.assertIsNone(rejected["pricing_receipt"])
+
+
+class EveryReceiptStatesWhatItExplainsTest(_ARecordingTenantTestCase):
+    """The receipt's subject type is required and never null (#190; the owner's
+    review of PR 1, 2026-10-29): it was nullable only for the receipt shapes the
+    cutover deleted. A rejected batch item, which recorded nothing, is the one
+    null — beside its null receipt."""
+
+    def test_every_route_publishing_a_receipt_states_its_subject(self):
+        ack = self._record("subject-1")
+        detail = self.http.get(f"/api/v1/metering/usage/{ack['event_id']}",
+                               **self.auth).json()
+        batch = self.http.post(
+            "/api/v1/metering/usage/batch", content_type="application/json",
+            data=json.dumps({"events": [usage_payload(
+                self.customer, "subject-2",
+                measurements={"input_tokens": "1200"})]}),
+            **self.auth).json()["results"][0]
+
+        for route, answer in (("ack", ack), ("detail", detail),
+                              ("accepted batch item", batch)):
+            with self.subTest(route=route):
+                self.assertEqual(answer[SUBJECT],
+                                 PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
+                self.assertEqual(answer[SUBJECT],
+                                 answer["pricing_receipt"]["subject_type"])
+
+    def test_a_rejected_batch_item_states_no_subject_beside_no_receipt(self):
+        answered = self.http.post(
+            "/api/v1/metering/usage/batch", content_type="application/json",
+            data=json.dumps({"events": [
+                {**usage_payload(self.customer, "bad"),
+                 "customer_id": "00000000-0000-0000-0000-000000000000"}]}),
+            **self.auth)
+
+        self.assertEqual(answered.status_code, 200, answered.content)
+        (rejected,) = answered.json()["results"]
+        self.assertFalse(rejected["accepted"])
+        self.assertIn(SUBJECT, rejected)
+        self.assertIsNone(rejected[SUBJECT])
+
+    def test_the_contract_requires_it_and_admits_null_only_on_a_batch_item(self):
+        schemas = json.loads(SPEC.read_text(encoding="utf-8"))["components"]["schemas"]
+        for name, nullable in (("RecordUsageResponse", False),
+                               ("UsageEventDetailOut", False),
+                               ("UsageBatchItemResponse", True)):
+            with self.subTest(schema=name):
+                node = schemas[name]
+                self.assertIn(SUBJECT, node["required"])
+                members = node["properties"][SUBJECT].get(
+                    "anyOf", [node["properties"][SUBJECT]])
+                self.assertEqual({"type": "null"} in members, nullable)
+                (typed,) = [m for m in members if m != {"type": "null"}]
+                self.assertEqual(typed["x-ubb-concept"], SUBJECT)
 
 
 class TheTypeIsVersionTwoAndOpenOnlyWhereTheRuleSaysTest(_ARecordingTenantTestCase):

@@ -5,15 +5,16 @@ from django.test import TestCase
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import RefundRequested
-from apps.metering.usage.models import Posting, Refund
+from apps.metering.usage.models import  Refund
 from apps.metering.handlers import handle_refund_requested
+from apps.metering.usage.tests._helpers import a_posting
 
 
 class HandleRefundRequestedTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(name="Test")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
-        self.event = Posting.objects.create(
+        self.event = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1", billed_cost_micros=1_000_000,
         )

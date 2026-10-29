@@ -9,24 +9,23 @@ question "what is allowed to happen to this?" is answered at model-definition
 time. ADR-0007's Consequences names that as both the cost and the point.
 
 **Declaring is not enforcing, and nothing in this module enforces anything.**
-Database enforcement is gate G19, and slice 3 **installed** it: the trigger in
-``apps/metering/usage/migrations/0037_a_cost_settles_once_and_the_table_holds_it.py``
-holds the first columns declared here across ``save()``, ``QuerySet.update()``
-and raw SQL alike, and
+Database enforcement is gate G19, and slice 3 **installed** it: the trigger
+``trg_posting_declared_transitions`` holds the first columns declared here
+across ``save()``, ``QuerySet.update()`` and raw SQL alike, and
 ``apps/platform/tests/test_transition_class_declarations.py`` walks
 every declaration in the tree and fails on any column the database does not
-actually defend. Slice 4 **extended** that gate rather than re-owning it: the
-posting's customer price pair is held by a second trigger, in
-``…/migrations/0039_a_price_resolves_once_and_the_table_holds_it.py``, over
+actually defend. (Since the cutover squash, #190, every rule this module names
+is installed by its app's ``migrations/0002_the_database_rules.py``.) Slice 4
+**extended** that gate rather than re-owning it: the posting's customer price
+pair is held by a second trigger, ``trg_posting_price_transitions``, over
 disjoint columns and in the same mechanism. Nothing *here* installs a trigger, a
 rule or a ``CHECK`` — this module is the vocabulary, and the gates that hold a
 column to what it says live with the table.
 
 **Slice 5 (#414) is the first declarer outside a product**, and it extends the
 gate the same way rather than re-owning it: ``TaskType.pricing_mode`` — how a
-kind of work is sold — is ``FROZEN``, held by a third trigger in
-``apps/platform/work/migrations/0021_a_kind_of_work_declares_how_it_is_sold.py``
-over its own table. That the first three declarers were all in ``apps/metering``
+kind of work is sold — is ``FROZEN``, held by a third trigger,
+``trg_task_type_declared_transitions``, over its own table. That the first three declarers were all in ``apps/metering``
 was an accident of which slices came first, not a property of this vocabulary:
 the kernel holds economic facts too.
 
@@ -34,9 +33,7 @@ the kernel holds economic facts too.
 way**, which is a difference of scale rather than of kind and is worth saying
 because of what scale does to the assertions. What one delivered piece of work
 sold at one agreed price is owed for declares **TWENTY** columns ``FROZEN``,
-held by its own trigger in
-``apps/metering/pricing/migrations/0031_a_delivered_piece_of_work_is_charged_once.py``.
-Every other declarer is between one column and about eight, and their defended
+held by its own trigger, ``trg_charge_declared_transitions``. Every other declarer is between one column and about eight, and their defended
 columns are split across several rules over disjoint sets — so *something
 refused this* narrowed to nearly one thing. Twenty columns under ONE rule
 answering with one class word narrows to nothing at all, so that rule names the
@@ -44,9 +41,8 @@ COLUMNS THAT MOVED and every assertion about it names one too.
 
 **#562 made the unit of work a kernel declarer too.** `Task` declares
 five columns — `status` RESOLVE_ONCE, `parent_id` and `task_type` FROZEN,
-`outcome_reason` and `reason_detail` SET_ONCE — held by one trigger in
-``apps/platform/work/migrations/0028_a_unit_of_work_is_born_once_and_ends_once.py``
-and proved through all three doors in
+`outcome_reason` and `reason_detail` SET_ONCE — held by one trigger,
+``trg_task_declared_transitions``, and proved through all three doors in
 ``apps/platform/work/tests/test_a_unit_of_work_is_born_once_and_ends_once.py``.
 Until then those rules lived in the model's prose and in the kernel's own
 guards, which is the posture ADR-0007 §2 says is not enforcement.
@@ -79,8 +75,8 @@ module went red.
 **A different rule was genuinely deferred, and slice 4 has now paid it.**
 ``PostingMeasurement``'s whole-record ``DELETE`` condition is cross-table — it
 reads the parent posting's costing and pricing statuses, the second of which
-landed in slice 4 — and it is enforced since #354 by a ``BEFORE DELETE`` trigger
-in ``…/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py``. But
+landed in slice 4 — and it is enforced since #354 by a ``BEFORE DELETE`` trigger,
+``trg_posting_measurement_pruning``. But
 that rule is the record's, declared ``RECORD_RULE``, which the constant below
 puts *outside* ``DATABASE_DEFENDED`` — so it is not a field transition class, it
 is not in G19's statement, and slice 4 added it as an extension of the installed

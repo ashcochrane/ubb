@@ -565,8 +565,8 @@ class TheWordsTheseStopsTravelUnderTest(TestCase):
 
     def test_the_deadlines_stop_is_a_word_the_registry_knows(self):
         """It travelled under this module's own spelling until slice 6 coined
-        the registry's (#457); the migration that rewrote the stored rows is
-        `work/migrations/0026`."""
+        the registry's (#457); before the cutover (#190) the stored rows were
+        rewritten onto it by `work/0026`."""
         self.assertIn(reasons.ABSOLUTE_DEADLINE, REASON_CODE_KNOWN_VALUES)
 
     def test_the_two_a_sweeper_writes_are_two_and_are_both_stop_reasons(self):

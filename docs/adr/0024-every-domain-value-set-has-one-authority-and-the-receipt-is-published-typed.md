@@ -14,7 +14,8 @@ requirement"* — stands. What changes is the PUBLIC read: the three responses t
 type it as version 2 only, so a v0 or v1 record no longer validates there. The evidence is ruling 3:
 UBB was never deployed, a receipt older than 2 exists only on a development database, and such data
 is not product history — W6 resets it at the cutover rather than the launch contract widening to
-carry it. The internal readers of v0 and v1 stay until W6 removes them.
+carry it. The internal readers of v0 and v1 stay until W6 removes them. *(Done: the cutover
+deleted them; one receipt shape is read, ADR-0026 §5.)*
 **Companion:** ADR-0006 §2 (one canonical public term per concept) · ADR-0007 §3–§4 (no provisional
 public vocabulary; a reviewed break) · ADR-0008 §2–§4 (the registry's kinds; identity is the
 registry's, expression the catalogue's) · ADR-0020 §3 (the receipt's versions and its open `detail`)
@@ -78,7 +79,8 @@ or raw SQL):
 
 - `audit_action`'s `system.preproduction_model_cutover`: no opening row is ever written (#190
   `6354381879`); the registration stays until W6 retires it, and until then `record()` refuses it by
-  name. The one temporary, W6-owned case: W6 deletes the value and the exclusion together.
+  name. The one temporary, W6-owned case: W6 deletes the value and the exclusion together. *(Done:
+  the cutover deleted both, ADR-0026 §6.)*
 - `tenant_invoice_status`'s `void` and `uncollectible`: legitimate states of a platform-fee invoice
   that nothing creates today. The status's only writers are the platform-fee task (`finalized`) and
   the `invoice.paid` webhook (`paid`); Stripe's `invoice.voided` and `invoice.marked_uncollectible`
@@ -163,6 +165,8 @@ internal `GroupingFieldService` / `GroupingFieldError` family, and the audit res
 `grouping_field_registry`. A case-insensitive contract gate holds component names, generated SDK
 models and audit resource types; it is not a ban on the English word. The database constraint names
 `uq_dimension_*` and the column `TaskType.required_dimensions` are W6's, where the squash names them.
+*(Done: the fresh initial set creates them as `uq_grouping_field_*` and
+`TaskType.required_grouping_fields`, ADR-0026 §4.)*
 
 ## What proves it
 
@@ -175,10 +179,10 @@ models and audit resource types; it is not a ban on the English word. The databa
 | §4 — the whole stored record, served unchanged by the typed serializer | `ubb-platform/api/v1/tests/test_metering_endpoints.py` — `test_a_receipt_is_served_whole_and_not_rewritten` |
 | §4 — the component's stored quantity is the one admission the inline-total gate makes | `tests/contracts/test_the_inline_unit_total_is_gone.py` — `test_the_admission_is_used_exactly_where_it_says` |
 | §4 — every closed concept inside is marked | `tests/contracts/test_openapi_known_values.py` — `test_the_pricing_receipt_marks_every_closed_concept_inside_it`, `test_negative_control_an_unmarked_closed_value_in_the_receipt_is_found` |
-| §5 | `ubb-platform/api/v1/tests/test_a_selling_rule_states_its_method.py` — `TheRatesRouteSaysEachRulesMethodTest`, `APublishStatesTheMethodTest`, `TheTableHoldsTheRuleTest`, `TheResolverRefusesARuleWithNoMethodTest`, `TheBackfillStatesTheMethodTest` |
-| §6 | `ubb-platform/api/v1/tests/test_the_wallets_vocabulary_is_the_registrys.py` — `TheLedgerSpeaksLowercaseTest`, `TheTableRefusesAnotherSpellingTest`, `TheMigrationMovesEveryStoredRowTest` |
+| §5 | `ubb-platform/api/v1/tests/test_a_selling_rule_states_its_method.py` — `TheRatesRouteSaysEachRulesMethodTest`, `APublishStatesTheMethodTest`, `TheTableHoldsTheRuleTest`, `TheResolverRefusesARuleWithNoMethodTest` (the backfill that stated every rule's method went with the cutover squash, #190) |
+| §6 | `ubb-platform/api/v1/tests/test_the_wallets_vocabulary_is_the_registrys.py` — `TheLedgerSpeaksLowercaseTest`, `TheTableRefusesAnotherSpellingTest` (the migration that moved every stored row went with the cutover squash, #190) |
 | §1 — a skip reason and a reward type at their doors | `ubb-platform/api/v1/tests/test_the_billing_and_referral_vocabulary_is_the_registrys.py` — `AUsageInvoiceSaysWhyItWasSkippedTest`, `AProgrammesRewardTypeIsTheRegistrysTest` |
-| §6 — a skip reason stored as null, and `invoicing/0011` run for real | `ubb-platform/api/v1/tests/test_the_billing_and_referral_vocabulary_is_the_registrys.py` — `TheSkipReasonMigrationStoresNoReasonAsNullTest` |
+| §6 — a skip reason stored as null (`invoicing/0011` was run for real until the cutover squash deleted it, #190) | `ubb-platform/api/v1/tests/test_the_billing_and_referral_vocabulary_is_the_registrys.py` — `AUsageInvoiceSaysWhyItWasSkippedTest` |
 | §1 — the role's rank is the registry's order | `tests/contracts/test_end_state_vocabulary.py` — `test_the_role_rank_is_the_registrys_order` |
 | §2 — what withholding means, and the four withheld | `tests/contracts/test_end_state_vocabulary.py` — `test_the_withheld_values_are_exactly_these_and_each_says_why`, `test_a_withheld_value_is_advertised_nowhere`, `test_no_production_writer_names_a_withheld_value`, `test_withholding_is_never_a_compatibility_alias` |
 | §1 — a markup's rung is the registry's, refused at the boundary otherwise | `ubb-platform/apps/metering/pricing/tests/test_a_markup_charge_can_be_explained.py` — `test_a_rung_outside_the_registrys_set_is_refused_at_the_boundary` |
@@ -194,7 +198,8 @@ models and audit resource types; it is not a ban on the English word. The databa
   a surface present at `api-v1-launch` is a generated entry in the suppression file; one on a later
   surface is a reviewed comment.
 - **An old development database must be reset**, not accommodated: a v0/v1 receipt fails the public
-  type, and W6 removes the internal readers at the clean cutover (§0.4 D).
+  type, and W6 removes the internal readers at the clean cutover (§0.4 D). *(Done: ADR-0026 §1
+  and §5.)*
 - **Economically neutral** (§0.4 E). No amount, posting selection or report arithmetic moved;
   `PRICING_ENGINE_VERSION` stays 3.0.0.
 - **A later closed concept that must stay declared without occurring** takes `withheld_values`, never

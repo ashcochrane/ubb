@@ -68,6 +68,8 @@ from core.vocabulary import (
     PRICING_STATUS_UNKNOWN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.metering.usage.tests._helpers import a_posting
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 KNOWN_COST_MICROS = 1_000_000
 OTHER_KNOWN_COST_MICROS = 500_000
@@ -115,7 +117,7 @@ class TestACostTotalSaysWhatItExcluded:
     def _posting(self, customer, key, **kwargs):
         """One posting. The correlation key is left at its column default on
         purpose — see the module note."""
-        return Posting.objects.create(
+        return usage_helpers.a_posting(
             tenant=self.tenant, customer=customer, idempotency_key=key, **kwargs)
 
     def _seed(self):
@@ -221,7 +223,7 @@ class TestACostTotalSaysWhatItExcluded:
         one count for both would report each group's caveat against the wrong
         figure — and every other assertion in this class would still pass.
         """
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.c1, idempotency_key="k5",
             provider="mistral", event_type="chat", task_type="summarise",
             provider_cost_micros=7_000, billed_cost_micros=None,

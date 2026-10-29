@@ -8,6 +8,7 @@ from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
 from apps.billing.wallets.models import Wallet
 from apps.platform.tenants.tests._rails import RailActivated
+from apps.metering.usage.tests._helpers import a_posting
 
 
 class BillingProductGatingTest(TestCase):
@@ -1130,7 +1131,7 @@ class PooledSeatBillingSurfaceTest(TestCase):
 
     def _usage_event(self, customer, amount=1_000_000, correlation="r1"):
         from apps.metering.usage.models import Posting
-        return Posting.objects.create(
+        return a_posting(
             tenant=self.tenant, customer=customer,
             idempotency_key=f"idem_{correlation}",
             provider_cost_micros=amount, billed_cost_micros=amount)
@@ -1190,7 +1191,7 @@ class PooledSeatBillingSurfaceTest(TestCase):
         from core.vocabulary import PRICING_STATUS_UNKNOWN
 
         Wallet.objects.create(customer=self.individual, balance_micros=5_000_000)
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant, customer=self.individual,
             idempotency_key="idem_r_unpriced", provider_cost_micros=1_000,
             billed_cost_micros=None, pricing_status=PRICING_STATUS_UNKNOWN)

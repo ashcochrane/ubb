@@ -46,11 +46,13 @@ verdict's own crossing flags (`kill_plan`, `stop_fields`) or from the row's
 own altitude (`unit_scope`) — never from which constant fired.
 
 ⚠ THE STORED CAUSE WAS MIGRATED ONCE, KEY AND VALUES (slice 6 §8, #457):
-`work/migrations/0026` renamed the metadata key to `services.STOP_CAUSE_KEY`'s
-current spelling on every row (and `0029` later moved it out of the caller's
-`metadata` into UBB's own `Task.reason_code` column, R10-W2) and rewrote every retired value on unit rows,
-outbox payloads and the customer's suspension column. No stored row holds a
-retired spelling, so no reader carries a map from one — every reader compares
+`work/0026` renamed the metadata key to `services.STOP_CAUSE_KEY`'s current
+spelling on every row (and `work/0029` later moved it out of the caller's
+`metadata` into UBB's own `Task.reason_code` column, R10-W2) and rewrote every
+retired value on unit rows, outbox payloads and the customer's suspension
+column. Both migrations left with the cutover squash (#190), whose fresh
+database never held the older shape. No stored row holds a retired spelling,
+so no reader carries a map from one — every reader compares
 by constant identity, and the two spellings no producer had emitted for a
 slice (the per-task floor snapshot's, and the silence window's pre-registry
 one) have left the published verdicts list with nothing to name them.

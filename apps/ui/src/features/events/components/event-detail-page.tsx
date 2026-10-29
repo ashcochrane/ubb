@@ -143,8 +143,8 @@ function Measurements({ detail }: { detail: UsageEventDetail }) {
  * subject is a Charge, what the record holds (#425, spec §29).
  *
  * The first row is the wire's own typed word for the subject, rendered for
- * every receipt that states one: a reader is told what kind of record they
- * are looking at before they read it. The rest render only for a Charge. A
+ * every receipt — every receipt states one (#190): a reader is told what kind
+ * of record they are looking at before they read it. The rest render only for a Charge. A
  * charge posting's record has an empty costing detail and a pricing detail
  * holding one key, and as a tree it reads as a receipt with something missing
  * from it. Nothing is: the whole unit of work was sold for one agreed price,
@@ -163,7 +163,6 @@ function Measurements({ detail }: { detail: UsageEventDetail }) {
  */
 function ReceiptSummary({ detail }: { detail: UsageEventDetail }) {
   const subject = detail.pricing_receipt_subject_type;
-  if (subject == null) return null;
   const items: DetailItem[] = [
     { label: "Explains", value: pricingReceiptSubjectTypeLabel(subject) },
   ];

@@ -13,7 +13,7 @@ from ..models.usage_event_detail_out_kind import UsageEventDetailOutKind
 from ..models.usage_event_detail_out_measurements_status import UsageEventDetailOutMeasurementsStatus
 from ..models.usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
 from ..models.usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
-from ..models.usage_event_detail_out_pricing_receipt_subject_type_type_0 import UsageEventDetailOutPricingReceiptSubjectTypeType0
+from ..models.usage_event_detail_out_pricing_receipt_subject_type import UsageEventDetailOutPricingReceiptSubjectType
 from ..models.usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from ..models.usage_event_detail_out_pricing_status_reason_type_0 import UsageEventDetailOutPricingStatusReasonType0
 from ..models.usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
@@ -47,6 +47,7 @@ class UsageEventDetailOut:
             kind (UsageEventDetailOutKind):
             measurements_status (UsageEventDetailOutMeasurementsStatus):
             pricing_receipt (PricingReceipt): The Pricing Receipt, version 2 — see `RECEIPT_DESCRIPTION`.
+            pricing_receipt_subject_type (UsageEventDetailOutPricingReceiptSubjectType):
             pricing_status (UsageEventDetailOutPricingStatus):
             pricing_status_reason (None | UsageEventDetailOutPricingStatusReasonType0): Why `pricing_status` applies, where
                 a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
@@ -68,7 +69,6 @@ class UsageEventDetailOut:
             metadata (UsageEventDetailOutMetadata | Unset):
             not_applicable_reason (None | Unset | UsageEventDetailOutNotApplicableReasonType0):
             pricing_method (None | Unset | UsageEventDetailOutPricingMethodType0):
-            pricing_receipt_subject_type (None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0):
             provider (str | Unset):  Default: ''.
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
                 canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
@@ -89,6 +89,7 @@ class UsageEventDetailOut:
     kind: UsageEventDetailOutKind
     measurements_status: UsageEventDetailOutMeasurementsStatus
     pricing_receipt: PricingReceipt
+    pricing_receipt_subject_type: UsageEventDetailOutPricingReceiptSubjectType
     pricing_status: UsageEventDetailOutPricingStatus
     pricing_status_reason: None | UsageEventDetailOutPricingStatusReasonType0
     billed_cost_micros: int | None | Unset = UNSET
@@ -100,7 +101,6 @@ class UsageEventDetailOut:
     metadata: UsageEventDetailOutMetadata | Unset = UNSET
     not_applicable_reason: None | Unset | UsageEventDetailOutNotApplicableReasonType0 = UNSET
     pricing_method: None | Unset | UsageEventDetailOutPricingMethodType0 = UNSET
-    pricing_receipt_subject_type: None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0 = UNSET
     provider: str | Unset = ''
     provider_cost_micros: int | None | Unset = UNSET
     stop_context: list[Any] | None | Unset = UNSET
@@ -132,6 +132,8 @@ class UsageEventDetailOut:
         measurements_status = self.measurements_status.value
 
         pricing_receipt = self.pricing_receipt.to_dict()
+
+        pricing_receipt_subject_type = self.pricing_receipt_subject_type.value
 
         pricing_status = self.pricing_status.value
 
@@ -185,14 +187,6 @@ class UsageEventDetailOut:
         else:
             pricing_method = self.pricing_method
 
-        pricing_receipt_subject_type: None | str | Unset
-        if isinstance(self.pricing_receipt_subject_type, Unset):
-            pricing_receipt_subject_type = UNSET
-        elif isinstance(self.pricing_receipt_subject_type, UsageEventDetailOutPricingReceiptSubjectTypeType0):
-            pricing_receipt_subject_type = self.pricing_receipt_subject_type.value
-        else:
-            pricing_receipt_subject_type = self.pricing_receipt_subject_type
-
         provider = self.provider
 
         provider_cost_micros: int | None | Unset
@@ -237,6 +231,7 @@ class UsageEventDetailOut:
             "kind": kind,
             "measurements_status": measurements_status,
             "pricing_receipt": pricing_receipt,
+            "pricing_receipt_subject_type": pricing_receipt_subject_type,
             "pricing_status": pricing_status,
             "pricing_status_reason": pricing_status_reason,
         })
@@ -258,8 +253,6 @@ class UsageEventDetailOut:
             field_dict["not_applicable_reason"] = not_applicable_reason
         if pricing_method is not UNSET:
             field_dict["pricing_method"] = pricing_method
-        if pricing_receipt_subject_type is not UNSET:
-            field_dict["pricing_receipt_subject_type"] = pricing_receipt_subject_type
         if provider is not UNSET:
             field_dict["provider"] = provider
         if provider_cost_micros is not UNSET:
@@ -309,6 +302,11 @@ class UsageEventDetailOut:
 
 
         pricing_receipt = PricingReceipt.from_dict(d.pop("pricing_receipt"))
+
+
+
+
+        pricing_receipt_subject_type = UsageEventDetailOutPricingReceiptSubjectType(d.pop("pricing_receipt_subject_type"))
 
 
 
@@ -430,26 +428,6 @@ class UsageEventDetailOut:
         pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
 
-        def _parse_pricing_receipt_subject_type(data: object) -> None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, str):
-                    raise TypeError()
-                pricing_receipt_subject_type_type_0 = UsageEventDetailOutPricingReceiptSubjectTypeType0(data)
-
-
-
-                return pricing_receipt_subject_type_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | Unset | UsageEventDetailOutPricingReceiptSubjectTypeType0, data)
-
-        pricing_receipt_subject_type = _parse_pricing_receipt_subject_type(d.pop("pricing_receipt_subject_type", UNSET))
-
-
         provider = d.pop("provider", UNSET)
 
         def _parse_provider_cost_micros(data: object) -> int | None | Unset:
@@ -519,6 +497,7 @@ class UsageEventDetailOut:
             kind=kind,
             measurements_status=measurements_status,
             pricing_receipt=pricing_receipt,
+            pricing_receipt_subject_type=pricing_receipt_subject_type,
             pricing_status=pricing_status,
             pricing_status_reason=pricing_status_reason,
             billed_cost_micros=billed_cost_micros,
@@ -530,7 +509,6 @@ class UsageEventDetailOut:
             metadata=metadata,
             not_applicable_reason=not_applicable_reason,
             pricing_method=pricing_method,
-            pricing_receipt_subject_type=pricing_receipt_subject_type,
             provider=provider,
             provider_cost_micros=provider_cost_micros,
             stop_context=stop_context,

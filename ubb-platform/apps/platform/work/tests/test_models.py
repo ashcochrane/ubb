@@ -217,10 +217,11 @@ class TheKeysClaimIsHeldByTheDatabaseTest(TestCase):
             Task.objects.filter(idempotency_key="nightly-batch").count(), 2)
 
     def test_the_rule_is_partial_so_unclaimed_work_never_collides(self):
-        """Every unit of work registered before the key existed holds NULL,
-        and NULL is outside the rule rather than a value inside it. Were the
-        column to hold "" instead, each such row would collide with every
-        other and the migration could not have been a pure addition.
+        """Every unit of work registered without a key holds NULL, and NULL is
+        outside the rule rather than a value inside it. Were the column to
+        hold "" instead, each such row would collide with every other (and
+        the column's migration, before the cutover squash, #190, could not
+        have been a pure addition over the work registered before it).
         """
         self._unit()
         self._unit()

@@ -39,6 +39,7 @@ from apps.platform.work import reasons
 from apps.platform.work.services import STOP_CAUSE_KEY
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.tenants.tests._rails import RailActivated
+from apps.metering.usage.tests._helpers import a_posting
 
 FLOOR = 5_000_000       # hard floor: the stop line is -5M
 SOFT = 2_000_000        # soft floor: the wind-down line is -2M
@@ -248,7 +249,7 @@ class Pin9StopsAndBreachesTest(RailActivated, PastLimitPinTestBase):
 
         # A hand-crafted event carrying a RETIRED tag value at the SAME
         # episode — exactly what a pre-relabel write left behind, immutably.
-        legacy = Posting.objects.create(
+        legacy = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="legacy-1",
             provider_cost_micros=1_000_000, billed_cost_micros=4_000_000,
@@ -274,7 +275,7 @@ class Pin9StopsAndBreachesTest(RailActivated, PastLimitPinTestBase):
         """`suspended` is a taggable customer-scope value but never an
         episode — a bare suspension has nothing to itemize. It must stay
         excluded now that the filter is a deny-list, not an allow-list."""
-        suspended_event = Posting.objects.create(
+        suspended_event = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="susp-1",
             provider_cost_micros=1_000_000, billed_cost_micros=1_000_000,

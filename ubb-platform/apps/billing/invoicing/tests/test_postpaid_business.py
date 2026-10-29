@@ -5,6 +5,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.metering.usage.models import Posting
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+from apps.metering.usage.tests._helpers import a_posting
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
@@ -20,10 +21,10 @@ def test_business_aggregates_across_seats_one_line_per_seat():
                                   billing_topology="allocated")
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     s2 = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
-    Posting.objects.create(tenant=t, customer=s1, idempotency_key="i1",
-                              provider_cost_micros=1, billed_cost_micros=800_000, effective_at=MID)
-    Posting.objects.create(tenant=t, customer=s2, idempotency_key="i2",
-                              provider_cost_micros=1, billed_cost_micros=300_000, effective_at=MID)
+    a_posting(tenant=t, customer=s1, idempotency_key="i1",
+                 provider_cost_micros=1, billed_cost_micros=800_000, effective_at=MID)
+    a_posting(tenant=t, customer=s2, idempotency_key="i2",
+                 provider_cost_micros=1, billed_cost_micros=300_000, effective_at=MID)
     total, lines = PostpaidUsageService.aggregate_lines(t, biz, PS, PE)
     assert total == 1_100_000 and sum(a for _, a in lines) == total
     assert dict(lines)["alice"] == 800_000 and dict(lines)["bob"] == 300_000
@@ -44,8 +45,8 @@ def test_close_rolls_seats_into_one_business_invoice():
     s2 = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
     start, end = _prior_month()
     for seat, key, amt in [(s1, "i1", 800_000), (s2, "i2", 300_000)]:
-        ev = Posting.objects.create(tenant=t, customer=seat, idempotency_key=key,
-                                       provider_cost_micros=1, billed_cost_micros=amt)
+        ev = a_posting(tenant=t, customer=seat, idempotency_key=key,
+                          provider_cost_micros=1, billed_cost_micros=amt)
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
     with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \
@@ -67,8 +68,8 @@ def test_business_total_unchanged_when_seat_soft_deleted_mid_period():
     biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business", billing_topology="allocated")
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     s2 = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
-    Posting.objects.create(tenant=t, customer=s1, idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=800_000, effective_at=MID)
-    Posting.objects.create(tenant=t, customer=s2, idempotency_key="i2", provider_cost_micros=1, billed_cost_micros=300_000, effective_at=MID)
+    a_posting(tenant=t, customer=s1, idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=800_000, effective_at=MID)
+    a_posting(tenant=t, customer=s2, idempotency_key="i2", provider_cost_micros=1, billed_cost_micros=300_000, effective_at=MID)
     before, _ = PostpaidUsageService.aggregate_lines(t, biz, PS, PE)
     s2.soft_delete()
     after, lines = PostpaidUsageService.aggregate_lines(t, biz, PS, PE)
@@ -87,7 +88,7 @@ def test_close_invoices_soft_deleted_seat_usage():
     biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business", billing_topology="allocated", stripe_customer_id="cus_biz")
     s1 = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
     start, _end = _prior_month()
-    ev = Posting.objects.create(tenant=t, customer=s1, idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=500_000)
+    ev = a_posting(tenant=t, customer=s1, idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=500_000)
     Posting.objects.filter(id=ev.id).update(effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
     s1.soft_delete()
     with patch("apps.billing.invoicing.services.postpaid_service.stripe_call") as mock_sc, \

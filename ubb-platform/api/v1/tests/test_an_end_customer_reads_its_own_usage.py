@@ -24,7 +24,6 @@ from django.test import Client, TestCase
 
 from api.v1.api import api
 from api.v1.tests._helpers import a_tenant
-from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from core.currency_policy import ECONOMIC_CURRENCY
@@ -35,6 +34,7 @@ from core.vocabulary import (
     USAGE_EVENT_KIND_METERED_USAGE, PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN,
     REVENUE_BASIS_RECORDED)
 from core.widget_auth import create_widget_token
+from apps.metering.usage.tests._helpers import a_posting
 
 PATH = "/api/v1/me/economics"
 NOW = datetime(2026, 3, 18, 15, 30, tzinfo=dt_timezone.utc)
@@ -62,7 +62,7 @@ class _WidgetCase(TestCase):
                                            external_id="bob")
 
     def _posting(self, customer, key, *, billed, priced=True, at=IN_MARCH):
-        return Posting.objects.create(
+        return a_posting(
             tenant=self.tenant, customer=customer, idempotency_key=key,
             effective_at=at, kind=USAGE_EVENT_KIND_METERED_USAGE,
             provider="openai", event_type="chat.completion",

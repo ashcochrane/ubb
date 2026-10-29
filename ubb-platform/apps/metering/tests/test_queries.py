@@ -16,6 +16,7 @@ from core.vocabulary import (
     PRICING_STATUS_UNKNOWN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.metering.usage.tests._helpers import a_posting
 
 
 class GetPeriodTotalsTest(TestCase):
@@ -29,12 +30,12 @@ class GetPeriodTotalsTest(TestCase):
             self.end = self.start.replace(month=self.start.month + 1, day=1)
 
     def test_returns_totals_for_period(self):
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1",
             billed_cost_micros=1_000_000,
         )
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i2",
             billed_cost_micros=2_000_000,
@@ -44,7 +45,7 @@ class GetPeriodTotalsTest(TestCase):
         self.assertEqual(totals["recorded_events"], 2)
 
     def test_sums_billed_cost(self):
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1",
             billed_cost_micros=1_500_000,
@@ -60,7 +61,7 @@ class GetPeriodTotalsTest(TestCase):
     def test_filters_by_tenant(self):
         other_tenant = Tenant.objects.create(name="Other")
         other_customer = Customer.objects.create(tenant=other_tenant, external_id="c2")
-        Posting.objects.create(
+        a_posting(
             tenant=other_tenant, customer=other_customer,
             idempotency_key="i1", billed_cost_micros=5_000_000,
         )
@@ -72,7 +73,7 @@ class GetPeriodTotalsTest(TestCase):
         """basis="arrival" counts a backdated event by WHEN IT ARRIVED;
         basis="effective" (default) excludes it from the current period."""
         import datetime
-        e = Posting.objects.create(
+        e = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1", billed_cost_micros=1_000_000,
         )
@@ -98,12 +99,12 @@ class GetPeriodTotalsTest(TestCase):
         one layer over, where the one declared row silently dropped what two
         undeclared ones carried.
         """
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1",
             billed_cost_micros=1_000_000, provider_cost_micros=400_000,
         )
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i2",
             billed_cost_micros=2_000_000, provider_cost_micros=None,
@@ -127,7 +128,7 @@ class GetPeriodTotalsTest(TestCase):
         and it must still not be counted (#327): the Event Type declares no
         supplier cost, so the total is complete. Counting it would mark every
         metering-only tenant's every period partial forever."""
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1",
             billed_cost_micros=1_000_000, provider_cost_micros=None,
@@ -152,7 +153,7 @@ class GetCustomerPostingsForPeriodTest(TestCase):
             self.end = self.start.replace(month=self.start.month + 1, day=1)
 
     def test_returns_per_event_data(self):
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1",
             billed_cost_micros=1_200_000,
@@ -173,7 +174,7 @@ class GetCustomerPostingsForPeriodTest(TestCase):
 
     def test_filters_by_customer(self):
         other_customer = Customer.objects.create(tenant=self.tenant, external_id="c2")
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=other_customer,
             idempotency_key="i1", billed_cost_micros=5_000_000,
         )
@@ -189,7 +190,7 @@ class GetPostingPriceTest(TestCase):
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
 
     def test_returns_billed_cost(self):
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1", billed_cost_micros=1_000_000,
         )
@@ -198,7 +199,7 @@ class GetPostingPriceTest(TestCase):
                           "pricing_status": PRICING_STATUS_KNOWN})
 
     def test_prefers_billed_cost(self):
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1",
             billed_cost_micros=1_500_000,
@@ -219,7 +220,7 @@ class GetPostingPriceTest(TestCase):
         `usage_event_not_found`. A posting that exists is never `None` here,
         whatever its price.
         """
-        event = Posting.objects.create(
+        event = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i2",
             billed_cost_micros=None, pricing_status=PRICING_STATUS_UNKNOWN)
@@ -244,11 +245,11 @@ class GetCostTotalsTest(TestCase):
         self.start = timezone.now().date().replace(day=1)
         self.end = (self.start.replace(month=self.start.month % 12 + 1, day=1)
                     if self.start.month < 12 else self.start.replace(year=self.start.year + 1, month=1, day=1))
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="i1",
             provider_cost_micros=800_000, billed_cost_micros=1_000_000, provider="openai",
             grouping_field_1="chat", metadata={"model": "gpt-4"})
-        Posting.objects.create(
+        a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="i2",
             provider_cost_micros=200_000, billed_cost_micros=300_000, provider="openai",
             grouping_field_1="chat", metadata={"model": "gpt-4"})
@@ -287,7 +288,7 @@ class CrossProductReadContractTest(TestCase):
 
     def test_effective_at_returned(self):
         from apps.metering.queries import get_posting_effective_at
-        ev = Posting.objects.create(
+        ev = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key="i1", billed_cost_micros=1)
         self.assertEqual(get_posting_effective_at(ev.id), ev.effective_at)
@@ -302,12 +303,12 @@ class CrossProductReadContractTest(TestCase):
         from apps.metering.queries import get_customer_ids_with_postings
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
         # zero-billed usage still counts (existence-based, no billed filter)
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i1", billed_cost_micros=0)
-        Posting.objects.create(tenant=self.tenant, customer=other,
-                                  idempotency_key="i2", billed_cost_micros=5)
-        Posting.objects.create(tenant=self.tenant, customer=other,
-                                  idempotency_key="i3", billed_cost_micros=5)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                     idempotency_key="i1", billed_cost_micros=0)
+        a_posting(tenant=self.tenant, customer=other,
+                     idempotency_key="i2", billed_cost_micros=5)
+        a_posting(tenant=self.tenant, customer=other,
+                     idempotency_key="i3", billed_cost_micros=5)
         single = get_customer_ids_with_postings(self.tenant.id, self.start, self.end)
         listed = get_customer_ids_with_postings([self.tenant.id], self.start, self.end)
         self.assertEqual(sorted(map(str, single)), sorted(map(str, listed)))
@@ -317,14 +318,14 @@ class CrossProductReadContractTest(TestCase):
         from apps.metering.queries import get_billed_totals_by_customer
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
         excluded = Customer.objects.create(tenant=self.tenant, external_id="c3")
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i1", billed_cost_micros=100)
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i2", billed_cost_micros=200)
-        Posting.objects.create(tenant=self.tenant, customer=other,
-                                  idempotency_key="i3", billed_cost_micros=0)
-        Posting.objects.create(tenant=self.tenant, customer=excluded,
-                                  idempotency_key="i4", billed_cost_micros=7)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                     idempotency_key="i1", billed_cost_micros=100)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                     idempotency_key="i2", billed_cost_micros=200)
+        a_posting(tenant=self.tenant, customer=other,
+                     idempotency_key="i3", billed_cost_micros=0)
+        a_posting(tenant=self.tenant, customer=excluded,
+                     idempotency_key="i4", billed_cost_micros=7)
         totals = get_billed_totals_by_customer(
             self.tenant.id, [self.customer.id, other.id], self.start, self.end)
         self.assertEqual(totals, {
@@ -339,13 +340,13 @@ class CrossProductReadContractTest(TestCase):
         emitted nothing, and this is the number that tells them apart.
         """
         from apps.metering.queries import get_billed_totals_by_customer
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                               idempotency_key="i1",
-                               billed_cost_micros=100)
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                               idempotency_key="i2",
-                               billed_cost_micros=None,
-                               pricing_status=PRICING_STATUS_UNKNOWN)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                  idempotency_key="i1",
+                  billed_cost_micros=100)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                  idempotency_key="i2",
+                  billed_cost_micros=None,
+                  pricing_status=PRICING_STATUS_UNKNOWN)
         totals = get_billed_totals_by_customer(
             self.tenant.id, [self.customer.id], self.start, self.end)
         self.assertEqual(totals[self.customer.id],
@@ -379,12 +380,12 @@ class CrossProductReadContractTest(TestCase):
     def test_billed_breakdown_declared_field_empty_value_to_other(self):
         from apps.metering.queries import get_customer_billed_breakdown
         axis = self._a_declared_axis()
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i1",
-                                  billed_cost_micros=100, grouping_field_1="chat")
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i2",
-                                  billed_cost_micros=20, grouping_field_1="")
+        a_posting(tenant=self.tenant, customer=self.customer,
+                     idempotency_key="i1",
+                     billed_cost_micros=100, grouping_field_1="chat")
+        a_posting(tenant=self.tenant, customer=self.customer,
+                     idempotency_key="i2",
+                     billed_cost_micros=20, grouping_field_1="")
         pairs = get_customer_billed_breakdown(
             self.tenant.id, self.customer.id, self.start, self.end, axis)
         self.assertEqual({label: billed for label, billed, _ in pairs},
@@ -399,16 +400,16 @@ class CrossProductReadContractTest(TestCase):
         """
         from apps.metering.queries import get_customer_billed_breakdown
         axis = self._a_declared_axis()
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                               idempotency_key="i1",
-                               billed_cost_micros=100, grouping_field_1="chat")
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                               idempotency_key="i2",
-                               billed_cost_micros=None, grouping_field_1="chat",
-                               pricing_status=PRICING_STATUS_UNKNOWN)
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                               idempotency_key="i3",
-                               billed_cost_micros=50, grouping_field_1="batch")
+        a_posting(tenant=self.tenant, customer=self.customer,
+                  idempotency_key="i1",
+                  billed_cost_micros=100, grouping_field_1="chat")
+        a_posting(tenant=self.tenant, customer=self.customer,
+                  idempotency_key="i2",
+                  billed_cost_micros=None, grouping_field_1="chat",
+                  pricing_status=PRICING_STATUS_UNKNOWN)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                  idempotency_key="i3",
+                  billed_cost_micros=50, grouping_field_1="batch")
         rows = get_customer_billed_breakdown(
             self.tenant.id, self.customer.id, self.start, self.end, axis)
         self.assertEqual({label: (billed, unpriced)
@@ -419,12 +420,12 @@ class CrossProductReadContractTest(TestCase):
         from datetime import timedelta
         from apps.metering.queries import iter_billable_postings
         now = timezone.now()
-        ev = Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                       idempotency_key="i1",
-                                       billed_cost_micros=500)
-        Posting.objects.create(tenant=self.tenant, customer=self.customer,
-                                  idempotency_key="i2",
-                                  billed_cost_micros=0)  # not billable -> excluded
+        ev = a_posting(tenant=self.tenant, customer=self.customer,
+                          idempotency_key="i1",
+                          billed_cost_micros=500)
+        a_posting(tenant=self.tenant, customer=self.customer,
+                     idempotency_key="i2",
+                     billed_cost_micros=0)  # not billable -> excluded
         rows = list(iter_billable_postings(
             self.tenant.id, now - timedelta(hours=1), now + timedelta(hours=1)))
         self.assertEqual(len(rows), 1)

@@ -256,7 +256,9 @@ class Census:
 #: :func:`declared_value_sets` only — the census proper walks the consumers the
 #: registry names and needs no such list.
 NOT_LIVING_CODE = {
-    "/migrations/": "historical schema; slice 8's squash deletes the category",
+    "/migrations/": ("frozen schema: the generated initial set and the "
+                     "database rules it carries (the cutover squash, #190, "
+                     "deleted the historical chain)"),
     "/tests/": "a test is not a surface a value set ships on",
     "/conformance/": "the non-gating schemathesis probe (#87)",
     "/_core/": "the SDK's generated transport, regenerated from the contract",

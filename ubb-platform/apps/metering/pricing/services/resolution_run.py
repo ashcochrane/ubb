@@ -63,8 +63,7 @@ from django.db.models import Q
 from apps.metering.pricing.models import Rate, ResolutionRun
 from apps.metering.pricing.receipts import (
     HELD_NAME_KEY, RESOLUTION_RUN_KEY, SECTIONS, ReceiptSubject, Resolution,
-    completed_receipt, pricing_mode_of, recorded_quantities,
-    written_in_the_current_shape)
+    completed_receipt, pricing_mode_of, recorded_quantities)
 from apps.metering.pricing.services.cost_settlement import (
     Settlement, settle_provider_cost)
 from apps.metering.pricing.services.price_resolution import (
@@ -558,19 +557,20 @@ def _what_the_price_would_become(posting):
 
 
 def _the_record_cannot_account_for_a_completion(posting, stored):
-    """⚠ TWO WAYS A RECORD CANNOT SUPPORT A RECOVERY, AND BOTH LEAVE THE POSTING
-    ALONE. Each was a live defect before it was a branch.
+    """⚠ AN UNRESOLVED COST WHOSE RECORD KEPT NO QUANTITIES CANNOT SUPPORT A
+    RECOVERY, AND THE RUN LEAVES THE POSTING ALONE. It was a live defect before
+    it was a branch.
 
-    **ONE — THE RECORD CANNOT NAME THE ACT THAT COMPLETED IT.** A receipt in an
-    older shape, or the empty default, is one `completed_receipt` may not touch:
-    *read, never rewritten*. Without this branch the doors still moved the money
-    columns and simply carried no receipt — so a posting was priced, the
-    outcome counted it, and **nothing anywhere named the run that did it**. A
-    number a recovery changed has to be explicable by the act that changed it,
-    and half of that claim is worse than none: these are precisely the oldest
-    postings, which is where a recovery is most likely to be questioned.
+    ⚠ **A RECORD IN ANY OTHER SHAPE IS NOT LEFT ALONE: IT IS REFUSED (#190).**
+    This used to have a first branch that skipped a receipt in an older shape,
+    or the empty record, because `completed_receipt` may not touch one. The
+    cutover deleted the older shapes' readers (ADR-0026): every receipt this
+    code writes is in the one shape, so the receipt readers the run calls
+    (`recorded_quantities`, `pricing_mode_of`) meet any other record as the
+    defect it is and raise, rather than reporting a posting they cannot read as
+    merely unresolved.
 
-    **TWO — AN UNRESOLVED COST WHOSE RECORD KEPT NO QUANTITIES.** A run
+    **THE EMPTY BAG.** A run
     re-resolves from the receipt — never from the measurement rows, which prune
     — and the receipt keeps the quantities a recovery needs in exactly two
     cases: an unresolved cost whose quantities matched no rule
@@ -588,13 +588,13 @@ def _the_record_cannot_account_for_a_completion(posting, stored):
     receipt seals over it. A posting that measured a million tokens would have
     settled at nothing, permanently.
 
-    ⚠ The second is asked of the COST side only, and that is not an omission.
+    ⚠ It is asked of the COST side only, and that is not an omission.
     Where the cost is settled, `_subject_of` states the figure the record
     already holds, so an empty bag is harmless: no rule matches nothing, and a
     margin over the stated basis is the right answer for a posting that measured
     nothing. It is only an unresolved cost that would be *computed* from the bag.
 
-    Where either holds, the run examines the posting, completes nothing, and
+    Where it holds, the run examines the posting, completes nothing, and
     reports it still unresolved — which is the true answer about it.
 
     ⚠ **AN EVENT TYPE HELD WITH NO PRODUCTION DECLARATION KEEPS THE WHOLE BAG
@@ -602,10 +602,8 @@ def _the_record_cannot_account_for_a_completion(posting, stored):
     quantity the event carried, so a record holding none is one whose event
     measured none — a fact, and the bag a replay should cost from once the
     tenant says what the Event Type was — rather than a record that kept
-    nothing. It is exempt from the second guard for exactly that reason.
+    nothing. It is exempt from the empty-bag guard for exactly that reason.
     """
-    if not written_in_the_current_shape(stored):
-        return True
     return (posting.costing_status
             == PAIR_BY_SECTION["costing"].unresolved_status
             and posting.unresolved_reason
@@ -641,11 +639,10 @@ def _receipt_completing(section, stored, resolved, provenance):
     """The stored receipt with one section completed, naming the act that did it.
 
     It asks nothing about the record's shape, and that is the point rather than
-    an omission: a posting whose record cannot be completed never reaches here,
-    because `_the_record_cannot_account_for_a_completion` has already left it
-    alone. Asking twice would put the decision in two places, and the second
-    copy is the one that goes stale — the boundary's own refusal is what this
-    would be duplicating, and it stays there where every caller meets it.
+    an omission: `completed_receipt` refuses a record in any shape but the one
+    this code writes, and that boundary is where every caller meets it. Asking
+    here too would put the decision in two places, and the second copy is the
+    one that goes stale.
     """
     side = resolved[section]
     return completed_receipt(
@@ -686,9 +683,11 @@ def _subject_of(posting, stored, answers):
     backlog's worth of history the day a tenant changed how a kind of work is
     sold, which is the failure the receipt exists to prevent.
 
-    A receipt written before this field existed answers `None`, and
-    `PricingSubject`'s own default is what that becomes: the regime such a
-    record was resolved under, since nothing else could produce a price then.
+    The spine writes the regime onto every receipt it builds, so
+    `pricing_mode_of` answers `None` only for a record that states none, and
+    that becomes `PricingSubject`'s own default. Before the cutover (#190) that
+    was a receipt written before this field existed, resolved under the only
+    regime there then was; the cutover's fresh database holds none.
 
     ⚠ **AND WHAT THE EVENT WAS IS THE TENANT'S ANSWER WHERE A NAME ON IT WAS
     HELD (#473 row 1, #568)** — see :func:`_what_the_tenant_says_it_was`.

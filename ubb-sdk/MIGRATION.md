@@ -1,4 +1,13 @@
-# Migrating to `ubb-sdk` v3.0
+# Migrating to `ubb-sdk` v4.0.0
+
+> **v4.0.0 is the first release of this SDK** (#190; ADR-0026). This guide was
+> written while the tree carried the pre-release number 3.0.0, which was never
+> released or tagged; where it says "v3.0" below, read the release you are
+> installing, 4.0.0. Coming from v2.x, every section applies. Coming from an
+> earlier build of this tree, §8–§26 are the pre-live edges added since. No call
+> or exception changed in the 4.0.0 cut itself (§24 settled the SDK); the cut
+> deletes two `ubb.vocabulary` constants (§25) and makes the receipt's subject
+> required (§26).
 
 v3.0 is the **one coordinated breaking release** for the self-serve launch. The
 generated typed core (#84) and the RFC 9457 problem+json error model (#78) —
@@ -22,7 +31,7 @@ release and the exact committed API contract it was generated against:
 ```python
 import ubb
 
-ubb.__version__         # "3.0.0"           — the SDK release
+ubb.__version__         # "4.0.0"           — the SDK release
 ubb.__spec_revision__   # sha256 of openapi/v1.json — the contract it was cut from
 ubb.__spec_version__    # "v1"              — the contract document version
 ```
@@ -1241,6 +1250,42 @@ No response changes. **Code that names a member that is gone stops
 importing** — a branch for a value the field could never return — so delete
 the branch.
 
+## 25. The audit action no record could carry leaves the vocabulary (the 4.0.0 cut, #190 — pre-live)
+
+The audit trail opens with no synthetic row (#190, ruled 2026-10-23, option
+(i); ADR-0026 §6). The action that would have named one,
+`system.preproduction_model_cutover`, was registered only so that recording it
+could be refused, and the cutover deleted it together with its exclusion:
+
+- `ubb.vocabulary.AUDIT_ACTION_SYSTEM_PREPRODUCTION_MODEL_CUTOVER` is deleted;
+- `ubb.vocabulary.AUDIT_ACTION_WITHHELD_VALUES` is deleted — no audit action
+  is withheld any more;
+- `ubb.vocabulary.AUDIT_ACTION_VALUES` no longer holds
+  `'system.preproduction_model_cutover'`.
+
+No audit record ever carried the value, so no response changes. **Code that
+imports either deleted constant stops importing**; delete the reference.
+
+## 26. Every receipt states what it explains (the 4.0.0 cut, #190 — pre-live)
+
+`pricing_receipt_subject_type` — whether a receipt explains one usage row
+(`usage_event`) or one Charge (`charge`) — was nullable because a receipt
+written before the subject was typed carried none. The cutover deleted those
+receipt shapes, and every receipt UBB can hold now states its subject, so:
+
+- on `RecordUsageResponse` and `UsageEventDetailOut` the field is **required
+  and never null**. Its generated enum is renamed with it:
+  `RecordUsageResponsePricingReceiptSubjectTypeType0` →
+  `RecordUsageResponsePricingReceiptSubjectType`, and
+  `UsageEventDetailOutPricingReceiptSubjectTypeType0` →
+  `UsageEventDetailOutPricingReceiptSubjectType`;
+- on `UsageBatchItemResponse` it is **required and nullable**: null on a
+  rejected item, beside its null `pricing_receipt`, and set on every accepted
+  one.
+
+**Code that branched on a null subject** for a recorded event or its detail
+can drop the branch; code importing either `…Type0` enum takes the new name.
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:
@@ -1249,5 +1294,11 @@ v3.0 is a coordinated release with the one integrating tenant:
    (regen → zero diff) green. ✅ carried by #84 + this cut.
 2. **Coordinate with the tenant** — walk them through this guide; confirm a
    migration window. **Record that conversation on issue #85** before shipping.
-3. **Cut the release** — tag `v3.0.0` from `main` after merge; the tag's
-   `ubb.__spec_revision__` is the verifiable spec stamp for the build.
+3. **Cut the release** — the annotated tag `sdk-v4.0.0` on the cutover's
+   merge commit on `main` (#190), and the wheel built from it by
+   `release/build_wheel.py`, which records the tag, the commit, the Python
+   (major.minor and exact), the lock's SHA-256 with every package it installed,
+   the installer that ran outside the build environment and the wheel's
+   filename and SHA-256. The tag's `ubb.__spec_revision__` is the
+   verifiable spec stamp for the build. Nothing publishes it (R2): the wheel is
+   handed to the client.

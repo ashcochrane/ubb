@@ -9,6 +9,7 @@ from apps.platform.events.models import OutboxEvent
 from apps.platform.work import reasons
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.tenant_billing.models import BillingTenantConfig, TenantBillingPeriod
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.usefixtures("rail_activated")
@@ -618,7 +619,7 @@ class TestAKnownZeroPriceIsAPrice:
     def _handle(self, tenant, customer, **amounts):
         from apps.billing.handlers import handle_usage_recorded_billing
         from apps.metering.usage.models import Posting
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=tenant, customer=customer,
             idempotency_key=f"posting-{uuid.uuid4()}",
             billed_cost_micros=amounts.get("billed_cost_micros"),

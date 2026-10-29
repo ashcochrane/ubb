@@ -232,8 +232,9 @@ class TheRuleIsHeldByAFourthTriggerOnThisTableTest(TestCase):
         """`BEFORE UPDATE ... FOR EACH ROW`, read out of `tgtype`'s bits.
 
         The INSERT bit being OFF is the load-bearing half here, not a formality:
-        this migration's whole cost argument is that the hottest insert path in
-        the system never enters this function, and `docs/conventions/
+        the rule's whole cost argument (its installing migration's, before the
+        cutover squash, #190) is that the hottest insert path in the system
+        never enters this function, and `docs/conventions/
         django-patterns.md` requires a new rule to assert its statement mask
         rather than describe it.
         """

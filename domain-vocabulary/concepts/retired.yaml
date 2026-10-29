@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,611 of 3,090 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,652 of 2,822 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -3061,6 +3061,18 @@ measurement_key:
     # 2026-10-28, R10-W5's owner review of #621: 2,609 of 3,088 -> 2,611 of
     # 3,090 tracked files (`units` UNMOVED). Two files arrived, both swept:
     # the field-values helper (`core/field_values.py`) and its test.
+    #
+    # 2026-10-29, the cutover (#190, W6): 2,611 of 3,090 -> 2,652 of 2,822
+    # tracked files (`units` UNMOVED, 46 files / 137 occurrences). The squash
+    # deleted 287 historical migrations and two helpers, which the deleted
+    # `historical-migrations` exclusion had kept out of the sweep, and the 26
+    # files of the fresh initial set are swept now; the disposition deleted 18
+    # migration-bound test modules and added end-state ones, G20's and G21's
+    # modules, ADR-0026, the SDK's release recipe and the Code Builder's tenth
+    # catalogue. One retired-sense occurrence a comment edit introduced
+    # ("the units registered before it") was reworded to "the work" before
+    # this was taken, and the three migrations that spelled the word left with
+    # the excluded set they sat in.
 
     - term: units
       retired_as: >-

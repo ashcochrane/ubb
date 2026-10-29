@@ -100,7 +100,9 @@ under the customer spend pool — with every stored subscription and queued row 
 `events/0009`; and the same commit made every payload class take its `EVENT_TYPE` from the
 generated vocabulary, so the catalogue's names are the registry's by construction and the
 catalogue gate excuses nothing (`tests/contracts/test_webhook_catalogue.py`;
-`apps/platform/events/tests/test_the_five_control_events_move_under_their_families.py`).
+`apps/platform/events/tests/test_the_five_control_events_move_under_their_families.py` until the
+cutover, #190, deleted it with `events/0009` — the catalogue's names are held to the registry's now by
+`apps/platform/events/tests/test_the_catalogue_publishes_exactly_the_registrys_names.py`).
 
 ### 6. A configured maximum is named as a maximum
 
@@ -174,7 +176,10 @@ Two qualifications that must survive in the glossary, because both names are oth
   for vocabulary. **Prefer backing any hard rule with a test.**
 - **One-time, scoped amendment to ADR-004.** At #155's cutover the pre-production audit ledger is
   reset: surviving actions are renamed, actions for deleted concepts are removed, pre-cutover rows are
-  deleted, and the production ledger opens with `system.preproduction_model_cutover`. The alternative
+  deleted, and the production ledger opens with `system.preproduction_model_cutover`. *(Superseded in
+  part by ADR-0026 §6: by the ruling of 2026-10-23 (#190 `6354381879`) no opening entry is written —
+  nothing was deployed, and every audit row is tenant-owned — and the registration was deleted with
+  the reset.)* The alternative
   — keeping retired names registered forever — would make the live codebase carry a second vocabulary
   solely to interpret pre-launch history. **After cutover, ADR-004's additive-only rule and retention
   floor apply unchanged**, and later terminology changes use additive retirement.

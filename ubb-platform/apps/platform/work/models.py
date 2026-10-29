@@ -192,12 +192,12 @@ CEILING_BASIS_CHOICES = [
 #: Until then they were keys of these spellings inside `metadata`, which is
 #: also the caller's own bag from the start — so a caller could plant
 #: `reason_code` and only "every terminal path overwrites or scrubs the key"
-#: kept it from reading as UBB's. `work/migrations/0029` moved every stored
-#: stop fact out of `metadata` into the columns below `metadata`, and nothing
-#: a caller sends can reach a column: `metadata` is the caller's bag alone.
-#: Each name is the concept's own (#457 moved the cause onto it), so these
-#: constants name the column and the wire field alike; they are kept for the
-#: historical migrations' tests, which hold the old metadata spelling to them.
+#: kept it from reading as UBB's. R10-W2 moved every stored stop fact out of
+#: `metadata` into the columns below `metadata` (`work/0029`, before the
+#: cutover squash, #190), and nothing a caller sends can reach a column:
+#: `metadata` is the caller's bag alone. Each name is the concept's own (#457
+#: moved the cause onto it), so these constants name the column and the wire
+#: field alike.
 #:
 #: The family and the id are stamped by the kernel on the winning flip
 #: (`TaskService._flip`) and on every cascaded piece (`TaskService._cascade`,
@@ -271,7 +271,8 @@ class TaskType(BaseModel):
     # An ordinary mutable column, like the ceiling beside it (ADR-0012's
     # Consequences): a tenant revises both as it learns what its work costs.
     # Every declaration that predated this column carried a null ceiling and
-    # meant uncapped by it; `work/migrations/0024` says so and sets it.
+    # meant uncapped by it; #453 said so and set it (`work/0024`, before the
+    # cutover squash, #190).
     uncapped = models.BooleanField(default=False)
     # HOW LONG THIS KIND OF WORK MAY GO QUIET (#412), the first rung of the
     # silence ladder — this declaration, then the tenant's own default, then
@@ -329,7 +330,7 @@ class TaskType(BaseModel):
     pricing_mode = models.CharField(max_length=16, choices=PRICING_MODE_CHOICES,
                                     default=PRICING_MODE_EVENT_PRICED)
     # Declared grouping field keys a start call MUST supply for this kind of work.
-    required_dimensions = models.JSONField(default=_empty_list, blank=True)
+    required_grouping_fields = models.JSONField(default=_empty_list, blank=True)
     # WHEN THIS KIND OF WORK STOPPED BEING OFFERED, or null while it is live.
     # Retire-never-delete (#138): a start naming a retired kind is refused, and
     # the row stays readable forever because the work already done under it
@@ -339,10 +340,10 @@ class TaskType(BaseModel):
     retired_at = models.DateTimeField(null=True, blank=True)
 
     #: WHAT MAY HAPPEN TO EACH DECLARED COLUMN (ADR-0007 §2). The rule that
-    #: keeps it is a `BEFORE UPDATE` trigger on this table, installed by
-    #: `work/migrations/0021`, because declaring is not enforcing and a
-    #: model-level guard is the instrument this repository has already watched a
-    #: production writer bypass by design.
+    #: keeps it is a `BEFORE UPDATE` trigger on this table,
+    #: `trg_task_type_declared_transitions`, because declaring is not enforcing
+    #: and a model-level guard is the instrument this repository has already
+    #: watched a production writer bypass by design.
     #:
     #: The three bounds and the `uncapped` flag beside it are deliberately NOT
     #: here. A ceiling, a silence window and an absolute deadline are
@@ -350,7 +351,7 @@ class TaskType(BaseModel):
     #: and how long it takes; freezing them would make the registry unusable
     #: and would say something false about how they are actually used. `Task`'s
     #: own columns declare theirs beneath its fields, held by their own rule
-    #: (`work/migrations/0028`, #562).
+    #: (`trg_task_declared_transitions`, #562).
     transition_classes = {"pricing_mode": FROZEN}
 
     class Meta:
@@ -683,11 +684,12 @@ class Task(BaseModel):
     # explicit that a guard of that kind is not enforcement. So they are
     # declared in `transition_classes` beneath the fields, with `status`,
     # `parent_id` and `task_type`, whose rules this model also carried in
-    # prose only until then, and `work/migrations/0028` installs the rule that
-    # holds all five through every door.
+    # prose only until then, and `trg_task_declared_transitions` is the rule
+    # that holds all five through every door.
     #
     # ⚠ THIS TABLE CARRIES TWO RULES, AND THE OTHER IS NOT ONE OF THESE.
-    # `work/migrations/0022` installs a `BEFORE INSERT` trigger holding
+    # `trg_task_containment_shares_the_pricing_regime` is a `BEFORE INSERT`
+    # trigger holding
     # contained work to the pricing regime of the work containing it — a
     # cross-row rule about who may be BORN, which no `CHECK` can express
     # because it reads two rows. It is declared into no transition class: a
@@ -768,9 +770,10 @@ class Task(BaseModel):
     completed_at = models.DateTimeField(null=True, blank=True)
 
     #: WHAT MAY HAPPEN TO EACH DECLARED COLUMN (ADR-0007 §2, #562), kept by a
-    #: `BEFORE UPDATE` trigger on this table (`work/migrations/0028`, widened by
-    #: `0029` to UBB's stop facts and the start's expiry snapshot) rather than
-    #: by the kernel's guards, which no writer outside the kernel meets.
+    #: `BEFORE UPDATE` trigger on this table (`trg_task_declared_transitions`,
+    #: widened by R10-W2 to UBB's stop facts and the start's expiry snapshot)
+    #: rather than by the kernel's guards, which no writer outside the kernel
+    #: meets.
     #: A unit of work is born once — it is never re-parented or re-typed — and
     #: ends once: `active` is the one unresolved state, a terminal one never
     #: moves, and the caller's reason and its sentence are written by the
@@ -789,7 +792,7 @@ class Task(BaseModel):
         "outcome_reason": SET_ONCE,
         "reason_detail": SET_ONCE,
         # UBB's stop facts and the start's expiry snapshot (R10-W2): recorded
-        # once by the kernel, never rewritten (`work/migrations/0029`).
+        # once by the kernel, never rewritten (`trg_task_declared_transitions`).
         "reason_code": SET_ONCE,
         "trigger_source": SET_ONCE,
         "control_family": SET_ONCE,
@@ -804,7 +807,7 @@ class Task(BaseModel):
             # THE KEY'S CLAIM, ENFORCED WHERE IT CANNOT BE ROUTED AROUND.
             #
             # (tenant, customer, key) is the POSTING'S OWN SCOPE
-            # (`uq_usage_event_idempotency_v2`), on the same argument: both are
+            # (`uq_posting_idempotency`), on the same argument: both are
             # a caller reporting that something happened FOR A NAMED CUSTOMER,
             # and two of a tenant's customers may each run a `nightly-batch`.
             # Scoping it to the tenant alone would make one customer's key
@@ -840,7 +843,8 @@ class Task(BaseModel):
             # and carries no price of its own. What makes a whole fixed unit
             # of work carry one is the start gate refusing to register it
             # otherwise, which is a rule about who may be born and lives in
-            # `work/migrations/0022`'s trigger and in the start gate above it.
+            # `trg_task_containment_shares_the_pricing_regime` and in the start
+            # gate above it.
             models.CheckConstraint(
                 condition=(models.Q(agreed_price_micros__isnull=True)
                            | models.Q(pricing_mode=PRICING_MODE_FIXED,
@@ -898,7 +902,7 @@ class Task(BaseModel):
             # An index over (billing owner, status) sat here for the per-owner
             # cap's count of active work; the cap is deleted (#455, #150
             # §12.5) and nothing else scans by that pair, so the index went
-            # with it (`migrations/0025`).
+            # with it (`work/0025`, before the cutover squash, #190).
             # #44 (delivery spec §C.4): the patrol's task sweep scans active
             # LIMITED tasks per tenant every hour — the partial index keeps
             # that scan proportional to the small set of tasks that can still

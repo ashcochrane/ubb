@@ -11,6 +11,7 @@ from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
 from apps.subscriptions.economics.models import CustomerCostAccumulator
 from apps.subscriptions.handlers import handle_usage_recorded_subscriptions
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.django_db
@@ -44,7 +45,7 @@ def test_unparseable_payload_effective_at_falls_back_to_getter():
     c = Customer.objects.create(tenant=t, external_id="c1")
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
-    e = Posting.objects.create(
+    e = a_posting(
         tenant=t, customer=c, idempotency_key="i1",
         provider_cost_micros=1, billed_cost_micros=2)
     Posting.objects.filter(id=e.id).update(effective_at=backdated)
@@ -75,7 +76,7 @@ def test_reconcile_covers_two_months_back():
     two_back = prev_start - datetime.timedelta(days=1)
     two_back_start = two_back.date().replace(day=1)
 
-    e = Posting.objects.create(
+    e = a_posting(
         tenant=t, customer=c, idempotency_key="i1",
         provider_cost_micros=111, billed_cost_micros=222)
     Posting.objects.filter(id=e.id).update(effective_at=two_back)
@@ -99,7 +100,7 @@ def test_backdated_event_buckets_by_effective_at_not_wallclock():
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
 
-    e = Posting.objects.create(
+    e = a_posting(
         tenant=t, customer=c, idempotency_key="i1",
         provider_cost_micros=800_000, billed_cost_micros=1_000_000,
     )
@@ -135,7 +136,7 @@ def test_reconcile_cost_accumulators_repairs_wrong_bucket():
     backdated = timezone.now().replace(day=1) - datetime.timedelta(days=2)
     prior_month_start = backdated.date().replace(day=1)
 
-    e = Posting.objects.create(
+    e = a_posting(
         tenant=t, customer=c, idempotency_key="i2",
         provider_cost_micros=500_000, billed_cost_micros=700_000,
     )

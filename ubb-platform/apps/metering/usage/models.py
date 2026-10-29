@@ -108,11 +108,12 @@ class Posting(BaseModel):
     # separates, with every amount on the row still correct, which is exactly
     # the shape #416 paid for one table over.
     #
-    # The default is `metered_usage`, which is the reading the migration gives
-    # every row that already existed and the only reading a recording could
-    # have had: until this column arrived, `posting_kind()` answered
-    # `metered_usage` for every row from one place, and this default is that
-    # same answer written down where the rows are.
+    # The default is `metered_usage`, which is the reading the column's
+    # migration gave every row that already existed (before the cutover
+    # squash, #190) and the only reading a recording could have had: until
+    # this column arrived, `posting_kind()` answered `metered_usage` for every
+    # row from one place, and this default is that same answer written down
+    # where the rows are.
     kind = models.CharField(
         max_length=32, choices=USAGE_EVENT_KIND_CHOICES,
         default=USAGE_EVENT_KIND_METERED_USAGE)
@@ -127,7 +128,9 @@ class Posting(BaseModel):
     #
     # The keys in here are the tenant's own. UBB stores and returns them
     # exactly as they were authored and never reshapes them into English
-    # nobody chose — see `migrations/0033_the_second_open_bag_folds.py`.
+    # nobody chose — see `tests/test_the_open_bag.py`
+    # (`test_the_tenants_own_keys_are_not_reshaped`) and
+    # `tests/test_the_second_open_bag_folds.py`.
     metadata = models.JSONField(default=dict)
 
     # Pricing breakdown (populated when platform prices the event)
@@ -137,7 +140,7 @@ class Posting(BaseModel):
     # an event carrying both an input and an output amount inexpressible. What
     # is measured lives on the child record, keyed by a declared measurement.
     # The argument for dropping it rather than moving it is in
-    # `migrations/0032_the_inline_unit_total_dies.py`.
+    # `tests/test_the_inline_unit_total_dies.py`.
     #
     # Lowercase, matching every other currency column and the payment rail's
     # own casing (#269, spec §K2). `ck_posting_currency_usd` holds it to UBB
@@ -190,7 +193,7 @@ class Posting(BaseModel):
     # are always beside it, which is what the two indexes below lead with. So
     # the columns that select the rows
     # are `tenant`/`customer` and `effective_at`, and those are exactly what
-    # `idx_usage_tenant_effective` and `idx_usage_customer_effective` lead with.
+    # `idx_posting_tenant_effective` and `idx_posting_customer_effective` lead with.
     # A composite led by two slots could only ever be scanned whole, and "the
     # first two of ten" is arbitrary in a way "the first two of six" merely
     # looked like it wasn't.
@@ -239,10 +242,11 @@ class Posting(BaseModel):
     # posting, and resolving a cost has to move the status and the amount in one
     # `UPDATE`, which a cross-table pair cannot do.
     #
-    # The default is `known`, which is the same reading the migration gives every
-    # row that already existed and for the same reason: a writer that says
-    # nothing about supplier cost has recorded what UBB actually holds, and
-    # inventing an unknown it never observed would make every period partial.
+    # The default is `known`, which is the same reading the column's migration
+    # gave every row that already existed (before the cutover squash, #190) and
+    # for the same reason: a writer that says nothing about supplier cost has
+    # recorded what UBB actually holds, and inventing an unknown it never
+    # observed would make every period partial.
     # The writers that produce `unresolved` are the ones that learn a cost is
     # missing, and they were built by the tickets that followed this one: the
     # compute spine (#320) writes the first two reasons below, and the third
@@ -290,11 +294,11 @@ class Posting(BaseModel):
     # column is what carries it; a fifth combination invented to make them
     # differ at the table would encode the same fact twice.
     #
-    # The default is `known`, which is the reading the migration gives every row
-    # that already existed and for the same reason the cost side gives it: a
-    # writer that says nothing about customer price has recorded what UBB
-    # actually holds. The writers that produce the other three arrive with the
-    # price resolver — see `apps/metering/pricing/applicability.py` for the one
+    # The default is `known`, which is the reading the column's migration gave
+    # every row that already existed (before the cutover squash, #190) and for
+    # the same reason the cost side gives it: a writer that says nothing about
+    # customer price has recorded what UBB actually holds. The writers that
+    # produce the other three arrive with the price resolver — see `apps/metering/pricing/applicability.py` for the one
     # rule of theirs that is decided already.
     pricing_status = models.CharField(
         max_length=32, choices=PRICING_STATUS_CHOICES,
@@ -343,8 +347,16 @@ class Posting(BaseModel):
     #: vacuous on the day one lands. That is what let #370 move the column
     #: without touching a caller. The shape stored here, and the one function
     #: permitted to build it, are `apps/metering/pricing/receipts.py`.
+    #:
+    #: ⚠ NO DEFAULT, ON PURPOSE (#190). The column used to default to `{}`, which
+    #: is not a receipt, not an older one and not the public "no receipt" (that
+    #: is `null`, on a batch item that never created a record). Both production
+    #: creators — recording and the Charge projection — pass a built receipt at
+    #: insert, so nothing needs the default; without it, a creator that omits
+    #: the receipt fails at its insert instead of persisting a record that
+    #: explains nothing.
     RECEIPT_COLUMN = "pricing_receipt"
-    pricing_receipt = models.JSONField(default=dict, blank=True)
+    pricing_receipt = models.JSONField()
     # The exact unit of work this event belongs to. The ONLY unit attribution
     # — the open bag above is free-form labelling and never silently becomes a
     # limited thing (no label-fallback inference).
@@ -390,8 +402,8 @@ class Posting(BaseModel):
     #: keeps it is the same trigger, which refuses to see it move on any other
     #: statement.
     #:
-    #: **The enforcement is the trigger installed by `migrations/0037`, not the
-    #: `save()` below.** `save()` refuses updates for the writers that go
+    #: **The enforcement is the trigger `trg_posting_declared_transitions`, not
+    #: the `save()` below.** `save()` refuses updates for the writers that go
     #: through it, and that is a convenience rather than the rule: ADR-0007 §2
     #: is explicit that a model-level guard is not enforcement, and names this
     #: repository as the place that already shipped one a production writer
@@ -416,13 +428,13 @@ class Posting(BaseModel):
     #:
     #: `pricing_status_reason` (#603) carries none either, on the same
     #: argument: it qualifies an `unknown` price, and the same trigger
-    #: (`migrations/0046` widened `0039`'s rule to name it) lets it move only
-    #: with the one permitted resolution — `unknown` to `known`, which clears
-    #: it — and on no other statement.
+    #: (`trg_posting_price_transitions`, widened by #603 to name it) lets it
+    #: move only with the one permitted resolution — `unknown` to `known`,
+    #: which clears it — and on no other statement.
     #:
     #: **The price pair's enforcement is a SECOND rule, in a second trigger
-    #: (`migrations/0039`), and that is the same mechanism rather than a
-    #: different one.** A `CHECK` carries this pair's legal combinations — see
+    #: (`trg_posting_price_transitions`), and that is the same mechanism rather
+    #: than a different one.** A `CHECK` carries this pair's legal combinations — see
     #: `Meta` below — and cannot carry a transition, because it never sees the
     #: row that was there a moment ago. Two *different* mechanisms holding
     #: sibling pairs on one table is how the two rules come to disagree, so the
@@ -450,12 +462,13 @@ class Posting(BaseModel):
     #: section — and every one of them is a resolution rather than a correction,
     #: which is the distinction ADR-0007 §2 draws and the only one this class
     #: makes. A receipt with nothing left unresolved is sealed whole; so is one
-    #: written in a shape that has no sections to complete, which is what
-    #: `receipts.py`'s *old receipts are read, never rewritten* means at the
-    #: table.
+    #: written in a shape that has no sections to complete, which before the
+    #: cutover (#190) was what *old receipts are read, never rewritten* meant
+    #: at the table. Since it, one receipt shape is written (ruling 8), and no
+    #: stored receipt is in another.
     #:
-    #: Its rule is a THIRD trigger (`migrations/0040`), for the reason the price
-    #: pair's is a second: disjoint columns, a `WHEN` clause naming only its
+    #: Its rule is a THIRD trigger (`trg_posting_receipt_sealing`), for the
+    #: reason the price pair's is a second: disjoint columns, a `WHEN` clause naming only its
     #: own, and a drop that leaves both neighbours standing. The receipt is a
     #: column on THIS table rather than a table of its own, so what makes the
     #: rule provable in isolation is that its refusals name this column — not
@@ -477,8 +490,9 @@ class Posting(BaseModel):
     #: and is never converted, so the class is *none after insert* rather than
     #: *once* — the same class `claimed_provider_cost_micros` above already
     #: carries, which is exactly why its refusals have to name the COLUMN and
-    #: not only the class. Its rule is a FOURTH trigger (`migrations/0044`), for
-    #: the reason the price pair's is a second and the receipt's is a third —
+    #: not only the class. Its rule is a FOURTH trigger
+    #: (`trg_posting_kind_frozen`), for the reason the price pair's is a
+    #: second and the receipt's is a third —
     #: disjoint columns, a `WHEN` clause naming only its own, and a drop that
     #: leaves the other three standing.
     #:
@@ -501,17 +515,10 @@ class Posting(BaseModel):
 
     class Meta:
         db_table = "ubb_posting"
-        # The constraint and index names below still spell the retired noun,
-        # deliberately and for the same reason #259 left its own alone: there is
-        # no rename operation for a constraint or a Postgres-named index that
-        # Django will emit — it can only drop and re-create, which is the
-        # add-plus-remove ADR-0007 §1 refuses, on a unique index that is
-        # load-bearing while it is gone. ADR-0006 §9's rule is about the TABLE
-        # name, and this table now tracks its model.
         constraints = [
             models.UniqueConstraint(
                 fields=["tenant", "customer", "idempotency_key"],
-                name="uq_usage_event_idempotency_v2",
+                name="uq_posting_idempotency",
             ),
             # UBB v1 is USD-only (ADR-0023).
             usd_only_check("currency", "ck_posting_currency_usd"),
@@ -633,25 +640,26 @@ class Posting(BaseModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["customer", "-effective_at"], name="idx_usage_customer_effective"),
-            models.Index(fields=["tenant", "-effective_at"], name="idx_usage_tenant_effective"),
+            models.Index(fields=["customer", "-effective_at"], name="idx_posting_customer_effective"),
+            models.Index(fields=["tenant", "-effective_at"], name="idx_posting_tenant_effective"),
             models.Index(fields=["tenant", "task_type", "subtask_type", "-effective_at"],
-                         name="idx_usage_work_attribution"),
+                         name="idx_posting_work_attribution"),
             # Arrival-basis scans (drawdown repair, platform-fee reconcile).
-            models.Index(fields=["tenant", "created_at"], name="idx_usage_tenant_created"),
+            models.Index(fields=["tenant", "created_at"], name="idx_posting_tenant_created"),
             # Stops and breaches' itemisation (#465) and the past-limit query
             # filters (#41): JSONB containment on the stop-context array.
             # Partial — a marked posting is the rare
             # exception, so the index stays tiny and unmarked inserts pay
             # nothing.
-            GinIndex(fields=["stop_context"], name="idx_usage_stop_context",
+            GinIndex(fields=["stop_context"], name="idx_posting_stop_context",
                      condition=models.Q(stop_context__isnull=False)),
             # The open bag's filtering index (#273). Default `jsonb_ops`, not
             # `jsonb_path_ops`: it serves the key-exists operator (`?`) that
             # `__has_key` compiles to as well as the containment operator (`@>`)
-            # that `__contains` does, and both are live call sites. 0022 is the
-            # argument in full — it moved the retiring bag's index to this
-            # opclass for these same lookups.
+            # that `__contains` does, and both are live call sites.
+            # `usage/0022` made the argument in full before the cutover squash
+            # (#190) — it moved the retiring bag's index to this opclass for
+            # these same lookups.
             GinIndex(fields=["metadata"], name="idx_posting_metadata"),
         ]
         ordering = ["-effective_at"]
@@ -686,10 +694,10 @@ class Posting(BaseModel):
         this accessor to lie in a second way.
 
         **EVERY VALUE IS THE QUANTITY'S CANONICAL TEXT (#603).** The recording
-        path stores nothing else since #603; a record written before it holds
-        whole numbers, and each is answered as its own digits — exact, and the
-        one spelling every surface publishes. The record is read, never
-        rewritten.
+        path stores nothing else since #603, and the cutover's fresh database
+        (#190) holds no record written before it. A whole number in a bag is
+        still answered as its own digits — exact, and the one spelling every
+        surface publishes. The record is read, never rewritten.
         """
         try:
             bag = self.measurement.measurements
@@ -760,23 +768,24 @@ class PostingMeasurement(BaseModel):
     that a production writer bypassed by design.
 
     **THE ``DELETE`` LINE IS ENFORCED SINCE #354**, by a ``BEFORE DELETE``
-    trigger on this table
-    (``migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py``), across
+    trigger on this table (``trg_posting_measurement_pruning``), across
     ``delete()``, ``QuerySet.delete()`` and raw SQL alike. It was unexpressible
     until then because the second of the two statuses it reads —
     ``pricing_status`` — landed in slice 4, and slice 4 added it as an
     **extension** of the installed gate rather than by re-owning its row. ⚠ It
     carries **one condition the two lines above do not name**: a posting on a
     *sandbox* tenant is discarded rather than pruned, and neither the retention
-    promise nor a recovery's inputs are at stake there. The migration argues it,
-    and ``tests/test_a_measurement_is_pruned_only_when_it_may_be.py`` proves the
-    whole rule through three doors with its admitted move.
+    promise nor a recovery's inputs are at stake there.
+    ``tests/test_a_measurement_is_pruned_only_when_it_may_be.py`` argues it
+    (``ADiscardIsNotAPruneTest``; the installing migration did before the
+    cutover squash, #190) and proves the whole rule through three doors with
+    its admitted move.
 
     **``prunable_at`` IS THE RELEASE FACT, SET_ONCE SINCE W5** (ruling 8). The
     daily prune (``pruning.py``) releases a record — writes ``prunable_at``,
     with the database's clock — and deletes it in the same transaction, and
-    ``migrations/0052_a_measurement_is_released_once_by_the_prune.py`` holds the
-    column to NULL → a past instant, once, through every door. It is when a
+    ``trg_posting_measurement_released_once`` holds the column to NULL → a
+    past instant, once, through every door. It is when a
     record was let go, never a retention deadline: recording leaves it NULL.
 
     ⚠ **The ``INSERT`` line and the rest of the ``UPDATE`` line are still
@@ -814,9 +823,10 @@ class PostingMeasurement(BaseModel):
     # contribute nothing. Slice 3 owns making that visible.
     measurements = models.JSONField(default=dict, blank=True)
     # When the quantities were RECORDED, which is not when this row was written:
-    # rows folded out of the posting by 0031 carry the moment their posting
-    # arrived, long before the fold ran. ``created_at`` answers the other
-    # question and the two are different facts.
+    # before the cutover squash (#190), rows folded out of the posting by
+    # `usage/0031` carried the moment their posting arrived, long before the
+    # fold ran. ``created_at`` answers the other question and the two are
+    # different facts.
     recorded_at = models.DateTimeField()
     # WHEN THIS RECORD WAS RELEASED (W5 ruling 8) — NULL until the daily prune
     # lets it go, then the instant it did, once. Not a deadline: recording
@@ -828,7 +838,7 @@ class PostingMeasurement(BaseModel):
     #: Every column of this record and the class it is declared into (ADR-0007
     #: §2). Every column but one points at the record rule in the docstring
     #: above; `prunable_at` is SET_ONCE, the release fact the database defends
-    #: since W5 (`migrations/0052`).
+    #: since W5 (`trg_posting_measurement_released_once`).
     transition_classes = {
         "id": RECORD_RULE,
         "created_at": RECORD_RULE,
@@ -896,8 +906,8 @@ class StopAcknowledgement(BaseModel):
         DELETE   never — except as a SANDBOX's postings are discarded
 
     held at the database by a ``BEFORE UPDATE OR DELETE`` trigger
-    (``migrations/0045_a_recording_keeps_what_its_acknowledgement_said.py``)
-    across ``save()``, ``QuerySet.update()``/``delete()`` and raw SQL alike.
+    (``trg_stop_acknowledgement_is_insert_only``) across ``save()``,
+    ``QuerySet.update()``/``delete()`` and raw SQL alike.
     The sandbox carve-out is the measurement record's own (#354): a reset
     discards a sandbox's postings wholesale, and a discard is not an edit.
     The model's ``save()`` and ``delete()`` guards below shut the ORM's

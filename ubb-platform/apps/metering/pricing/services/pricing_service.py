@@ -172,9 +172,10 @@ def _priced_by_rules(rules, total_micros, costing_status):
     `direct_event_price` prices the event's own quantities by the rule's own
     terms — an amount attached to the event regardless of what the call cost.
     Until R10-W4 a rule could state none and this function read the null as
-    that method; `pricing/0034` wrote the method onto every such row, and a
-    rule with none is now refused here rather than defaulted, because the
-    table cannot hold one.
+    that method; R10-W4 wrote the method onto every such row (`pricing/0034`,
+    before the cutover squash, #190), and a rule with none is now refused here
+    rather than defaulted, because the table cannot hold one
+    (`ck_rate_a_selling_rule_states_its_method`).
 
     **A RULE DECLARING A MARGIN IS THE MARKUP RUNG'S METHOD AT A DIFFERENT
     RUNG, AND IT GETS THE SAME TWO ANSWERS.** Where the cost is one UBB never

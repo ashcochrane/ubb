@@ -519,7 +519,7 @@ class TestThePostingsIdIsStillTheExactlyOnceMoneyKey(ProjectionTestBase):
         """AC 6's second half, driven at the database.
 
         The posting takes the Charge's derived key, so
-        `uq_usage_event_idempotency_v2` refuses a second projection of one
+        `uq_posting_idempotency` refuses a second projection of one
         Charge. That is the guard that holds when the winning-transition check
         and the partial uniqueness on `ubb_charge` have both been bypassed — and
         it is the only one of the three a caller reaching into this module

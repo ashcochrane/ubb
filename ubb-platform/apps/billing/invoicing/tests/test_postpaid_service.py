@@ -3,10 +3,10 @@ import pytest
 from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.metering.usage.models import Posting
 from apps.billing.invoicing.models import PostpaidUsageConfig
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.metering.usage.tests._helpers import a_posting
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
@@ -17,10 +17,10 @@ MID = timezone.make_aware(timezone.datetime(2026, 6, 15))
 @pytest.mark.django_db
 class TestAggregate:
     def _events(self, t, c):
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
+        a_posting(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=600_000, billed_cost_micros=800_000, grouping_field_1="chat",
             effective_at=MID)
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i2",
+        a_posting(tenant=t, customer=c, idempotency_key="i2",
             provider_cost_micros=100_000, billed_cost_micros=200_000, grouping_field_1="",  # no product
             effective_at=MID)
 
@@ -54,10 +54,10 @@ class TestAggregate:
         """
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
         PostpaidUsageConfig.objects.create(tenant=t, invoice_line_grouping="field:provider")
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
+        a_posting(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=1, billed_cost_micros=500_000, provider="openai",
             effective_at=MID)
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i2",
+        a_posting(tenant=t, customer=c, idempotency_key="i2",
             provider_cost_micros=1, billed_cost_micros=300_000, provider="",  # no label
             effective_at=MID)
         total, lines = PostpaidUsageService.aggregate_lines(t, c, PS, PE)
@@ -73,7 +73,7 @@ class TestPush:
                                   billing_mode="postpaid", stripe_connected_account_id="acct_x",
                                   charges_enabled=True)
         c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
-        Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
+        a_posting(tenant=t, customer=c, idempotency_key="i1",
             provider_cost_micros=600_000, billed_cost_micros=1_000_000, effective_at=MID)
         if with_sub:
             from django.utils import timezone
@@ -212,10 +212,10 @@ class TestPush:
         # "acme.corp/east" and "acme-corp-east" both fold to "acme_corp_east" under the old slug
         s1 = Customer.objects.create(tenant=t, external_id="acme.corp/east", account_type="seat", parent=biz)
         s2 = Customer.objects.create(tenant=t, external_id="acme-corp-east", account_type="seat", parent=biz)
-        Posting.objects.create(tenant=t, customer=s1, idempotency_key="ik1",
-                                  provider_cost_micros=1, billed_cost_micros=400_000, effective_at=MID)
-        Posting.objects.create(tenant=t, customer=s2, idempotency_key="ik2",
-                                  provider_cost_micros=1, billed_cost_micros=600_000, effective_at=MID)
+        a_posting(tenant=t, customer=s1, idempotency_key="ik1",
+                     provider_cost_micros=1, billed_cost_micros=400_000, effective_at=MID)
+        a_posting(tenant=t, customer=s2, idempotency_key="ik2",
+                     provider_cost_micros=1, billed_cost_micros=600_000, effective_at=MID)
 
         # Faithfully model Stripe idempotency: first call for a key is accepted; replay with
         # different params raises StripeFatalError.

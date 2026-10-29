@@ -107,6 +107,7 @@ OPTED_IN = (
     "0023-ubb-v1-is-usd-only.md",
     "0024-every-domain-value-set-has-one-authority-and-the-receipt-is-published-typed.md",
     "0025-a-report-window-is-inclusive-dates-and-a-measurement-is-released-once-by-a-daily-prune.md",
+    "0026-the-cutover-resets-the-history-and-starts-the-release.md",
 )
 
 
@@ -355,6 +356,7 @@ DEPARTING = (
     "0023-ubb-v1-is-usd-only.md",
     "0024-every-domain-value-set-has-one-authority-and-the-receipt-is-published-typed.md",
     "0025-a-report-window-is-inclusive-dates-and-a-measurement-is-released-once-by-a-daily-prune.md",
+    "0026-the-cutover-resets-the-history-and-starts-the-release.md",
 )
 
 

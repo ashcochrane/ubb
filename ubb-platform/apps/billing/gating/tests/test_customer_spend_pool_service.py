@@ -10,6 +10,7 @@ from core.vocabulary import (
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED,
     AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_UNAVAILABLE,
     TRIGGER_SOURCE_USAGE_INGEST)
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.django_db
@@ -28,7 +29,7 @@ class TestCustomerSpendPoolService:
         # Mirror production: the Posting is durably committed BEFORE spend_pool_incr runs,
         # so a counter rebuild-on-miss reconstructs to the total that already includes it.
         from apps.metering.usage.models import Posting
-        Posting.objects.create(
+        a_posting(
             tenant=c.tenant, customer=c, idempotency_key=f"i{n}",
             provider_cost_micros=billed, billed_cost_micros=billed)
 

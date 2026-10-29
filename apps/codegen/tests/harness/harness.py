@@ -394,7 +394,10 @@ class Server:
                       # version 2 only, never null on the single route.
                       "pricing_receipt": {
                           **A_RECEIPT,
-                          "subject_id": f"event_{len(self.requests)}"}}
+                          "subject_id": f"event_{len(self.requests)}"},
+                      # Required and never null since the cutover (#190):
+                      # what that receipt explains.
+                      "pricing_receipt_subject_type": A_RECEIPT["subject_type"]}
         elif path.endswith("/close"):
             answer = {
                 "task_id": path.split("/")[-2], "parent_task_id": None,

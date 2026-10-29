@@ -11,8 +11,8 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.metering.usage.models import Posting
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+from apps.metering.usage.tests._helpers import a_posting
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 # Fixture events must be stamped explicitly inside [PS, PE): effective_at defaults
@@ -25,7 +25,7 @@ def _setup(**tenant_extra):
                               billing_mode="postpaid", stripe_connected_account_id="acct_x",
                               charges_enabled=True, **tenant_extra)
     c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
-    Posting.objects.create(tenant=t, customer=c, idempotency_key="i1",
+    a_posting(tenant=t, customer=c, idempotency_key="i1",
         provider_cost_micros=600_000, billed_cost_micros=1_000_000, effective_at=MID)
     return t, c
 

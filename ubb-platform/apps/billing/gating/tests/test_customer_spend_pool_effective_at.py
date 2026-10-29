@@ -16,6 +16,7 @@ from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant
+from apps.metering.usage.tests._helpers import a_posting
 
 
 def _setup():
@@ -30,7 +31,7 @@ def _setup():
 def _draw(t, c, billed, n, effective_at=None):
     """Mirror production: the Posting is durably committed (with its
     effective_at) before the outbox handler runs."""
-    e = Posting.objects.create(
+    e = a_posting(
         tenant=t, customer=c, idempotency_key=f"i{n}",
         provider_cost_micros=billed, billed_cost_micros=billed)
     if effective_at is not None:
@@ -69,14 +70,15 @@ class TestSpendPoolEffectiveMonthBasis:
 
     def test_legacy_payload_without_effective_at_increments(self):
         t, c = _setup()
-        e = Posting.objects.create(
+        e = a_posting(
             tenant=t, customer=c, idempotency_key="i1",
             billed_cost_micros=70_000)
         # Deliberate literal dict (#114 testing.md exception): the point is a
         # LEGACY queued payload with no effective_at key at all — asdict()
         # always emits the key, so the typed constructor cannot express this.
         # (`pricing_status_reason` is in it: `events/0010` stamped every
-        # queued payload with the one required field #603 added.)
+        # queued payload with the one required field #603 added, before the
+        # cutover squash, #190.)
         handle_usage_recorded_billing(str(uuid.uuid4()), {
             "tenant_id": str(t.id), "customer_id": str(c.id),
             "event_id": str(e.id), "cost_micros": 70_000,

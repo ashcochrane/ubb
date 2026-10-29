@@ -7,8 +7,8 @@ it guards a money-shaped rule"*: a `CHECK` is evaluated against one row and
 cannot see the parent at all, so there is no column constraint that expresses
 it and the choice is between a service that declines to write and a rule the
 database keeps. It is a rule about who may be BORN, so it is a `BEFORE INSERT`
-trigger — the shape `pricing/0020` already answers the same question with, one
-app over.
+trigger — the shape `trg_rate_names_a_declaration` already answers the same
+question with, one app over.
 
 **WHAT A MIXED TREE COSTS.** The parent's rollup is unconditional, so a
 per-event step under a parent sold at one agreed price adds metered revenue to
@@ -46,9 +46,10 @@ TABLE = Task._meta.db_table
 
 #: The rule this module drives, addressed BY NAME. `ubb_task` carries two rules
 #: since #562 — this one, which holds who may be BORN, and
-#: `work/migrations/0028`'s, which holds what may happen to five columns after —
-#: and `pg_trigger` promises no order, so any "the first row" would be a coin
-#: toss between two rules holding completely different things (#352).
+#: `trg_task_declared_transitions`, which holds what may happen to its declared
+#: columns after — and `pg_trigger` promises no order, so any "the first row"
+#: would be a coin toss between two rules holding completely different things
+#: (#352).
 CONTAINMENT_TRIGGER = "trg_task_containment_shares_the_pricing_regime"
 CONTAINMENT_FUNCTION = "ubb_task_containment_shares_the_pricing_regime"
 TRANSITION_TRIGGER = "trg_task_declared_transitions"

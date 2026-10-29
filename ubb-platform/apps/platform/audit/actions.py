@@ -19,16 +19,15 @@ module used to spell all sixty-nine names inline, with the reasoning for each
 beside it, while ``domain-vocabulary/concepts/governance.yaml`` declared the same
 catalogue again — two copies, and G2 measured this one as holding none of the
 registry's values. It now holds them BY REFERENCE: the recordable set is the
-registry's ``audit_action`` less what the registry WITHHOLDS, and the reasoning
-lives beside each value in that file (the history of the inline copy is in git,
-before this commit).
+registry's ``audit_action``, and the reasoning lives beside each value in that
+file (the history of the inline copy is in git, before this commit).
 
-**THE ONE WITHHELD ACTION** is ``system.preproduction_model_cutover``. It was to
+**NO ACTION IS WITHHELD, AND NO OPENING ENTRY EXISTS (#190, ADR-0026).** The one
+action the registry once withheld, ``system.preproduction_model_cutover``, was to
 open the production ledger at the cutover; #190's ruling of 2026-10-23 decided no
-opening row is ever written, and keeps the registration until W6 retires it with
-the reset. Until then it is declared, never recordable and never advertised — and
-both halves read ``AUDIT_ACTION_WITHHELD_VALUES``, so the backend and the
-published contract learn the one exclusion from one place.
+opening row is ever written, and the cutover deleted the registration together
+with the exclusion that kept it unrecordable and unadvertised. Every row is
+tenant-owned, as it always was.
 
 **The kind of record an action changed** is the registry's closed
 ``audit_resource_type`` (ruling 6). ``record()`` refuses any other, and every
@@ -37,13 +36,12 @@ writer names one by reference rather than spelling it.
 
 from core.vocabulary import (
     AUDIT_ACTION_VALUES,
-    AUDIT_ACTION_WITHHELD_VALUES,
     AUDIT_RESOURCE_TYPE_VALUES,
 )
 
-#: Every action the ledger may record: the registry's catalogue, less the
-#: actions it withholds. Order is not significant.
-AUDIT_ACTIONS = AUDIT_ACTION_VALUES - AUDIT_ACTION_WITHHELD_VALUES
+#: Every action the ledger may record: the registry's catalogue. Order is not
+#: significant.
+AUDIT_ACTIONS = AUDIT_ACTION_VALUES
 
 #: Every kind of record an audited action may name.
 AUDIT_RESOURCE_TYPES = AUDIT_RESOURCE_TYPE_VALUES
@@ -52,11 +50,6 @@ AUDIT_RESOURCE_TYPES = AUDIT_RESOURCE_TYPE_VALUES
 def is_registered_action(name):
     """True if ``name`` is an audit action the ledger may record."""
     return name in AUDIT_ACTIONS
-
-
-def is_withheld_action(name):
-    """True if ``name`` is declared but may never be recorded."""
-    return name in AUDIT_ACTION_WITHHELD_VALUES
 
 
 def is_declared_resource_type(name):

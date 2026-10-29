@@ -10,6 +10,7 @@ from apps.billing.tenant_billing.services import TenantBillingService
 from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.django_db
@@ -28,10 +29,10 @@ class TestPlatformFeeArrivalBasis:
 
         # One event is effective THIS month, the other is a backfill into the
         # PRIOR month — but both arrived (created_at) this month.
-        Posting.objects.create(
+        a_posting(
             tenant=t, customer=c, idempotency_key="i1",
             billed_cost_micros=100)
-        e2 = Posting.objects.create(
+        e2 = a_posting(
             tenant=t, customer=c, idempotency_key="i2",
             billed_cost_micros=100)
         prior = timezone.now().replace(day=1) - datetime.timedelta(days=2)

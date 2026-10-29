@@ -74,6 +74,7 @@ from core.vocabulary import (
     PRICING_STATUS_VALUES,
     PRICING_STATUS_WAIVED,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 PRICE = "billed_cost_micros"
 STATUS = "pricing_status"
@@ -115,7 +116,7 @@ def _tenant_and_customer():
 
 def _posting_for_a_new_customer(**kwargs):
     tenant, customer = _tenant_and_customer()
-    return Posting.objects.create(tenant=tenant, customer=customer, **kwargs)
+    return usage_helpers.a_posting(tenant=tenant, customer=customer, **kwargs)
 
 
 def _copy_row_as_literal_sql(source, *, literals, parameters):
@@ -164,8 +165,8 @@ class TheColumnsAreShapedAsRuledTest(TestCase):
 
         A writer that says nothing about customer price still records `known`
         and zero — the reading every row had before this column could be null,
-        and the one the migration gives every row that already existed. What
-        changed is that `NULL` became SAYABLE.
+        and the one its migration gave every row that already existed (before
+        the cutover squash, #190). What changed is that `NULL` became SAYABLE.
         """
         assert self._field(PRICE).null
         assert self._field(PRICE).default == 0
@@ -282,7 +283,8 @@ class TheFourLegalCombinationsAreAdmittedTest(TestCase):
 
         `known` with `0` is not a degenerate row to be tolerated — it is the
         answer for a call that was genuinely priced at nothing, and it is the
-        reading the migration gives every row that already existed.
+        reading the column's migration gave every row that already existed
+        (before the cutover squash, #190).
         """
         posting = _posting_for_a_new_customer(
             idempotency_key="k0", **{PRICE: 0, STATUS: PRICING_STATUS_KNOWN})

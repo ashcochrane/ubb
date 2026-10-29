@@ -9,7 +9,8 @@ Modes (Tenant.enforcement_mode) — two positions (#42, spec §G):
   enforcing -> enforcing=True   (the customer-wide signal suite + its state
                                  changes)
 
-`advisory` is retired (migration 0019 mapped it to `off`); the compute-but-
+`advisory` is retired (`tenants/0019` mapped it to `off`, before the cutover
+squash, #190); the compute-but-
 never-act middle state no longer exists, so the two historical predicates
 (`enforcement_on` / `enforcing`) collapsed into the one below.
 

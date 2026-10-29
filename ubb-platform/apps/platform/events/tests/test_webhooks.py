@@ -694,31 +694,33 @@ class TestWebhookConfigAPI:
         configuration with a validation problem (#464): the five control
         events moved under their families, and a subscriber asking for the
         mechanism's old name gets the refusal rather than a subscription that
-        would match nothing forever. The retired name is read off the
-        migration that carried it, never spelled."""
+        would match nothing forever. Every name the registry retires is asked,
+        read off the registry rather than spelled (the migration that once
+        carried the old-to-new pairing went with the cutover squash, #190)."""
         from apps.platform.events.schemas import CustomerStopped
-        from apps.platform.events.tests._helpers import as_it_was_spelled
+        from apps.platform.events.tests._helpers import retired_event_names
 
-        retired = as_it_was_spelled(CustomerStopped.EVENT_TYPE)
-        assert retired != CustomerStopped.EVENT_TYPE
-        resp = self.client.post(
-            "/api/v1/webhooks/configs",
-            data=json.dumps(
-                {
-                    "url": "https://example.com/hook",
-                    "secret": "a" * 32,
-                    "event_types": [CustomerStopped.EVENT_TYPE, retired],
-                }
-            ),
-            content_type="application/json",
-            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
-        )
-        assert resp.status_code == 422
-        assert resp["Content-Type"] == "application/problem+json"
-        body = resp.json()
-        assert body["code"] == "validation_error"
-        assert retired in body["detail"]
-        assert CustomerStopped.EVENT_TYPE not in body["detail"]
+        retired_names = retired_event_names()
+        assert retired_names, "the registry retires no webhook name — suspect the read"
+        for retired in retired_names:
+            resp = self.client.post(
+                "/api/v1/webhooks/configs",
+                data=json.dumps(
+                    {
+                        "url": "https://example.com/hook",
+                        "secret": "a" * 32,
+                        "event_types": [CustomerStopped.EVENT_TYPE, retired],
+                    }
+                ),
+                content_type="application/json",
+                HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+            )
+            assert resp.status_code == 422, retired
+            assert resp["Content-Type"] == "application/problem+json"
+            body = resp.json()
+            assert body["code"] == "validation_error"
+            assert retired in body["detail"]
+            assert CustomerStopped.EVENT_TYPE not in body["detail"]
         assert TenantWebhookConfig.objects.count() == 0
 
     def test_the_contracts_selector_union_spells_the_catalogues_wildcard(self):

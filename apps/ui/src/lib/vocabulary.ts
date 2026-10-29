@@ -297,7 +297,6 @@ export const AUDIT_ACTION_VALUES = [
   "webhook_config.updated",
   "webhook_config.deleted",
   "webhook_config.secret_rotated",
-  "system.preproduction_model_cutover",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTION_VALUES)[number];
@@ -372,7 +371,6 @@ export const AUDIT_ACTION_LABEL_KEYS = {
   "webhook_config.updated": "audit_action.webhook_config.updated",
   "webhook_config.deleted": "audit_action.webhook_config.deleted",
   "webhook_config.secret_rotated": "audit_action.webhook_config.secret_rotated",
-  "system.preproduction_model_cutover": "audit_action.system.preproduction_model_cutover",
 } as const satisfies Record<AuditAction, string>;
 
 

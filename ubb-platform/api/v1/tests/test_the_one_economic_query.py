@@ -60,6 +60,7 @@ from core.vocabulary import (
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
 from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 #: The window every fixture records into: one whole calendar month, so the
 #: coarse revenue's own span and the question's period are the same shape.
@@ -87,7 +88,7 @@ def a_posting(tenant, customer, key, **overrides):
               "billed_cost_micros": 1_000_000,
               "pricing_status": PRICING_STATUS_KNOWN}
     fields.update(overrides)
-    return Posting.objects.create(**fields)
+    return usage_helpers.a_posting(**fields)
 
 
 def describe(path):

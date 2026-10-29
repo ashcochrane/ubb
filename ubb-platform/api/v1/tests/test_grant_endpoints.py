@@ -12,12 +12,12 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import (
     CreditGrant, GrantAllocation, Wallet, WalletTransaction,
 )
-from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.schemas import UsageRecorded
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from core.widget_auth import create_widget_token
 from apps.platform.tenants.tests._rails import RailActivated
+from apps.metering.usage.tests._helpers import a_posting
 
 
 class GrantEndpointsTest(RailActivated, TestCase):
@@ -250,7 +250,7 @@ class RefundLotAwareTest(RailActivated, TestCase):
 
     def _spend(self, cost):
         """Record a real Posting + drive the live drawdown handler."""
-        ev = Posting.objects.create(
+        ev = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key=f"uek-{uuid.uuid4()}",
             billed_cost_micros=cost)

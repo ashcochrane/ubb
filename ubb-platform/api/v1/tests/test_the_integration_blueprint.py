@@ -457,7 +457,7 @@ class TestTheSelectionIsTheOnlyInput(_Routes):
         for_python = self._complete()
         for_shell = self._complete(target="shell_http")
 
-        for blueprint, target, sdk in ((for_python, "python_sdk", 3),
+        for blueprint, target, sdk in ((for_python, "python_sdk", 4),
                                        (for_shell, "shell_http", None)):
             assert blueprint["schema_version"] == 1
             # 2 since #583: a runtime value may carry a `source_path` fact on a

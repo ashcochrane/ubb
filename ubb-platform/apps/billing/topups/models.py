@@ -87,7 +87,7 @@ class TopUpAttempt(BaseModel):
             models.UniqueConstraint(
                 fields=["customer", "idempotency_key"],
                 condition=models.Q(idempotency_key__isnull=False),
-                name="uq_topup_attempt_idempotency",
+                name="uq_top_up_attempt_idempotency",
             ),
         ]
 

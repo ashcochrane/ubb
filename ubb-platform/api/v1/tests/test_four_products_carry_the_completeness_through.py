@@ -68,6 +68,7 @@ from core.vocabulary import (
     TASK_OUTCOME_DELIVERED,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 KNOWN_COST_MICROS = 1_000_000
 OTHER_KNOWN_COST_MICROS = 500_000
@@ -93,7 +94,7 @@ def _posting(tenant, customer, key, *, status=COSTING_STATUS_KNOWN,
         amount, reason = None, UNRESOLVED_REASON_COST_RATE_MISSING
     else:
         amount, reason = None, None
-    return Posting.objects.create(
+    return usage_helpers.a_posting(
         tenant=tenant, customer=customer, idempotency_key=key,
         provider_cost_micros=amount, costing_status=status,
         unresolved_reason=reason, billed_cost_micros=billed, **kwargs)

@@ -36,38 +36,12 @@ class TestLazyWalletCreation:
         wallet = Wallet.objects.create(customer=customer)
         assert wallet.currency == "usd"
 
-    def test_migration_lowercases_existing_currencies(self):
-        """The 0007 data migration normalizes legacy uppercase rows (wallet + grant)."""
-        import importlib
-        from django.apps import apps as global_apps
-        from apps.billing.wallets.models import CreditGrant
-
-        # `0007` ran long before UBB v1's USD CHECKs (ADR-0023), on rows that
-        # could still hold `USD`. Lifting both inside this test's transaction
-        # is that state again; the rollback puts them back.
-        from django.db import connection
-        with connection.cursor() as cursor:
-            cursor.execute("ALTER TABLE ubb_wallet DROP CONSTRAINT "
-                           "ck_wallet_currency_usd")
-            cursor.execute("ALTER TABLE ubb_credit_grant DROP CONSTRAINT "
-                           "ck_credit_grant_currency_usd")
-        tenant = self._make_tenant()
-        customer = Customer.objects.create(tenant=tenant, external_id="c_mig")
-        wallet = Wallet.objects.create(customer=customer, currency="USD")
-        grant = CreditGrant.objects.create(
-            tenant=tenant, wallet=wallet, kind="promo",
-            granted_micros=1_000_000, remaining_micros=1_000_000,
-            currency="USD")
-
-        migration = importlib.import_module(
-            "apps.billing.wallets.migrations."
-            "0007_alter_creditgrant_currency_alter_wallet_currency")
-        migration.lowercase_currencies(global_apps, None)
-
-        wallet.refresh_from_db()
-        grant.refresh_from_db()
-        assert wallet.currency == "usd"
-        assert grant.currency == "usd"
+    # Before the cutover (#190) a case here drove `wallets/0007`'s data step,
+    # which lower-cased legacy `USD` wallet and grant rows; it left with the
+    # squashed chain. The end state — both columns hold `usd` and the
+    # database refuses anything else — is `ck_wallet_currency_usd` and
+    # `ck_credit_grant_currency_usd`, pinned through every door in
+    # `apps/platform/tests/test_v1_is_usd_only.py`.
 
     def test_lock_for_billing_uses_existing_wallet(self):
         tenant = self._make_tenant()

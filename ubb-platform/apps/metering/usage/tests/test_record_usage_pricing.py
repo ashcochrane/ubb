@@ -12,7 +12,7 @@ from apps.metering.pricing.tests._helpers import (
 from apps.metering.usage.models import Posting
 from apps.metering.usage.services.usage_service import UsageService
 from apps.metering.usage.tests.test_the_measured_quantities_take_the_canonical_name import (  # noqa: E501
-    RETIRED_COLUMN)
+    RETIRED_COLUMNS)
 from core.vocabulary import COSTING_METHOD_CALCULATED
 
 
@@ -51,7 +51,9 @@ class TestRecordUsagePricing:
         The 200 is `test_the_measured_quantities_take_the_canonical_name.py`'s;
         what is added here is the number, against a real cost card, because
         "labels are lost" and "the invoice is wrong" are different sizes of
-        consequence and only one of them is this one.
+        consequence and only one of them is this one. The body carries every
+        name the registry retired for the bag (`RETIRED_COLUMNS`, the old
+        column name among them), so none of them may land.
         """
         t = Tenant.objects.create(name="T"); c = Customer.objects.create(tenant=t, external_id="c1")
         cost_rate_in_default_book(t, provider="openai", event_type="chat",
@@ -64,7 +66,8 @@ class TestRecordUsagePricing:
                 "customer_id": str(c.id),
                 "idempotency_key": "i_stale", "provider": "openai",
                 "event_type": "chat",
-                RETIRED_COLUMN: {"input_tokens": "1000"},
+                **{retired: {"input_tokens": "1000"}
+                   for retired in RETIRED_COLUMNS},
             }),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {raw_key}")

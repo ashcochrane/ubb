@@ -3,8 +3,11 @@
 **Why a usage invoice was skipped** is the registry's closed `skip_reason`. It
 was a bare string, and every invoice that was NOT skipped held and published
 `""` — a value the declared set does not hold. It applies only to a skipped
-invoice, so it is null on every other one — STORED as null (`invoicing/0011`),
-never translated at the read — and required (never absent) on both reads.
+invoice, so it is null on every other one — STORED as null, never translated
+at the read, and held at the table by `ck_usage_invoice_skip_reason_known` —
+and required (never absent) on both reads. (Before the cutover, #190, a case
+here also ran `invoicing/0011` through the executor and back, moving every
+stored `""` to null; that data step left with the squashed chain.)
 
 **A referral programme's reward type** is the registry's closed `reward_type`.
 A programme's update stored any string it was sent until R10-W4; it now refuses
@@ -13,8 +16,7 @@ a value outside the set, by name, and moves nothing.
 import json
 from datetime import date
 
-from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
+from django.db import IntegrityError, transaction
 from django.test import Client, SimpleTestCase, TestCase
 
 from api.v1.tests._helpers import a_tenant
@@ -74,51 +76,6 @@ class AUsageInvoiceSaysWhyItWasSkippedTest(TestCase):
                     with transaction.atomic():
                         CustomerUsageInvoice.objects.filter(
                             pk=invoice.pk).update(skip_reason=refused)
-
-
-class TheSkipReasonMigrationStoresNoReasonAsNullTest(TestCase):
-    """`invoicing/0011` through the executor and back: an invoice that was
-    never skipped moves from `""` to null, and a stated reason stays put."""
-
-    BEFORE = ("invoicing", "0010_a_usage_invoice_is_usd_only")
-    AFTER = ("invoicing", "0011_a_skip_reason_is_the_registrys")
-
-    def setUp(self):
-        self.tenant, _ = a_tenant("Migrated", products=("metering", "billing"))
-        self.customer = Customer.objects.create(tenant=self.tenant,
-                                                external_id="c1")
-
-    def _migrate_to(self, target):
-        with connection.cursor() as cursor:
-            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-        MigrationExecutor(connection).migrate([target])
-
-    def tearDown(self):
-        self._migrate_to(self.AFTER)
-
-    def _reason(self, pk):
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT skip_reason FROM ubb_customer_usage_invoice "
-                           "WHERE id = %s", [str(pk)])
-            return cursor.fetchone()[0]
-
-    def test_no_reason_moves_to_null_and_back(self):
-        unskipped, skipped = (
-            CustomerUsageInvoice.objects.create(
-                tenant=self.tenant, customer=self.customer,
-                period_start=date(2026, month, 1),
-                period_end=date(2026, month, 28), status=status,
-                skip_reason=reason)
-            for month, status, reason in (
-                (1, USAGE_INVOICE_STATUS_PUSHED, None),
-                (2, USAGE_INVOICE_STATUS_SKIPPED, sorted(SKIP_REASON_VALUES)[0])))
-
-        self._migrate_to(self.BEFORE)
-        self.assertEqual(self._reason(unskipped.pk), "")
-
-        self._migrate_to(self.AFTER)
-        self.assertIsNone(self._reason(unskipped.pk))
-        self.assertEqual(self._reason(skipped.pk), sorted(SKIP_REASON_VALUES)[0])
 
 
 class AProgrammesRewardTypeIsTheRegistrysTest(TestCase):

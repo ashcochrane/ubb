@@ -95,7 +95,7 @@ class TopUpRequest(Schema):
     success_url: str = Field(min_length=1)
     cancel_url: str = Field(min_length=1)
     # #78: top-up creation moves money — replay must never mint a second
-    # attempt (backed by uq_topup_attempt_idempotency).
+    # attempt (backed by uq_top_up_attempt_idempotency).
     idempotency_key: str = Field(min_length=1, max_length=400)
 
     @field_validator("amount_micros")

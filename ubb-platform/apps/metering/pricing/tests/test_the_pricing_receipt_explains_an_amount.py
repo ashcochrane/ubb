@@ -12,26 +12,27 @@ can reach the column without passing through this function is a question about
 the tree and about the recording path, and it is asked where the column is —
 `apps/metering/usage/tests/test_the_receipt_has_one_construction_boundary.py`.
 """
+import copy
+
 import pytest
 
 from apps.metering.pricing import receipts
 from apps.metering.pricing.receipts import (
-    LEGACY_SCHEMA_VERSION,
     MARKUP_TERMS_KEY,
     PRICING_REGIME_KEY,
     QUANTITY_KEY,
     RECEIPT_SCHEMA_VERSION,
     REQUIRED_COMPONENT_KEYS,
     REQUIRED_MARKUP_KEYS,
-    READABLE_SCHEMA_VERSIONS,
     TOP_LEVEL_KEYS,
     ReceiptShapeError,
     ReceiptSubject,
     Resolution,
     build_receipt,
+    completed_receipt,
     pricing_method_of,
     pricing_mode_of,
-    schema_version_of,
+    recorded_quantities,
     subject_type_of,
     uncosted_quantity_keys,
 )
@@ -51,12 +52,13 @@ from core.vocabulary import (
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_NOT_APPLICABLE,
     PRICING_STATUS_UNKNOWN,
+    RATE_STRUCTURE_PER_UNIT,
 )
 
-#: One past every shape this code reads — a record written by something newer.
-#: Derived from the readable set rather than spelled, so the day a shape is
-#: added it stays one this code does not know (#603 made `2` readable).
-A_VERSION_THIS_CODE_DOES_NOT_KNOW = max(READABLE_SCHEMA_VERSIONS) + 1
+#: One past the one shape this code reads — a record written by something
+#: newer. Derived from the constant rather than spelled, so the day the shape
+#: moves this stays one this code does not know.
+A_VERSION_THIS_CODE_DOES_NOT_KNOW = RECEIPT_SCHEMA_VERSION + 1
 
 SUBJECT = ReceiptSubject(
     subject_type=PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT,
@@ -78,11 +80,25 @@ THE_AGREED_PRICE = 7_500_000
 #: chosen to look plausible beside them.
 MARKUP_TERMS = markup_terms(4_000, micro_percent=20_000_000)
 
-#: A receipt in the shape written before the record carried a version at all.
-#: Rows like this exist and are READ, never rewritten: a receipt records what
-#: the engine did on a day, and back-dating one to a shape that did not exist
-#: then would make it a worse record rather than a better one.
-A_RECEIPT_IN_THE_OLDER_SHAPE = {
+#: A component that prices one quantity, carrying every term the record
+#: requires, with arithmetic that agrees with itself (3 × 1,000 + 1,000).
+A_PRICED_COMPONENT = {
+    "measurement_key": "input_tokens", QUANTITY_KEY: "3",
+    "rate_per_unit_micros": 1_000, "unit_quantity": 1, "fixed_micros": 1_000,
+    "rate_structure": RATE_STRUCTURE_PER_UNIT, "micros": 4_000,
+}
+
+#: THE SHAPES THE CUTOVER STOPPED READING (#190, ruling 8, ADR-0026).
+#:
+#: Until then the readers tolerated three: the pre-version shape below, schema
+#: 1, and schema 2 — "read, never rewritten", because rows in the older shapes
+#: were on disk. The fresh database holds none of them and nothing writes them,
+#: so a reader that still answered one would be a second contract nobody can
+#: test. Every reader now REFUSES each, and so does the completion boundary,
+#: rather than answering an older record's question with a plausible `None`.
+#:
+#: The pre-version shape — what a receipt was before it carried a version.
+A_RECEIPT_THAT_DECLARES_NO_VERSION = {
     "engine_version": "2.1.0",
     "cost_source": "caller",
     "price_source": "markup",
@@ -184,102 +200,109 @@ class TestTheRecordCarriesWhatExplainsAnAmount:
         assert receipt["costing"]["detail"] == {}
 
 
-class TestTheRecordIsReadAtTheVersionItDeclares:
-    def test_a_receipt_written_now_still_reads_when_the_code_has_moved_on(
-            self, monkeypatch):
-        """The reader dispatches on the RECORD's version, never on the module's.
+def a_receipt_in_the_sectioned_shape():
+    """Schema 1: today's sections, with a component's quantity a whole NUMBER.
 
-        Simulated by moving the module's constant on and asking the same
-        questions of a record written before it moved: an answer that changed
-        would mean the reader was consulting the code's idea of the shape rather
-        than the record's own.
-        """
-        written = a_receipt(costing=Resolution(
+    Built by moving a schema-2 record back rather than by hand, so the two
+    differ in exactly what the version names — and in the version itself.
+    """
+    record = a_receipt(costing=Resolution(
+        method=COSTING_METHOD_CALCULATED, status=COSTING_STATUS_KNOWN,
+        amount_micros=4_000,
+        detail={"components": [A_PRICED_COMPONENT],
+                "uncosted_measurement_keys": []}))
+    record["receipt_schema_version"] = 1
+    record["costing"]["detail"]["components"] = [
+        {**A_PRICED_COMPONENT, QUANTITY_KEY: 3}]
+    return record
+
+
+#: Each shape the cutover stopped reading, and what the shared guard refuses it
+#: with — so a refusal is accepted only if it is THAT guard's, and not some
+#: `KeyError` from the middle of a reader that happened to raise first.
+PLANTED_SHAPES = {
+    "schema 1": (a_receipt_in_the_sectioned_shape, r"schema version 1;"),
+    "no version": (lambda: copy.deepcopy(A_RECEIPT_THAT_DECLARES_NO_VERSION),
+                   r"schema version None;"),
+    # What the column's default used to be: not a receipt, not an older one,
+    # and not "no receipt" — the public absence is `null` (`_a_receipt`).
+    "the empty record": (dict, r"is not a receipt"),
+}
+
+#: Every reader of a stored receipt, and the one boundary that changes one —
+#: the six places the guard stands. Named rather than discovered, so a reader
+#: added later is a decision somebody makes here.
+READERS = {
+    "uncosted_quantity_keys": uncosted_quantity_keys,
+    "recorded_quantities": recorded_quantities,
+    "pricing_method_of": pricing_method_of,
+    "pricing_mode_of": pricing_mode_of,
+    "subject_type_of": subject_type_of,
+    "completed_receipt": lambda record: completed_receipt(record, sections={}),
+}
+
+
+class TestOnlyTheOneShapeIsRead:
+    """One shape is written and one is read (#190, ruling 8).
+
+    Until the cutover the readers dispatched on the RECORD's version across
+    three readable shapes, and an older record answered an older question —
+    `None` for a method, a subject or a regime it predated. That dispatch is
+    deleted with the shapes; what is asserted now is that the one shape reads
+    at every reader, and that every other record is refused at every reader by
+    the one guard they share.
+    """
+
+    def test_a_receipt_in_the_one_shape_reads_at_every_reader(self):
+        """The control for every refusal below, over both subjects."""
+        settled = a_receipt(costing=Resolution(
+            method=COSTING_METHOD_CALCULATED, status=COSTING_STATUS_KNOWN,
+            amount_micros=4_000,
+            detail={"components": [A_PRICED_COMPONENT],
+                    "uncosted_measurement_keys": []}))
+        uncosted = a_receipt(costing=Resolution(
             method=None, status=COSTING_STATUS_UNRESOLVED, amount_micros=None,
             detail={"components": [],
                     "uncosted_measurement_keys": ["image_pixels"]}))
-        before = uncosted_quantity_keys(written)
 
-        monkeypatch.setattr(receipts, "RECEIPT_SCHEMA_VERSION",
-                            RECEIPT_SCHEMA_VERSION + 1)
-
-        # The shape it was written in — this module's import of the constant,
-        # bound before the patch — whatever the code says now.
-        assert schema_version_of(written) == RECEIPT_SCHEMA_VERSION
-        assert uncosted_quantity_keys(written) == before
-
-    def test_a_shape_this_code_does_not_know_is_refused_rather_than_guessed(self):
-        """The other direction, and it is not symmetrical. A record written by
-        something newer cannot be read by guessing — guessing turns a shape this
-        code does not understand into a plausible wrong answer, or into a
-        `KeyError` from the middle of a request."""
-        from_the_future = dict(a_receipt(),
-                               receipt_schema_version=A_VERSION_THIS_CODE_DOES_NOT_KNOW)
-
-        with pytest.raises(ReceiptShapeError, match="schema version"):
-            uncosted_quantity_keys(from_the_future)
-
-    def test_a_receipt_in_the_older_shape_is_read_rather_than_refused(self):
-        """The read path tolerates both shapes. Nothing rewrites the older one:
-        this is the shape rows on disk are already in."""
-        older = A_RECEIPT_IN_THE_OLDER_SHAPE
-
-        assert schema_version_of(older) == LEGACY_SCHEMA_VERSION
-        assert uncosted_quantity_keys(older) == ["image_pixels"]
-        assert older["provider_cost_micros"] == 4_000
-
-    def test_the_method_reader_dispatches_the_same_three_ways(self):
-        """The second reader over this record, and the same three-way dispatch
-        (#355) — because a reader that guessed would turn a shape it does not
-        understand into a plausible wrong answer about how money was derived.
-
-        ⚠ **AN OLDER RECEIPT ANSWERS `None`, AND THAT IS NOT A GAP.** What that
-        shape recorded beside its price is the SOURCE that supplied it, which is
-        a different question: a markup and a rule declaring a margin are one
-        method at two sources. Reading the older field as a method would publish
-        a value no writer ever recorded, under a mapping nobody ratified.
-        """
-        current = a_receipt()
-
-        assert pricing_method_of(current) == PRICING_METHOD_MARGIN_OVER_COST
-        assert pricing_method_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is None
-        assert "price_source" in A_RECEIPT_IN_THE_OLDER_SHAPE
-
-        with pytest.raises(ReceiptShapeError, match="schema version"):
-            pricing_method_of(dict(current,
-                                   receipt_schema_version=
-                                   A_VERSION_THIS_CODE_DOES_NOT_KNOW))
-
-    def test_the_subject_reader_dispatches_the_same_three_ways(self):
-        """WHAT THIS RECEIPT EXPLAINS, read out of the record (#370).
-
-        The third reader over this record, and deliberately the same three-way
-        dispatch as the two above rather than a shortcut: the subject is what
-        makes the receipt addressable, so a reader that guessed a shape would
-        answer a plausible wrong thing about which entity a disputed amount
-        belongs to.
-
-        ⚠ **AN OLDER RECEIPT ANSWERS `None`, AND THAT IS THE HONEST ANSWER
-        RATHER THAN A GAP.** That shape predates the typed subject entirely, so
-        the record does not say — and the alternative is inferring the subject
-        from whichever column happens to be populated, which is a SECOND
-        authority able to disagree with the recorded one. #148 §3.2 refuses
-        exactly that, and the receipt exists because configuration read at
-        answer-time is not evidence.
-        """
-        current = a_receipt()
-
-        assert (subject_type_of(current)
+        assert recorded_quantities(settled) == {"input_tokens": "3"}
+        assert uncosted_quantity_keys(uncosted) == ["image_pixels"]
+        assert pricing_method_of(settled) == PRICING_METHOD_MARGIN_OVER_COST
+        assert pricing_mode_of(settled) is None
+        assert (subject_type_of(settled)
                 == PRICING_RECEIPT_SUBJECT_TYPE_USAGE_EVENT)
         assert (subject_type_of(a_charge_receipt())
                 == PRICING_RECEIPT_SUBJECT_TYPE_CHARGE)
-        assert subject_type_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is None
-        assert "subject_type" not in A_RECEIPT_IN_THE_OLDER_SHAPE
+        assert completed_receipt(settled, sections={}) == settled
+
+    @pytest.mark.parametrize("reader", sorted(READERS))
+    @pytest.mark.parametrize("shape", sorted(PLANTED_SHAPES))
+    def test_an_older_shape_is_refused_at_every_reader(self, shape, reader):
+        """Refused, never read: each older shape at each of the six.
+
+        This used to be the opposite claim — the pre-version shape READ, its
+        method, subject and regime answering `None`, and the two shapes
+        answering "the same questions the same way" — because rows in it were
+        on disk. None are, and the guard (`receipts._a_receipt`) refuses each
+        before a reader looks inside it.
+        """
+        make, refusal = PLANTED_SHAPES[shape]
+
+        with pytest.raises(ReceiptShapeError, match=refusal):
+            READERS[reader](make())
+
+    @pytest.mark.parametrize("reader", sorted(READERS))
+    def test_a_shape_this_code_does_not_know_is_refused_rather_than_guessed(
+            self, reader):
+        """The newer direction, at every reader. A record written by something
+        newer cannot be read by guessing — guessing turns a shape this code
+        does not understand into a plausible wrong answer, or into a
+        `KeyError` from the middle of a request."""
+        from_the_future = dict(
+            a_receipt(), receipt_schema_version=A_VERSION_THIS_CODE_DOES_NOT_KNOW)
 
         with pytest.raises(ReceiptShapeError, match="schema version"):
-            subject_type_of(dict(current,
-                                 receipt_schema_version=
-                                 A_VERSION_THIS_CODE_DOES_NOT_KNOW))
+            READERS[reader](from_the_future)
 
     def test_a_price_that_was_not_derived_reads_back_as_no_method(self):
         """AC: null means the price was NOT DERIVED, and the status says why.
@@ -297,15 +320,6 @@ class TestTheRecordIsReadAtTheVersionItDeclares:
         assert pricing_method_of(not_derived) is None
         assert (not_derived["pricing"]["status"]
                 == PRICING_STATUS_NOT_APPLICABLE)
-
-    def test_the_two_shapes_answer_the_same_questions_the_same_way(self):
-        current = a_receipt(costing=Resolution(
-            method=None, status=COSTING_STATUS_UNRESOLVED, amount_micros=None,
-            detail={"components": [],
-                    "uncosted_measurement_keys": ["image_pixels"]}))
-
-        assert (uncosted_quantity_keys(current)
-                == uncosted_quantity_keys(A_RECEIPT_IN_THE_OLDER_SHAPE))
 
 
 class TestTheBoundaryRefusesARecordThatExplainsNothing:
@@ -327,6 +341,22 @@ class TestTheBoundaryRefusesARecordThatExplainsNothing:
         with pytest.raises(ReceiptShapeError, match="subject_type"):
             a_receipt(subject=ReceiptSubject(subject_type="invoice_line",
                                              subject_id="x"))
+
+    @pytest.mark.parametrize("missing", [None, ""])
+    def test_a_subject_that_names_no_type_is_refused(self, missing):
+        """EVERY RECEIPT STATES WHAT IT EXPLAINS (#190): the published
+        `pricing_receipt_subject_type` is required and never null because the
+        one boundary refuses a receipt whose subject names no type at all."""
+        with pytest.raises(ReceiptShapeError, match="subject_type"):
+            a_receipt(subject=ReceiptSubject(subject_type=missing,
+                                             subject_id="x"))
+
+    def test_a_record_without_the_subject_key_is_refused(self):
+        receipt = a_receipt()
+        del receipt["subject_type"]
+
+        with pytest.raises(ReceiptShapeError, match="exactly"):
+            receipts.validate_receipt(receipt)
 
     def test_a_subject_with_no_id_is_refused(self):
         with pytest.raises(ReceiptShapeError, match="subject_id"):
@@ -813,12 +843,6 @@ class TestAReceiptWhoseSubjectIsAChargeExplainsAnAgreedPrice:
         configuration that has moved since — which is the whole reason it is on
         the record rather than looked up."""
         assert pricing_mode_of(a_charge_receipt()) == PRICING_MODE_FIXED
-
-    def test_a_receipt_in_the_older_shape_names_no_regime(self):
-        """That shape predates the field, so there is nothing in it to read and
-        this does not invent one — the reading every reader in this module
-        gives a record written before its question existed."""
-        assert pricing_mode_of(A_RECEIPT_IN_THE_OLDER_SHAPE) is None
 
     def test_the_method_vocabulary_gains_no_third_value_for_this(self):
         """A method meaning *agreed* would be a second encoding of a fact the

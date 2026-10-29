@@ -4,7 +4,8 @@
 **Date:** 2026-07-27
 **Superseded in part by:** ADR-0006 on its central noun · ADR-0008 on invariant 7 · ADR-0007 on its
 Migration note · slice 5 (#407) on what a `Task` carries · the owner's ruling on #544 (2026-09-25,
-landed by #575) on how many keys are reserved and where they are declared
+landed by #575) on how many keys are reserved and where they are declared · ADR-0026 on the
+names the cutover's fresh initial set gave the constraints and the required-fields column
 **Rewritten:** 2026-08-12, under the canonical noun (#283, slice 2 of #155)
 **Design:** the 2026-07-27 unified-model design and its plan, under `docs/plans/` — frozen history,
 and they still spell the noun this ADR has since renamed
@@ -154,7 +155,9 @@ correct, but still a rejection, not a rename. A real rename path is unbuilt work
 covered by an existing invariant. (The service class and the error class took the canonical noun in
 #541. The three constraint names still carry the old one, deliberately: renaming one is a
 drop-and-create of a load-bearing unique index, which ADR-0007 §1 refuses, so they are handed to the
-cutover's migration squash, which creates their final names.)
+cutover's migration squash, which creates their final names.) *(Superseded by ADR-0026 §4: the
+fresh initial set creates them as `uq_grouping_field_key`, `uq_grouping_field_slot` and
+`uq_grouping_field_value`.)*
 
 ## Consequences
 
@@ -339,7 +342,9 @@ so they don't vanish silently. Each was re-checked against the tree when this AD
 - `TaskTypeIn.required_dimensions` caps its list at six entries while ten slots can be declared, so
   a tenant that declares seven or more cannot require them all. The cap predates #276's widening and
   was not moved with it; it is stated here rather than changed, because the field's name is slice
-  7's to retire and the two edits belong together.
+  7's to retire and the two edits belong together. *(The request field took the canonical name in
+  #505; the column became `TaskType.required_grouping_fields` at the cutover, ADR-0026 §4. The cap
+  is unchanged.)*
 - ~~The SDK's hand-written create-a-rule method still posts the pre-reshape rate shape.~~
   **Resolved (#368, and fully discharged in #373).** That method is gone: the container split into
   a Pricing Book and a cost book, which are declared separately, so the SDK declares each of them

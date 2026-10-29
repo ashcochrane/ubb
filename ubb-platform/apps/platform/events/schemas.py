@@ -9,13 +9,15 @@ Rules:
   it has no honest default (`_TerminalStop.control_family`, #458), or the
   owner has ruled the concept required wherever it is published
   (`UsageRecorded.pricing_status_reason`, #603: required AND nullable, its
-  null a value rather than an absence, `events/migrations/0010`).
+  null a value rather than an absence; stamped by `events/0010` before the
+  cutover squash, #190).
 - Breaking changes (renames, removals, type changes) require a new class —
   except while the pre-live lane is open (ADR-0007 §5), when a rename may be
   made in place with its break recorded in the gate's block and its queued
   payloads migrated (`CustomerStopped` / `CustomerStopCleared`'s `reason` → `reason_code`,
-  #458, `gating/migrations/0014`); and in the same lane a field that published
-  `0` for "nothing applies" may widen in place to nullable (#610, ADR-0013
+  #458, `gating/0014` before the cutover squash); and in the same lane a
+  field that published `0` for "nothing applies" may widen in place to
+  nullable (#610, ADR-0013
   §5). A class's name is its payload's published title, so a class rename is
   a rename too (#554).
 - Producers: construct dataclass -> asdict() -> write to outbox. Id fields
@@ -295,8 +297,9 @@ class UsageRecorded(EventSchema):
     # ⚠ REQUIRED AND NULLABLE, the owner's rule for this concept wherever
     # `pricing_status` is published (`6279966961`) — the second ground of the
     # module's admitted exception to "new fields have defaults": every queued
-    # payload was stamped with null by `events/migrations/0010` before this
-    # field could ask for it. It sits here, among the required fields, because a
+    # payload was stamped with null by `events/0010` (before the cutover squash,
+    # #190) before this field could ask for it. It sits here, among the
+    # required fields, because a
     # dataclass field without a default may not follow one with.
     pricing_status_reason: Annotated[
         Optional[PricingStatusReason],
@@ -699,7 +702,8 @@ class _TerminalStop:
     #: the module's additive rule admits: a closed set has no honest default
     #: (`""` is not one of the four, and an `enum` beside a default outside it
     #: contradicts itself), and every stored row and queued payload was
-    #: stamped by `work/migrations/0027` before this field could ask for it.
+    #: stamped by `work/0027` (before the cutover squash, #190) before this
+    #: field could ask for it.
     control_family: ControlFamily
     customer_id: str = ""
     billing_owner_id: str = ""

@@ -582,11 +582,12 @@ class TestTheRemintNamesTheStateTheRowCarries:
     implementation passes it and fails the other three, which is the whole
     reason the case is four arms rather than a chosen one.
 
-    ⚠ AND THE DISAGREEMENT IS REACHABLE RATHER THAN CONTRIVED. Migration
-    `0008` routed each queued row bearing a retired name on the REASON its own
-    payload carried, defaulting to the spend stop wherever that reason was
-    absent or unrecognised — it states the default and argues that it is the
-    safer of the two errors. This patrol routes on the STATE. A row whose
+    ⚠ AND THE DISAGREEMENT WAS REACHABLE RATHER THAN CONTRIVED. Migration
+    `events/0008` (before the cutover squash, #190) routed each queued row
+    bearing a retired name on the REASON its own payload carried, defaulting
+    to the spend stop wherever that reason was absent or unrecognised — it
+    stated the default and argued that it was the safer of the two errors.
+    This patrol routes on the STATE. A row whose
     recorded reason and recorded state point different ways is one the two
     rules answer differently, and the state is what wins, because the marker
     this event carries claims a repaired delivery of the CURRENT state and

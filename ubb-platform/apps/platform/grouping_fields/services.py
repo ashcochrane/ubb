@@ -60,7 +60,7 @@ class GroupingFieldService:
 
         existing = GroupingField.objects.filter(tenant=tenant, key=key).first()
         if existing is None:
-            # uq_dimension_def_slot is (tenant, slot) — a slot binds to ONE
+            # uq_grouping_field_slot is (tenant, slot) — a slot binds to ONE
             # key at a time, regardless of scope. Check for that collision
             # here (a different key already bound to this slot) so a
             # copy-paste mistake is a 422 GroupingFieldError, not a raw

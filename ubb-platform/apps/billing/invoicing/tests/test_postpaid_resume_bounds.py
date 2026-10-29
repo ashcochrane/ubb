@@ -7,10 +7,15 @@ I3: retries bounded by push_attempts AND wall-clock, then terminal
     failed_permanent + outbox alert.
 I4: belt-and-braces pre-create Invoice.list metadata match.
 I5: owner-first keying (pooled seat -> business).
+
+Before the cutover (#190) this module also drove `invoicing/0005`'s two data
+passes — pooled-seat rows parked as `seat_superseded` first, then every other
+legacy pending/failed row parked as `failed_permanent`; they left with the
+squashed chain. The service belt that supersedes a seat-keyed row today is
+pinned below (`TestOwnerFirstKeying`, `TestSkippedRowRecovery`).
 """
 import contextlib
 import datetime
-import importlib
 import logging
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
@@ -26,6 +31,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.billing.invoicing.models import CustomerUsageInvoice
 from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
+from apps.metering.usage.tests._helpers import a_posting
 
 PS, PE = datetime.date(2026, 6, 1), datetime.date(2026, 7, 1)
 SVC = "apps.billing.invoicing.services.postpaid_service.stripe"
@@ -294,7 +300,7 @@ class TestFrozenLineSnapshot:
     def _events(self, t, c):
         from apps.metering.usage.models import Posting
         for i, (pid, micros) in enumerate([("prod_a", 600_000), ("prod_b", 400_000)]):
-            ev = Posting.objects.create(
+            ev = a_posting(
                 tenant=t, customer=c, idempotency_key=f"i{i}",
                 provider_cost_micros=1, billed_cost_micros=micros, grouping_field_1=pid)
             Posting.objects.filter(id=ev.id).update(
@@ -374,7 +380,7 @@ class TestSnapshotDivergenceTripwire:
 
     def _event(self, t, c, n, micros):
         from apps.metering.usage.models import Posting
-        ev = Posting.objects.create(
+        ev = a_posting(
             tenant=t, customer=c, idempotency_key=f"i{n}",
             provider_cost_micros=1, billed_cost_micros=micros)
         Posting.objects.filter(id=ev.id).update(
@@ -494,7 +500,7 @@ class TestOwnerFirstKeying:
         t = _charge_ready_tenant()
         biz, seat = _pooled_business(t)
         start, end = _prior_month()
-        ev = Posting.objects.create(tenant=t, customer=seat,
+        ev = a_posting(tenant=t, customer=seat,
             idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=1_000_000)
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
@@ -506,40 +512,6 @@ class TestOwnerFirstKeying:
         row = rows.first()
         assert row.customer_id == biz.id and row.status == "pushed"
         assert m.create.call_count == 1  # I1: one invoice, despite two callers
-
-
-@pytest.mark.usefixtures("rail_activated")
-@pytest.mark.django_db
-class TestMigrationRules:
-    def _migration(self):
-        return importlib.import_module(
-            "apps.billing.invoicing.migrations.0005_bounded_resumable_push")
-
-    def _run(self):
-        from django.apps import apps as django_apps
-        mig = self._migration()
-        mig.supersede_pooled_seat_rows(django_apps, None)  # (c) first
-        mig.fail_legacy_rows(django_apps, None)            # (a) then
-
-    def test_legacy_pending_row_becomes_failed_permanent(self):
-        t = _charge_ready_tenant()
-        c = _customer(t)
-        rec = _row(t, c, status="pending")
-        self._run()
-        rec.refresh_from_db()
-        assert rec.status == "failed_permanent"
-        assert rec.last_attempt_error.startswith("migrated: pre-metadata era")
-
-    def test_seat_rule_wins_over_legacy_rule_for_seat_keyed_failed_rows(self):
-        t = _charge_ready_tenant()
-        biz, seat = _pooled_business(t)
-        seat_rec = _row(t, seat, status="failed")
-        biz_rec = _row(t, biz, status="failed")
-        self._run()
-        seat_rec.refresh_from_db(); biz_rec.refresh_from_db()
-        assert seat_rec.status == "skipped" and seat_rec.skip_reason == "seat_superseded"
-        assert seat_rec.last_attempt_error == ""  # rule (a) did not also hit it
-        assert biz_rec.status == "failed_permanent"
 
 
 @pytest.mark.usefixtures("rail_activated")

@@ -226,7 +226,7 @@ Named and quoted, with the 2026-10-08 rulings as the evidence:
 |---|---|
 | §1 the union, through all three consumers | `ubb-platform/api/v1/tests/test_a_book_change_names_its_line.py`; `ubb-sdk/tests/test_a_book_change_names_its_line.py`; the console's `features/pricing/api/book-lines.test.ts` |
 | §1–§2 the act's plan, refusals, provenance and record | `ubb-platform/api/v1/tests/test_an_agreed_price_is_declared_through_the_publish_act.py` |
-| §1 a draft of the old shape is given its line | `ubb-platform/apps/metering/pricing/tests/test_a_draft_declared_before_a_change_named_its_line.py` |
+| §1 a draft of the old shape is given its line (a migration; it and its test went with the cutover squash, #190 — a fresh database holds no draft of the old shape, and every change names its line by the union above) | `ubb-platform/api/v1/tests/test_a_book_change_names_its_line.py` |
 | §2 the window held by the database | `ubb-platform/apps/metering/pricing/tests/test_an_agreed_price_window_is_held_by_the_database.py` |
 | §2 the read | `ubb-platform/api/v1/tests/test_a_books_agreed_prices_are_read.py` |
 | §3 the totals, one fact with the posting | `ubb-platform/api/v1/tests/test_a_charge_reaches_its_units_billed_total_once.py`; end to end for both postures: `test_an_agreed_price_is_charged_end_to_end.py` |

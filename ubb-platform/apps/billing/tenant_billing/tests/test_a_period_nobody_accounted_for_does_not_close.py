@@ -61,6 +61,7 @@ from core.vocabulary import (
     UNIT_TOKEN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 #: A period that has already ended, so the sweeper's own filter selects it.
 JANUARY_OPENS = date(2026, 1, 1)
@@ -138,7 +139,7 @@ def _a_posting(tenant, *, arrived_at, key, **cost):
     """
     customer, _ = Customer.objects.get_or_create(
         tenant=tenant, external_id="c1")
-    posting = Posting.objects.create(
+    posting = usage_helpers.a_posting(
         tenant=tenant, customer=customer, idempotency_key=key,
         billed_cost_micros=1_000_000, **cost)
     Posting.objects.filter(id=posting.id).update(

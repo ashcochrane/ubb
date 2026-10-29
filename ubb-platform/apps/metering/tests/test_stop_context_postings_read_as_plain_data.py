@@ -19,6 +19,8 @@ from core.vocabulary import (
     COSTING_STATUS_KNOWN, PRICING_STATUS_KNOWN, PRICING_STATUS_UNKNOWN,
     TASK_STATUS_COMPLETED,
     USAGE_EVENT_KIND_TASK_CHARGE)
+from apps.metering.usage.tests._helpers import a_posting
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 
 class StopContextPostingsTest(TestCase):
@@ -30,7 +32,7 @@ class StopContextPostingsTest(TestCase):
         customer = customer or self.customer
         columns.setdefault("billed_cost_micros", 1_000)
         columns.setdefault("provider_cost_micros", 500)
-        return Posting.objects.create(
+        return usage_helpers.a_posting(
             tenant=self.tenant, customer=customer, idempotency_key=str(uuid.uuid4()),
             effective_at=effective_at or timezone.now(),
             billing_owner_id=customer.id, stop_context=context, **columns)
@@ -60,7 +62,7 @@ class StopContextPostingsTest(TestCase):
             agreed_price_line_id=uuid.uuid4(), book_version=1,
             resolved_at=work.created_at, charged_at=work.completed_at,
             idempotency_key=str(uuid.uuid4()))
-        projected = Posting.objects.create(
+        projected = a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key=charge.idempotency_key, kind=USAGE_EVENT_KIND_TASK_CHARGE,
             billed_cost_micros=8_000_000, pricing_status=PRICING_STATUS_KNOWN,
@@ -97,7 +99,7 @@ class ChargeThatReachedTest(TestCase):
 
     def _posting(self, amount, *, customer=None, owner=None, status=PRICING_STATUS_KNOWN):
         customer = customer or self.customer
-        return Posting.objects.create(
+        return a_posting(
             tenant=self.tenant, customer=customer, idempotency_key=str(uuid.uuid4()),
             effective_at=timezone.now(), billed_cost_micros=amount,
             pricing_status=status, billing_owner_id=(owner or customer).id)

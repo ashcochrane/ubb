@@ -71,6 +71,7 @@ from core.vocabulary import (
     TASK_OUTCOME_DELIVERED, TASK_STATUS_ACTIVE, TASK_STATUS_KILLED,
     TASK_TYPE_KIND_TASK, TRIGGER_SOURCE_POOL_CROSSING)
 from apps.platform.tenants.tests._rails import RailActivated
+from apps.metering.usage.tests._helpers import a_posting
 
 #: Where the outbox doorbell rings; patched so executed on-commit callbacks
 #: never reach Celery (the seam test's own arrangement).
@@ -515,7 +516,7 @@ class TheChargeIsCountedOnceTest(RailActivated, PoolTestBase):
         # A posting whose customer price UBB could not resolve, on the rails
         # exactly as the recording path leaves one (#351): no amount, and a
         # status that says why.
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="unpriced",
             provider_cost_micros=1_000, billed_cost_micros=None,
             pricing_status=PRICING_STATUS_UNKNOWN,

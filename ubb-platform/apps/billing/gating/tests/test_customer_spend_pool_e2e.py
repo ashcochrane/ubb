@@ -16,8 +16,8 @@ from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.handlers import handle_usage_recorded_billing
-from apps.metering.usage.models import Posting
 from core.vocabulary import AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
+from apps.metering.usage.tests._helpers import a_posting
 
 
 @pytest.mark.django_db
@@ -27,7 +27,7 @@ class TestCustomerSpendPoolEndToEnd:
 
     def _draw(self, tenant, customer, billed, n):
         # Mirror production: the Posting is durably committed before the drawdown handler runs.
-        Posting.objects.create(
+        a_posting(
             tenant=tenant, customer=customer, idempotency_key=f"i{n}",
             provider_cost_micros=billed, billed_cost_micros=billed)
         event = OutboxEvent.objects.create(

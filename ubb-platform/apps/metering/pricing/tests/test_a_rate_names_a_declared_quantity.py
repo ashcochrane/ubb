@@ -5,15 +5,21 @@ test module built to fail today, that slice 3 would replace the name with a
 reference to the declared record the name is a name *of*. This module is where
 that lands. Three separate claims live here and they fail for different reasons:
 
-* **The conversion carries its data.** A representation move under ADR-0007 §1
-  is create, carry, remove — hand-ordered, because the autodetector writes an
-  add-plus-remove that empties what it claims to move and, run without a
-  terminal, never asks. The reverse is RUN here rather than asserted to exist.
+* **A rate references the declaration its name resolves to** — the tenant's
+  own, and the earliest where several carry the name. Until the cutover (#190)
+  this claim was also that the conversion (`pricing/0019`) carried its data,
+  hand-ordered under ADR-0007 §1 with its reverse RUN here; the squash deleted
+  that migration and every row in the pre-reference shape, so its operation
+  list and its data function retired with it, and what the conversion chose is
+  asserted of the lookup a rule written today goes through.
 * **A rate naming a quantity nobody declared is refused**, at the route with a
-  422 that spends nothing, and at the database for every other door.
-* **A rate the conversion could not place is deactivated** — it keeps its row,
-  it keeps its name, it stops resolving, and it is neither deleted nor pointed
-  at somebody else's declaration.
+  422 that spends nothing, and at the database for every other door
+  (`trg_rate_names_a_declaration`, whose reverse is proven centrally in
+  `apps/platform/tests/test_the_database_rules_are_carried.py`).
+* **A rate that names no declaration is deactivated** — the shape the
+  conversion left for a name it could not place: it keeps its row, it keeps
+  its name, it stops resolving, and it is neither deleted nor pointed at
+  somebody else's declaration.
 
 **WHAT DID NOT CHANGE IS ASSERTED TOO, because it is the thing most likely to
 have.** Resolution still matches on the NAME, so a rate that leaves the Event
@@ -30,21 +36,19 @@ already what every case here wants.
 """
 
 import json
-from importlib import import_module
+from datetime import timedelta
 
-from django.db import (IntegrityError, connection, migrations as operations,
-                       transaction)
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError
 from django.test import Client, TestCase
 from django.utils import timezone
 
 from apps.metering.pricing.models import (
     CHANGE_ADD, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, PricingBookPublish,
     Rate)
+from apps.metering.pricing.services.book_service import BookService
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import (
-    cost_book, cost_rate_in_default_book, reconcile_the_rate_table_with,
-    the_pricing_tables_as_this_migration_saw_them)
+    cost_book, cost_rate_in_default_book)
 from apps.platform.audit.models import AuditRecord
 from apps.platform.event_types.models import EventType, Measurement
 from apps.platform.event_types.quantities import declaration_named
@@ -56,16 +60,8 @@ from core.vocabulary import (
     UNIT_TOKEN,
 )
 
-APP_LABEL = "pricing"
-CONVERSION = "0019_the_rates_quantity_name_becomes_a_reference"
-PARENT = "0018_a_rate_takes_effect_from_the_moment_the_tenant_chooses"
 #: The rule the check could not state — who may be INSERTed (#326, review pass).
-DECLARATION_RULE = "0020_a_new_rate_names_a_declaration_or_is_refused"
 DECLARATION_TRIGGER = "trg_rate_names_a_declaration"
-
-#: The column the conversion removed, named once here because the historical
-#: model this module replays is the only thing that still has it.
-TEXT_COLUMN = "measurement_key"
 
 DECLARED_NAME = "input_tokens"
 UNDECLARED_NAME = "typo_tokens"
@@ -80,218 +76,34 @@ UNDECLARED_NAME = "typo_tokens"
 ACTIVE_ROW_UNIQUE = "uq_rate_active_in_cost_book"
 
 
-def _migration():
-    return MigrationLoader(connection).get_migration(APP_LABEL, CONVERSION)
-
-
 def _tenant(name="T"):
     return Tenant.objects.create(name=name, default_currency="usd")
 
 
-class TheConversionIsHandOrderedTest(TestCase):
-    """ADR-0007 §1, read off the migration rather than off its message.
+class ARateReferencesTheEarliestDeclarationOfItsNameTest(TestCase):
+    """WHAT THE CONVERSION CHOSE, asked of the lookup a rule written today uses.
 
-    The rule's failure mode leaves no trace: an `AddField` beside a
-    `RemoveField` produces a column of the right shape holding none of the data,
-    and every assertion about the new field passes straight over it. What
-    separates this migration from that one is not the operations it uses — it
-    uses both — but that something carries the data BETWEEN them, and that the
-    something reverses.
+    Locality means one tenant can carry one name under two Event Types. Which
+    one a rate references changes nothing it prices — the resolver matches on
+    the name — but it must be one deterministic pick, or two rates written for
+    one name in one book stop colliding and the unique constraint over the
+    reference quietly stops refusing what it refuses
+    (`TheRebuiltObjectsStillEnforceWhatTheyDidTest`). The pick is the earliest
+    declaration (`quantities.declaration_named`).
+
+    Until the cutover (#190) this was asserted of `pricing/0019`'s own data
+    function, beside the claim that the live lookup agreed with it. The squash
+    deleted the function; the live half is the one that outlives it, and it is
+    driven here through the act that writes every rule now — a publish.
+
+    **The order is STATED, never left to the clock.** The lookup orders by
+    `created_at` and then by a random UUID, so two inserts landing in one clock
+    tick would make the pick a coin toss. Each case sets both declarations'
+    `created_at` outright, an hour apart, and the second case reverses the
+    insertion order to show the pick follows the timestamp and nothing else.
     """
 
-    def setUp(self):
-        self.operations = _migration().operations
-
-    def _index_of(self, op_type, **match):
-        for index, op in enumerate(self.operations):
-            if isinstance(op, op_type) and all(
-                    getattr(op, key) == value for key, value in match.items()):
-                return index
-        self.fail(f"the conversion carries no {op_type.__name__} {match}")
-
-    def test_the_data_moves_before_the_column_goes(self):
-        """The whole of the rule, as three positions in one list."""
-        self.assertLess(self._index_of(operations.AddField, name="measurement"),
-                        self._index_of(operations.RunPython))
-        self.assertLess(self._index_of(operations.RunPython),
-                        self._index_of(operations.RemoveField, name=TEXT_COLUMN))
-
-    def test_the_objects_over_the_column_go_before_the_data_moves(self):
-        """The ordering that makes the REVERSE work, which is easy to get wrong.
-
-        Operations un-apply in reverse, so dropping the two database objects
-        first is what rebuilds them last — after the reverse has put the names
-        back. Built in the obvious order, the reverse would rebuild a partial
-        unique index over a column every row had just been handed the same empty
-        string in, and the migration would be reversible only against an empty
-        table.
-        """
-        moves_data = self._index_of(operations.RunPython)
-        for dropped in (operations.RemoveIndex, operations.RemoveConstraint):
-            with self.subTest(operation=dropped.__name__):
-                self.assertLess(self._index_of(dropped), moves_data)
-        for rebuilt in (operations.AddIndex, operations.AddConstraint):
-            with self.subTest(operation=rebuilt.__name__):
-                self.assertGreater(self._index_of(rebuilt), moves_data)
-
-    def test_the_reverse_is_not_a_noop(self):
-        """A reverse nobody wrote is a `noop` with better manners.
-
-        That it also RUNS is `TheReverseIsExercisedTest` below; this is the
-        cheap half, and it is here because the expensive half would pass on a
-        migration whose reverse silently did nothing to a table with no rows.
-        """
-        run_python = self.operations[self._index_of(operations.RunPython)]
-        self.assertIsNot(run_python.reverse_code, operations.RunPython.noop)
-
-    def test_every_operation_can_be_reversed(self):
-        for op in self.operations:
-            with self.subTest(operation=type(op).__name__):
-                self.assertTrue(op.reversible)
-
-    def test_the_autodetector_did_not_write_this(self):
-        """The tell, and it is the one thing a reader can check by eye.
-
-        Run without a terminal, `makemigrations` never asks whether a column was
-        renamed — it writes the add-plus-remove and names the functions nothing.
-        Both halves of this migration's data function are named for what they
-        do, which is not proof of authorship but IS the property that goes
-        missing when somebody regenerates the file to fix a conflict.
-        """
-        run_python = self.operations[self._index_of(operations.RunPython)]
-        self.assertEqual(run_python.code.__name__,
-                         "point_each_rate_at_its_declaration")
-        self.assertEqual(run_python.reverse_code.__name__,
-                         "restore_the_name_as_text")
-
-
-class TheReverseIsExercisedTest(TestCase):
-    """Forward and back, against a real database, with rows of both kinds.
-
-    The conversion's callables run against the state they see inside the
-    migration: the two new columns present, the text column not yet dropped. The
-    live table has moved on — that column went in this migration — so `setUp`
-    reconciles the table with the historical model that writes to it, for this
-    test's own duration, exactly as `usage/tests/test_posting_measurement.py`
-    does for the fold it replays.
-
-    IT ALSO DROPS THE CHECK, and that is not a convenience. The constraint
-    describes the world AFTER the conversion: every rate names its quantity
-    exactly once, through one of two columns. The rows this test writes are
-    pre-conversion rows, which name it through neither — that is what the
-    conversion is for. Replaying a migration means reconstructing the table it
-    ran against, and a rule added by the migration is part of what has to come
-    off. PostgreSQL runs DDL inside the transaction this `TestCase` rolls back,
-    so nothing here outlives the test.
-    """
-
-    def setUp(self):
-        loader = MigrationLoader(connection)
-        self.migration = loader.get_migration(APP_LABEL, CONVERSION)
-        # Every node this conversion depends on, read off the migration rather
-        # than named: the parent alone is not enough, because the reference it
-        # adds points into another app and a state that has never heard of that
-        # app cannot resolve it.
-        state = loader.project_state(
-            [tuple(node) for node in self.migration.dependencies])
-        for op in self.migration.operations:
-            if isinstance(op, operations.AddField):
-                op.state_forwards(APP_LABEL, state)
-        self.historical = state.apps
-        self.Rate = self.historical.get_model(APP_LABEL, "Rate")
-        # THE TABLE'S NAME IS PART OF WHAT HAS TO BE RECONSTRUCTED (#367). The
-        # historical model addresses the table this migration ran against, and
-        # that table was renamed two commits later — so every write below lands
-        # on a relation that does not exist until the name is back. Held for the
-        # whole class rather than around one call: the historical model is what
-        # every test here uses, and the live one is used by none of them.
-        self.enterContext(
-            the_pricing_tables_as_this_migration_saw_them(self.migration))
-        self._reconcile(self.Rate)
-        self.run_python = next(op for op in self.migration.operations
-                               if isinstance(op, operations.RunPython))
-
-    def _reconcile(self, model):
-        """Make the live table accept the historical model's writes.
-
-        The reconstruction moved to `_helpers` when #367 gave a second
-        replay the same problem, under the rule that a shared setup helper
-        lives there rather than in whichever module needed it first. Its
-        docstring carries the reasoning this one used to.
-        """
-        reconcile_the_rate_table_with(model)
-
-    def _run(self, code):
-        with connection.schema_editor() as editor:
-            code(self.historical, editor)
-
-    def _rate(self, tenant, name):
-        return self.Rate.objects.create(
-            tenant_id=tenant.id, valid_from=timezone.now(),
-            **{TEXT_COLUMN: name})
-
-    def test_a_declared_name_becomes_the_reference_and_comes_back(self):
-        tenant = _tenant()
-        declaration = declares_a_quantity(tenant, DECLARED_NAME)
-        rate = self._rate(tenant, DECLARED_NAME)
-
-        self._run(self.run_python.code)
-
-        rate.refresh_from_db()
-        self.assertEqual(rate.measurement_id, declaration.id)
-        self.assertEqual(rate.undeclared_measurement_key, "")
-
-        # Blanked first: a reverse that wrote nothing at all would otherwise
-        # pass on the value the forward pass never removed.
-        self.Rate.objects.filter(pk=rate.pk).update(**{TEXT_COLUMN: ""})
-
-        self._run(self.run_python.reverse_code)
-
-        self.assertEqual(
-            self.Rate.objects.values_list(TEXT_COLUMN, flat=True).get(pk=rate.pk),
-            DECLARED_NAME)
-
-    def test_a_name_no_declaration_matches_is_deactivated_and_comes_back(self):
-        """The population the conversion exists to be careful with.
-
-        Three claims in one pass, because they are three ways of getting this
-        wrong: the row is still there (not deleted), it references nothing (not
-        repointed at the declaration sitting next to it), and its name survives
-        — which is both the evidence a tenant needs and the only thing the
-        reverse can rebuild the column from.
-        """
-        tenant = _tenant()
-        declares_a_quantity(tenant, DECLARED_NAME)
-        placed = self._rate(tenant, DECLARED_NAME)
-        deactivated = self._rate(tenant, UNDECLARED_NAME)
-
-        self._run(self.run_python.code)
-
-        self.assertEqual(self.Rate.objects.filter(pk=deactivated.pk).count(), 1)
-        deactivated.refresh_from_db()
-        self.assertIsNone(deactivated.measurement_id)
-        self.assertEqual(deactivated.undeclared_measurement_key, UNDECLARED_NAME)
-        placed.refresh_from_db()
-        self.assertIsNotNone(placed.measurement_id)
-
-        self.Rate.objects.all().update(**{TEXT_COLUMN: ""})
-
-        self._run(self.run_python.reverse_code)
-
-        self.assertEqual(
-            dict(self.Rate.objects.values_list("pk", TEXT_COLUMN)),
-            {placed.pk: DECLARED_NAME, deactivated.pk: UNDECLARED_NAME})
-
-    def test_the_earliest_declaration_wins_where_a_name_is_declared_twice(self):
-        """Locality means one tenant can carry one name under two Event Types.
-
-        Which one a rate ends up referencing changes nothing it prices — the
-        resolver matches on the name — but it must be the same one the live
-        lookup would pick, or two rates written for one name in one book stop
-        colliding and the rebuilt unique constraint quietly stops refusing what
-        it refused before.
-        """
-        tenant = _tenant()
+    def _two_declarations_of_one_name(self, tenant):
         first = declares_a_quantity(tenant, DECLARED_NAME, key="first.call")
         second = Measurement.objects.create(
             event_type=EventType.objects.create(
@@ -299,33 +111,46 @@ class TheReverseIsExercisedTest(TestCase):
                 costing_method=COSTING_METHOD_CALCULATED),
             code=DECLARED_NAME, unit=UNIT_TOKEN,
             source_kind=SOURCE_KIND_CALLER_SUPPLIED)
-        rate = self._rate(tenant, DECLARED_NAME)
+        return first, second
 
-        self._run(self.run_python.code)
+    def _declared_in_this_order(self, earlier, later):
+        moment = timezone.now()
+        Measurement.objects.filter(pk=earlier.pk).update(
+            created_at=moment - timedelta(hours=1))
+        Measurement.objects.filter(pk=later.pk).update(created_at=moment)
 
-        rate.refresh_from_db()
+    def _the_rule_published_today(self, tenant):
+        book = cost_book(tenant, key="openai", provider="openai")
+        BookService.publish_declared(BookService.declare(
+            book, [{"line": LINE_RATE, "kind": CHANGE_ADD,
+                    "measurement_key": DECLARED_NAME, "provider": "openai",
+                    "rate_per_unit_micros": 5}]))
+        return Rate.objects.get(cost_book=book)
+
+    def test_a_rule_published_today_references_the_earliest_declaration(self):
+        tenant = _tenant()
+        first, second = self._two_declarations_of_one_name(tenant)
+        self._declared_in_this_order(first, second)
+
+        rate = self._the_rule_published_today(tenant)
+
         self.assertEqual(rate.measurement_id, first.id)
         self.assertNotEqual(rate.measurement_id, second.id)
         self.assertEqual(
             declaration_named(tenant=tenant, measurement_key=DECLARED_NAME).id,
             rate.measurement_id)
 
-    def test_another_tenants_declaration_is_not_borrowed(self):
-        """The one direction this must never point.
+    def test_the_pick_follows_the_timestamp_not_the_insertion_order(self):
+        tenant = _tenant()
+        first, second = self._two_declarations_of_one_name(tenant)
+        self._declared_in_this_order(second, first)
 
-        A backfill matching on the name alone would hand one tenant's rate the
-        other tenant's declaration, and every later read would be a cross-tenant
-        one. Nothing about the name says who declared it.
-        """
-        mine, theirs = _tenant("mine"), _tenant("theirs")
-        declares_a_quantity(theirs, DECLARED_NAME)
-        rate = self._rate(mine, DECLARED_NAME)
+        rate = self._the_rule_published_today(tenant)
 
-        self._run(self.run_python.code)
-
-        rate.refresh_from_db()
-        self.assertIsNone(rate.measurement_id)
-        self.assertEqual(rate.undeclared_measurement_key, DECLARED_NAME)
+        self.assertEqual(rate.measurement_id, second.id)
+        self.assertEqual(
+            declaration_named(tenant=tenant, measurement_key=DECLARED_NAME).id,
+            second.id)
 
 
 class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
@@ -393,6 +218,26 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
             [change["measurement_key"] for change in response.json()["diff"]],
             [UNDECLARED_NAME])
 
+    def test_a_name_only_another_tenant_declared_is_refused(self):
+        """The one direction a reference must never point.
+
+        Matching on the name alone would hand this tenant's rule the other
+        tenant's declaration, and every later read would be a cross-tenant one;
+        nothing about a name says who declared it. Until the cutover (#190) this
+        was asserted of `pricing/0019`'s backfill, which left such a rate
+        placeless; a rule written today meets the lookup instead, and the
+        lookup is the tenant's own.
+        """
+        elsewhere = _tenant("elsewhere")
+        declares_a_quantity(elsewhere, UNDECLARED_NAME)
+        self.assertIsNone(declaration_named(tenant=self.tenant,
+                                            measurement_key=UNDECLARED_NAME))
+
+        response = self._add_rate(UNDECLARED_NAME)
+
+        self.assertEqual(response.status_code, 422, response.content)
+        self.assertIn(UNDECLARED_NAME, response.json()["detail"])
+
     def test_the_refusal_spends_nothing(self):
         """A refusal placed under a write spends what it refuses (#324).
 
@@ -437,8 +282,10 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
         evaluated against one row and is satisfied by a rate INSERTED with no
         reference and a loose name — which is exactly the defect this slice
         deletes, one `Rate.objects.create` away from the route that refuses it.
-        Review found that; `0020`'s `BEFORE INSERT` trigger is what actually
-        closes it, and the message it raises carries the name that was refused.
+        Review found that; `trg_rate_names_a_declaration`, a `BEFORE INSERT`
+        trigger (`pricing/0020`'s rule, carried into the pricing rules
+        migration at the cutover, #190), is what actually closes it, and the
+        message it raises carries the name that was refused.
         """
         self.assertFalse(
             Measurement.objects.filter(code=UNDECLARED_NAME).exists())
@@ -471,7 +318,9 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
         A placeless rate that lost its name would price nothing and say nothing
         — unreadable, unfixable, and indistinguishable from a row somebody meant
         to leave empty. The trigger cannot hold this: it fires on INSERT, and
-        this row was not inserted, it was left behind by the conversion.
+        this row was not inserted placeless — it was made so by an UPDATE, the
+        shape the conversion once left behind (`pricing/0019`, before the
+        cutover, #190).
         """
         rate = cost_rate_in_default_book(self.tenant,
                                          measurement_key=DECLARED_NAME)
@@ -481,61 +330,6 @@ class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
         with self.assertRaisesRegex(IntegrityError, NAMES_ONE_QUANTITY_CHECK):
             Rate.objects.filter(pk=rate.pk).update(
                 undeclared_measurement_key="")
-
-
-class TheDeclarationTriggerReversesTest(TestCase):
-    """`0020` installs a rule; dropping it puts the table back.
-
-    A reverse nobody has run is a `noop` with better manners — and this one has
-    real work to undo, since a trigger and its function both outlive the
-    migration that made them. Driven the way `0018`'s is: the refusal fires,
-    the reverse runs, the same write is then accepted, and the forward runs
-    again so the class leaves the table as it found it.
-    """
-
-    def setUp(self):
-        self.tenant = _tenant()
-        self.migration = MigrationLoader(connection).get_migration(
-            APP_LABEL, DECLARATION_RULE)
-        (self.rule,) = [op for op in self.migration.operations
-                        if isinstance(op, operations.RunPython)]
-
-    def _run(self, code):
-        """The migration's own DDL, under the table name it was written with.
-
-        Both halves spell the table, and the table was renamed in #367 — so
-        replaying either against the live name is a `ProgrammingError` about a
-        relation that does not exist. Reconstructing the name is the same
-        repair this module already makes to the checks and triggers that
-        arrived after the migration being replayed.
-        """
-        with the_pricing_tables_as_this_migration_saw_them(self.migration):
-            with connection.schema_editor() as editor:
-                code(None, editor)
-
-    def _refused(self):
-        """The write, in its own transaction.
-
-        A failed statement poisons the surrounding one until it is rolled back,
-        and this test issues three — so each refusal is fenced or the second
-        write reports the first one's failure.
-        """
-        with transaction.atomic():
-            Rate.objects.create(tenant=self.tenant,
-                                undeclared_measurement_key=UNDECLARED_NAME)
-
-    def test_the_refusal_goes_away_and_comes_back(self):
-        with self.assertRaisesRegex(IntegrityError, UNDECLARED_NAME):
-            self._refused()
-
-        self._run(self.rule.reverse_code)
-        # Accepted with the rule gone, which is what proves the rule was doing
-        # the refusing rather than something else on this table.
-        self._refused()
-
-        self._run(self.rule.code)
-        with self.assertRaisesRegex(IntegrityError, UNDECLARED_NAME):
-            self._refused()
 
 
 class ADeactivatedRateKeepsItsNameAndPricesNothingTest(TestCase):
@@ -551,8 +345,9 @@ class ADeactivatedRateKeepsItsNameAndPricesNothingTest(TestCase):
         self.rate = cost_rate_in_default_book(
             self.tenant, provider="openai", measurement_key=DECLARED_NAME,
             rate_per_unit_micros=5_000, unit_quantity=1_000_000)
-        # What the conversion leaves behind, written directly because the route
-        # can no longer produce it — which is the point of the refusal above.
+        # The shape the conversion left behind for a name it could not place
+        # (`pricing/0019`, before the cutover, #190), written directly because
+        # the route cannot produce it — which is the point of the refusal above.
         Rate.objects.filter(pk=self.rate.pk).update(
             measurement=None, undeclared_measurement_key=UNDECLARED_NAME)
         self.rate.refresh_from_db()

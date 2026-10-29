@@ -69,10 +69,12 @@ concept_fields:
     # Values a `closed` concept still DECLARES but which can never occur: no
     # producer may write one and the published contract does not advertise it.
     #
-    # The case that forced it is `audit_action`'s cutover entry (R10-W4, #190
-    # ruling 6354381879): the ruling keeps the registration until the cutover
-    # retires it, and a closed public concept advertises only values that can
-    # occur. The exclusion has to live HERE rather than in the backend, because
+    # The case that forced it was `audit_action`'s cutover entry (R10-W4, #190
+    # ruling 6354381879): the ruling kept the registration until the cutover
+    # retired it, and a closed public concept advertises only values that can
+    # occur. The cutover deleted that registration and its exclusion together
+    # (#190, ADR-0026); the mechanism is general (ADR-0024 §2) and stays for the
+    # values still withheld. The exclusion has to live HERE rather than in the backend, because
     # the Django-free contracts suite and the spec export must learn it from the
     # same place the backend does. Every value listed must be one of `values`,
     # and at least one value must remain.
@@ -88,8 +90,8 @@ concept_fields:
     #     `retired_aliases` entry, refused rather than kept answering;
     #   * it is never a parking place for a planned value: each one is a
     #     legitimate state with a recorded reachability proof beside it, and
-    #     the exact set is pinned with its reasons. The cutover audit action is
-    #     the temporary, W6-owned case; W6 removes it with its registration.
+    #     the exact set is pinned with its reasons. The cutover audit action was
+    #     the temporary case; the cutover removed it with its registration.
     - withheld_values
 
 # One entry per kind in ADR-0008 §2's table. `requires` and `forbids` are the

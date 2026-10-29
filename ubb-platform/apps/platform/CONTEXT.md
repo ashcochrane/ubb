@@ -64,8 +64,8 @@ enabled activation of its rail for its environment: a sandbox's is `test`, every
 `external` instead. Disabling a rail stops new entry and touches no tenant already in a money
 mode. One domain rule answers every door, by name (`payment_rail_not_activated`), and the
 database holds the writes that skip it.
-(`apps/platform/tenants/models.py:refuse_a_money_mode_without_its_rail`;
-`tenants/migrations/0030`)
+(`apps/platform/tenants/models.py:refuse_a_money_mode_without_its_rail`; the trigger
+`trg_tenant_money_mode_needs_its_rail`)
 
 **enforcement_mode**:
 The single Tier-2 spend-control switch on a tenant — two positions: `off` (byte-for-byte
@@ -369,8 +369,10 @@ _Avoid_: the pre-#155 noun for this axis — the registry, its records and its c
 one now, and since #541 so do the published components (`GroupingFieldIn`/`Out`,
 `GroupingFieldRegistryIn`/`Out`), the service and its error (`GroupingFieldService`,
 `GroupingFieldError`) and the audit `resource_type` (`grouping_field_registry`), held by a
-case-insensitive contract gate. Three historical constraint names and `TaskType`'s required-fields
-column still spell the old noun, handed to the cutover's migration squash.
+case-insensitive contract gate. The last stored spellings of the old noun went with the cutover's
+migration squash (#190): the three constraints are `uq_grouping_field_key`, `uq_grouping_field_slot`
+and `uq_grouping_field_value`, the index is `idx_grouping_value_tenant_key`, and `TaskType`'s
+required-fields column is `required_grouping_fields`.
 
 **Grouping field value**:
 One distinct value ever admitted under a declared key, one row per (tenant, key, value). It is what
@@ -472,7 +474,8 @@ yet: omitting it on one that does leaves the regime alone, because a client that
 the field must not re-sell every `fixed` kind of work per event on its next idempotent PUT.
 (ADR-0012, which carries the four-reason argument and names every test that holds it;
 `apps/platform/work/models.py:TaskType.pricing_mode`;
-`work/migrations/0021_a_kind_of_work_declares_how_it_is_sold.py`; registry concept `pricing_mode`;
+the triggers `trg_task_type_declared_transitions` and
+`trg_task_containment_shares_the_pricing_regime`; registry concept `pricing_mode`;
 `apps/platform/work/tests/test_a_kind_of_work_declares_how_it_is_sold.py:TheRegimeIsFrozenTest`;
 `apps/platform/work/tests/test_containment_shares_the_pricing_regime.py`)
 _Avoid_: reading this as a third `pricing_method` (`apps/metering/CONTEXT.md`). That column says
@@ -503,7 +506,7 @@ posting (`TaskService.take_up_a_charge`), and never to its supplier cost, event 
 count — so a run's totals read as revenue and as work, never mixed.
 (`apps/platform/work/models.py:Task.agreed_price_micros`, `.agreed_price_line_id` and
 `.agreed_price_book_version`; `ck_task_agreed_price_and_its_provenance_move_together`;
-`work/migrations/0022_an_agreed_price_is_pinned_before_the_work_runs.py`;
+`ck_task_agreed_price_only_on_a_whole_fixed_unit`;
 `apps/platform/work/tests/test_containment_shares_the_pricing_regime.py:OnlyAWholeUnitOfWorkCarriesAnAgreedPriceTest`,
 whose `test_a_resolution_without_the_version_that_answered_is_refused` drives the third member)
 _Avoid_: reading a null as *not yet resolved*. It means the unit of work is priced per event, or is
@@ -539,7 +542,7 @@ delivered unit of work sold at one agreed price is charged is ADR-0013.
 (`active` is the one unresolved value; a terminal state never moves), `parent_id` and `task_type`
 FROZEN (never re-parented, never re-typed), `outcome_reason` and `reason_detail` SET_ONCE (written by
 the write that ends the work, from nothing, and never again) — and `trg_task_declared_transitions`
-(`work/migrations/0028`) refuses any other move through every door: `save()`,
+refuses any other move through every door: `save()`,
 `QuerySet.update()`, raw SQL, an admin form. Every other column keeps moving after the work ends,
 because a stop is a signal point and not a wall.
 (`apps/platform/work/tests/test_a_unit_of_work_is_born_once_and_ends_once.py`)
@@ -606,8 +609,9 @@ deadline**, which keep slice 5's published names (ADR-0014 §3 records the depar
 §3.4's spellings). Its cost form is the unit's COGS ceiling (`task_cogs_ceiling_micros`) —
 denominated in provider cost (what the work burns), never billed markup; declared on the kind of
 work as a figure or as `uncapped: true`, one and never neither or both, held as a CHECK at the
-database (#453; the migration set `uncapped` on every declaration whose ceiling was null, because
-that is what the tree meant by null); with the tenant's two default rungs
+database as `ck_task_type_ceiling_or_uncapped` (#453; its migration, `work/0024` before the cutover
+squash, #190, set `uncapped` on every declaration whose ceiling was null, because that is what the
+tree meant by null); with the tenant's two default rungs
 (`Tenant.default_task_cogs_ceiling_micros` and `default_subtask_cogs_ceiling_micros`, kernel
 columns since #453, having left billing's risk row) reaching only work with no declared kind, and
 a start able to request lower, never higher; snapshotted onto the unit at creation under the same
@@ -726,7 +730,9 @@ on the lanes that apply a stop and the payload's two fields;
 `control_family` pair, stamped on the flip and copied down by the cascade (#458);
 `apps/billing/gating/tests/test_patrol_pins.py:TestTheRemintNamesTheStateTheRowCarries` holds the
 one place *the name is the state entered* is falsifiable, the re-mint;
-`apps/platform/events/tests/test_the_two_terminal_events_become_four.py` holds the migration)
+`apps/platform/events/tests/test_the_catalogue_publishes_exactly_the_registrys_names.py` holds
+the end state the split left — every name the registry declares is published and no retired one
+is; the split's own migration and its test module left with the cutover squash, #190)
 **The unit's ceiling rides all four as `task_cogs_ceiling_micros`, null where none applies**
 (#610, ADR-0013 §5: not applicable, never zero). A window or a customer-wide stop reaches uncapped
 work too, and the payload said `0` there — a ceiling of nothing, which no ceiling can be. The fresh
@@ -825,7 +831,7 @@ the unit** — it is running, or its own caller ended it, whose word is the **Ou
 read only on a `killed` or `expired` unit. They are **UBB's own record**: four columns on the unit
 (`reason_code`, `trigger_source`, `control_family`, `control_id`) that nothing a caller sends
 reaches — the caller's `metadata` is its own bag, kept as written and never read for them — held
-SET_ONCE by the database (`trg_task_declared_transitions`, widened by `work/migrations/0029`). A
+SET_ONCE by the database (`trg_task_declared_transitions`, widened to them by R10-W2). A
 stop UBB applies with no cause to record — the hourly safety net's silent expiry — records none,
 so it reads null on all three whatever the caller planted. Contained work stopped with its parent says
 `parent_killed` or
@@ -879,7 +885,8 @@ columns is what makes that a property of the database: dropping it entirely was 
 rejected, because it is the guard that stops any tenant getting an immortal task, counted as active
 and holding a prepaid reservation forever. A **Ceiling** on the `time` basis: its stop is
 `reason_code: absolute_deadline`, the registry's word since #457 — until then it travelled under
-this backend's own spelling, and `work/migrations/0026` rewrote every stored row that carried it.
+this backend's own spelling, and #457 rewrote every stored row that carried it (`work/0026`, before
+the cutover squash, #190).
 (`apps/platform/work/queries.py:expiry_windows`)
 
 **Stop reason (`reason_code`)**:
@@ -907,12 +914,12 @@ event**.
 (`apps/platform/work/reasons.py`; registry concept `reason_code`)
 _Note_: the column that carries it on the row is the concept's own name — `reason_code`,
 `models.STOP_CAUSE_KEY`; it was a key of the row's `metadata`, the caller's own bag, until R10-W2
-moved it and its three siblings onto UBB's own columns (`work/migrations/0029`). It was spelled for
-a kill until #457, when `work/migrations/0026` moved
-every stored unit row and queued payload onto it, key and values, in one `RunPython` with a
-stated reason (`apps/platform/work/tests/test_the_stored_stop_cause_is_migrated_once.py`); the
-column carries an **Expired (task)**'s reason too, and every reader gates on the state first. All
-three cascades record a reason, and they are not one concept: a close cascade writes
+moved it and its three siblings onto UBB's own columns (`work/0029`). It was spelled for a kill
+until #457, which moved every stored unit row and queued payload onto it, key and values, in one
+`RunPython` with a stated reason (`work/0026`). Both migrations, and the test module that drove
+`work/0026`, left with the cutover squash (#190); a fresh database holds no row in the older shape.
+The column carries an **Expired (task)**'s reason too, and every reader gates on the state first. All three cascades
+record a reason, and they are not one concept: a close cascade writes
 `outcome_reason: parent_closed` (caller-supplied, so not in this vocabulary at all), while the
 kill and expiry cascades write `parent_killed` and `parent_expired` under this key — each beside
 `trigger_source: parent_cascade`, the mechanism that says HOW the row stopped.
@@ -1056,22 +1063,25 @@ routes (a route rename must never rewrite history's vocabulary) AND from the web
 audit action and a webhook event are independent names in independent contracts). **The registry
 is its one authority** (`domain-vocabulary/concepts/governance.yaml`, `audit_action`, R10-W4):
 `actions.py` derives the recordable set from the generated constants and every production writer
-names an action by reference. `record()` refuses an unregistered name, and a **withheld** one.
+names an action by reference. `record()` refuses an unregistered name.
 (`apps/platform/audit/actions.py:AUDIT_ACTIONS`)
 **Withheld value**: a legitimate value the registry keeps declared while no legal production
 transition creates it, so no writer emits it and the contract does not advertise it
 (`withheld_values`, ADR-0024 §2). It is never a compatibility alias and never a parking place for a
-planned value; the first writer un-withholds it in the same commit. Four today:
-`system.preproduction_model_cutover` (no opening row is ever written, #190 `6354381879`; `record()`
-refuses it by name, and W6 deletes the registration and the exclusion together), a platform-fee
-invoice's `void` and `uncollectible`, and a referral programme's `paused`.
+planned value; the first writer un-withholds it in the same commit. Four today: a platform-fee
+invoice's `void` and `uncollectible` (`tenant_invoice_status`), a referral programme's `paused`
+(`referral_program_status`), and a measure's `not_applicable` (`measure_status`). No audit action
+is withheld: the one that was, `system.preproduction_model_cutover`, was deleted by the cutover
+together with the exclusion that kept it unadvertised (no opening row is ever written, #190
+`6354381879`; ADR-0026).
 **⚠ Additive-only governs RENAMES, and deleting an action whose ACT has ceased to exist is not one.**
 Slice 4 removed seven names on that distinction, and it is worth stating because "additive-only"
 reads as forbidding it: a rename carries an act forward under a new spelling and breaks a reader
 watching for the old one, whereas these seven had no successor because the thing they recorded stopped
 happening — a book kind that no longer exists, an assignment record that was deleted, an immediate
 reprice that became a publish. **None of it drew on the one-time pre-production registry reset**,
-which #154 §4.2 defines and #155 §14 allocates to slice 8 for the actions that genuinely are renamed.
+which #154 §4.2 defines and #155 §14 allocated to slice 8 for the actions that genuinely are renamed;
+that exception is spent, and after the cutover (#190) the additive-only rule applies unchanged.
 What makes the deletion safe is a mechanism rather than care: `record()` refuses an unregistered name,
 so a route still writing a deleted action fails loudly, which forces the route and the registry into
 one commit and leaves no window in which a dead action is written. **R10-W4 deleted eight more on the

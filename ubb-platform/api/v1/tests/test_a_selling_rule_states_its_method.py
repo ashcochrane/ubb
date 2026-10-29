@@ -5,14 +5,17 @@
 read exactly as a direct price of zero. The owner's ruling 4 (2026-10-27) went
 further than publishing what a null meant: the null that MEANT
 `direct_event_price` is gone from storage. Every rule in a Pricing Book states
-its method, a cost book's rate states none, and the database holds both halves.
+its method, a cost book's rate states none, and the database holds both halves
+(`ck_rate_a_selling_rule_states_its_method`, driven through every door by
+`TheTableHoldsTheRuleTest`). The backfill that stated the method on rules
+stored before the ruling (`pricing/0034`) was run here through the executor
+until the cutover (#190) deleted it with every such row.
 """
 import json
 from pathlib import Path
 from types import SimpleNamespace
 
 from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, TestCase
 
 from api.v1.tests._helpers import a_tenant
@@ -20,8 +23,7 @@ from apps.metering.pricing.models import (
     STATES_ITS_SELLING_METHOD_CHECK, Rate)
 from apps.metering.pricing.services.pricing_service import _priced_by_rules
 from apps.metering.pricing.tests._helpers import (
-    cost_rate_in_default_book, database_rules_guarding, rate_in_default_book,
-    the_book_holding)
+    cost_rate_in_default_book, rate_in_default_book, the_book_holding)
 from apps.platform.event_types.tests._helpers import declares_a_quantity
 from core.vocabulary import (
     COSTING_STATUS_KNOWN, PRICING_METHOD_DIRECT_EVENT_PRICE,
@@ -245,53 +247,3 @@ class TheResolverRefusesARuleWithNoMethodTest(TestCase):
                 [SimpleNamespace(pricing_method=PRICING_METHOD_DIRECT_EVENT_PRICE)],
                 5, COSTING_STATUS_KNOWN)[:2],
             (5, PRICING_METHOD_DIRECT_EVENT_PRICE))
-
-
-class TheBackfillStatesTheMethodTest(TestCase):
-    """`pricing/0034` run for real, through the executor and back."""
-
-    BEFORE = ("pricing", "0033_rules_charges_and_cost_books_are_usd_only")
-    AFTER = ("pricing", "0034_a_selling_rule_states_its_method")
-
-    def _migrate_to(self, target):
-        with connection.cursor() as cursor:
-            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-        MigrationExecutor(connection).migrate([target])
-
-    def tearDown(self):
-        self._migrate_to(self.AFTER)
-
-    def _method(self, rate):
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT pricing_method FROM ubb_rate WHERE id = %s",
-                           [str(rate.pk)])
-            return cursor.fetchone()[0]
-
-    def test_a_null_on_a_selling_rule_becomes_a_stated_direct_price(self):
-        tenant, _ = a_tenant("Old")
-        declares_a_quantity(tenant, QUANTITY)
-        selling = rate_in_default_book(tenant, measurement_key=QUANTITY)
-        margin = rate_in_default_book(
-            tenant, provider="m", measurement_key=QUANTITY,
-            pricing_method=PRICING_METHOD_MARGIN_OVER_COST,
-            rate_per_unit_micros=0, fixed_micros=0)
-        cost = cost_rate_in_default_book(tenant, measurement_key=QUANTITY)
-        triggers = sorted(name for name, _, _ in database_rules_guarding("ubb_rate"))
-
-        self._migrate_to(self.BEFORE)
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE ubb_rate SET pricing_method = NULL "
-                           "WHERE id = %s", [str(selling.pk)])
-        self._migrate_to(self.AFTER)
-
-        self.assertEqual(self._method(selling), PRICING_METHOD_DIRECT_EVENT_PRICE)
-        self.assertEqual(self._method(margin), PRICING_METHOD_MARGIN_OVER_COST)
-        self.assertIsNone(self._method(cost))
-        # No trigger was lifted for the step, and none went missing.
-        self.assertEqual(
-            sorted(name for name, _, _ in database_rules_guarding("ubb_rate")),
-            triggers)
-        self.assertEqual(len(triggers), 2)
-
-        self._migrate_to(self.BEFORE)
-        self.assertEqual(self._method(selling), PRICING_METHOD_DIRECT_EVENT_PRICE)

@@ -1,13 +1,17 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+# PINNED EXACTLY, beside the release recipe's whole build environment
+# (release/build-requirements.txt, hashed; #190): a wheel built from the same
+# tag by the same backend version is the same bytes.
+requires = ["setuptools==80.9.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ubb-sdk"
-# v3.0 — the coordinated breaking cut (#85): generated core (#84) + the
-# problem+json error model (#78) ship together in one tenant migration. Kept in
-# lockstep with ubb.__version__ (pinned by tests/test_release.py).
-version = "3.0.0"
+# v4.0.0 — the release cut at the cutover (#190, ADR-0026): the first SDK
+# release ever tagged (`sdk-v4.0.0`). 3.0.0 was this tree's pre-release number
+# and was never released or tagged. Kept in lockstep with ubb.__version__
+# (pinned by tests/test_release.py).
+version = "4.0.0"
 description = "Python SDK for the Usage-Based Billing platform"
 requires-python = ">=3.10"
 # attrs backs the generated transport+DTO core (ubb/_core); the pinned generator

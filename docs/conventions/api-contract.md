@@ -186,7 +186,7 @@ before the console does.
 Mutations whose replay would move money or write usage carry a **required
 `idempotency_key` body field backed by database uniqueness** (no
 `Idempotency-Key` header in v1): debit, credit, withdraw, refund, grants
-(create/void), top-ups (tenant + widget — `uq_topup_attempt_idempotency`),
+(create/void), top-ups (tenant + widget — `uq_top_up_attempt_idempotency`),
 all usage ingestion (Posting uniqueness at record/settle), and registering
 a unit of work (`POST /tasks` — `uq_task_idempotency_key`, unique per
 customer, claimed permanently; #410). A replay is a no-op returning the

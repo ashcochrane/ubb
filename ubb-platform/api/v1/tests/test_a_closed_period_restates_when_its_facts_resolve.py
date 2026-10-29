@@ -33,13 +33,13 @@ from django.utils import timezone
 from api.v1.tests._helpers import a_tenant, ask, measure_of
 from apps.metering.pricing.services.cost_settlement import (
     Settlement, settle_provider_cost)
-from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from core.cost_totals import UNRESOLVED_EVENT_COUNT_KEY
 from core.vocabulary import (
     ANALYTICS_MEASURE_GROSS_MARGIN, ANALYTICS_MEASURE_SUPPLIER_COGS,
     COSTING_STATUS_UNRESOLVED, MEASURE_STATUS_INCOMPLETE, MEASURE_STATUS_KNOWN,
     PRICING_STATUS_KNOWN, UNRESOLVED_REASON_COST_RATE_MISSING)
+from apps.metering.usage.tests._helpers import a_posting
 
 #: The three money measures this module asks for. The count measure is left out
 #: deliberately: a number of records does not move when a cost resolves, so
@@ -73,7 +73,7 @@ class TestAPeriodOutsideTheRepairHorizon:
                                                 external_id="c1")
         self.opens = six_months_back(timezone.now().date())
         self.closes = (self.opens + datetime.timedelta(days=32)).replace(day=1)
-        self.posting = Posting.objects.create(
+        self.posting = a_posting(
             tenant=self.tenant, customer=self.customer, idempotency_key="i1",
             event_type="chat.completion", provider="openai",
             billed_cost_micros=BILLED, pricing_status=PRICING_STATUS_KNOWN,

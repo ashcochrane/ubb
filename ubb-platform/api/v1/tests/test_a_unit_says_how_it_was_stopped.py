@@ -20,10 +20,10 @@ These facts were keys of `metadata` until R10-W2 — the bag a caller fills at
 the start — so a caller could plant every one of them, and only each stop
 path's scrub stood between the plant and the read. They are UBB's own columns
 now, which nothing a caller sends reaches, held write-once by the database
-(`work/migrations/0029`). The last class below plants every stop-looking key
-through the public start and drives each path a unit can take: a real stop
-answers UBB's facts, every other path answers null, and the caller's bag is
-kept exactly as written.
+(`trg_task_declared_transitions`). The last class below plants every
+stop-looking key through the public start and drives each path a unit can
+take: a real stop answers UBB's facts, every other path answers null, and the
+caller's bag is kept exactly as written.
 
 This module says "a unit of work", "contained work" and "the work" throughout,
 on the retired-sense rule the registry records for the plural.

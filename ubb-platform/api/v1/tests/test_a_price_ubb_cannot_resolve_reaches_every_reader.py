@@ -62,6 +62,7 @@ from core.vocabulary import (
     PRICING_STATUS_WAIVED,
 )
 from apps.platform.tenants.tests._rails import activate_the_rail
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 KNOWN_PRICE_MICROS = 3_000_000
 
@@ -81,7 +82,7 @@ def _posting(tenant, customer, key, *, status=PRICING_STATUS_KNOWN,
         amount, reason = None, NOT_APPLICABLE_REASON_FIXED_TASK_PRICING
     else:  # waived, unknown
         amount, reason = None, None
-    return Posting.objects.create(
+    return usage_helpers.a_posting(
         tenant=tenant, customer=customer, idempotency_key=key,
         billed_cost_micros=amount, pricing_status=status,
         not_applicable_reason=reason, **kwargs)

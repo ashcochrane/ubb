@@ -50,20 +50,20 @@ export const RECEIPT_SUBJECT_EXPLANATIONS = {
  * Whether a receipt explains a Charge — the one question the page asks of
  * the subject, asked here once.
  *
- * `pricing_receipt_subject_type` is nullable on the wire — the serialiser
- * reads it out of the record, and a record in the older, unsectioned shape
- * names no subject — and a value the registry has never seen is legal on the
- * wire (ADR-003). Neither is a Charge.
+ * `pricing_receipt_subject_type` is required and never null on every
+ * response that publishes a receipt (#190): every receipt states what it
+ * explains. A value the registry has never seen is still legal on the wire
+ * (ADR-003), and it is not a Charge.
  */
-export function explainsACharge(subject: string | null | undefined): boolean {
+export function explainsACharge(subject: string): boolean {
   return subject === "charge";
 }
 
 /**
- * The sentence for the subject a payload states, or for one it does not:
- * an unstated or unfamiliar subject reads as the ordinary case.
+ * The sentence for the subject a payload states: an unfamiliar subject reads
+ * as the ordinary case.
  */
-export function receiptExplanation(subject: string | null | undefined): string {
+export function receiptExplanation(subject: string): string {
   return explainsACharge(subject)
     ? RECEIPT_SUBJECT_EXPLANATIONS.charge
     : RECEIPT_SUBJECT_EXPLANATIONS.usage_event;

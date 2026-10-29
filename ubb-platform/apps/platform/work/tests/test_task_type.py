@@ -37,7 +37,7 @@ class TestTaskType:
                                 task_cogs_ceiling_micros=5_000_000,
                                 silence_window_seconds=1200,
                                 absolute_deadline_seconds=7200,
-                                required_dimensions=["region"])
+                                required_grouping_fields=["region"])
         assert task_type_policy(t.id, "invoice_batch", "task") == {
             "key": "invoice_batch",
             "pricing_mode": PRICING_MODE_EVENT_PRICED,

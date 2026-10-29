@@ -1,9 +1,10 @@
 # ubb-sdk — Quick-start guide
 
-> **Upgrading from v2.x?** v3.0 is a single coordinated breaking release
-> (problem+json errors + a generated typed core). Read
-> **[MIGRATION.md](./MIGRATION.md)** for every breaking edge, and
-> **[CHANGELOG.md](./CHANGELOG.md)** for the release stamp.
+> **v4.0.0 is this SDK's first release** — tagged `sdk-v4.0.0` and built
+> reproducibly from the tag (`release/build_wheel.py`). Integrated against an
+> earlier build of this tree (its pre-release number was 3.0.0, never released)
+> or against v2.x? Read **[MIGRATION.md](./MIGRATION.md)** for every breaking
+> edge, and **[CHANGELOG.md](./CHANGELOG.md)** for the release stamp.
 
 Two journeys covered here:
 - **Journey 1** — Cost attribution: get per-customer COGS in under 20 lines (metering only, no Stripe required).

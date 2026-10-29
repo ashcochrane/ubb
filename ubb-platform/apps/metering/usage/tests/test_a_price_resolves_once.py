@@ -68,8 +68,7 @@ whole subject, and it is why every case in that module is an `INSERT`.
 import re
 
 from django.apps import apps
-from django.db import IntegrityError, connection, migrations, transaction
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 
 from apps.metering.usage.models import Posting
@@ -107,8 +106,6 @@ TABLE = Posting._meta.db_table
 #: happened to hand back.
 TRIGGER = "trg_posting_price_transitions"
 FUNCTION = "ubb_posting_price_transitions"
-
-MIGRATION = "0039_a_price_resolves_once_and_the_table_holds_it"
 
 
 _posting = committed_posting
@@ -328,9 +325,10 @@ class OnlyAnUnknownPriceResolvesTest(TransitionRefusalMixin, TestCase):
         would also refuse a `not_applicable` row with no reason.
 
         ⚠ The one rewrite this rule ever admitted was `usage/0047`'s, under a
-        one-time lift of this trigger (ADR-0021 §5); that it is enabled and
-        refusing again afterwards is pinned in
-        `test_the_regime_decides_why_a_price_does_not_apply.py`.
+        one-time lift of this trigger (ADR-0021 §5), before the cutover (#190).
+        That the rule is installed enabled is pinned in
+        `test_the_regime_decides_why_a_price_does_not_apply.py`; that it
+        refuses the rewrite through every door is this case.
         """
         self._refused_by_the_trigger(
             _not_applicable, RESOLVE_ONCE, **{REASON: None})
@@ -382,8 +380,9 @@ class TheStatusReasonMovesOnlyWithTheResolutionTest(TransitionRefusalMixin,
     """`pricing_status_reason` is held as the status beside it is (#603).
 
     It says which kind of `unknown` a price is — `negative_price_unsupported`
-    where UBB calculated a price the money rails cannot carry — and migration
-    `0046` widened this trigger to it. A reason written onto a row after the
+    where UBB calculated a price the money rails cannot carry — and
+    `trg_posting_price_transitions` holds it beside the pair (widened to it by
+    usage/0046 before the cutover, #190). A reason written onto a row after the
     fact, or cleared in place, would rewrite why the system said a price was
     unknown, on a row a tenant may already have been shown; and a known price
     carrying one would say both that it has a price and why it has none.
@@ -517,49 +516,11 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
         self.assertFalse(tgtype & (1 << 2), "fires on INSERT")
         self.assertFalse(tgtype & (1 << 3), "fires on DELETE")
 
-    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
-        """Forward and back, against a real database, with a real refusal.
-
-        `docs/conventions/django-patterns.md` asks for a reverse *"that a test
-        actually runs"*, and the reason is exactly this migration's shape: a
-        `RunPython` whose two halves are DDL strings, where a typo in the
-        reverse is invisible until the day somebody needs it and no other test
-        will ever execute that branch.
-
-        It is asserted by BEHAVIOUR at both ends rather than by counting
-        catalogue rows: with the rule reversed out, a write it refuses is
-        admitted; with it re-applied, the same write is refused again. Postgres
-        runs DDL inside the transaction this `TestCase` rolls back, so all of it
-        leaves with the test and no other test sees a table without its rule.
-
-        **The other two rules are left standing throughout**, and the set is
-        asserted at both ends, so a reverse that took a neighbouring rule down
-        with it would fail here rather than somewhere unrelated.
-        """
-        migration = MigrationLoader(connection).get_migration("usage", MIGRATION)
-        run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython))
-        resolved = _resolved()
-
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        self.assertEqual(_triggers_on_the_table(),
-                         {"trg_posting_declared_transitions",
-                          "trg_posting_receipt_sealing",
-                          "trg_posting_kind_frozen"})
-        _through_the_queryset(resolved, **{PRICE: 999})
-        resolved.refresh_from_db()
-        self.assertEqual(getattr(resolved, PRICE), 999)
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        self.assertEqual(_triggers_on_the_table(),
-                         {"trg_posting_declared_transitions", TRIGGER,
-                          "trg_posting_receipt_sealing",
-                          "trg_posting_kind_frozen"})
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                _through_the_queryset(resolved, **{PRICE: 1_000})
+    # The rule's reverse — uninstalled, a correction it refuses lands;
+    # reinstalled, the same write is refused again — was asserted here against
+    # usage/0039's own installer until the cutover (#190). It is proven for all
+    # 21 rules at once now, through `usage/0002_the_database_rules`, in
+    # `apps/platform/tests/test_the_database_rules_are_carried.py`.
 
     def test_the_rule_names_the_status_values_the_registry_declares(self):
         """The one place a token is spelled outside `domain-vocabulary/`.

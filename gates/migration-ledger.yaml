@@ -40,7 +40,7 @@
 
 version: 1
 
-entries:
+entries: []
   # --- G9: `db_table == canonical(model_name)` ------------------------------
   #
   # The pricing inversion — two models, each sitting on the other's table.
@@ -79,17 +79,15 @@ entries:
   #
   # An owner slice may move EARLIER but never later, so any slice that touches
   # subscriptions before the cutover may take this and pull the rename forward.
-  - id: g9-customer-subscription-item-table-abbreviated
-    gate: G9
-    site: ubb-platform/apps/subscriptions/models.py::CustomerSubscriptionItem
-    expected: ubb_customer_subscription_item
-    found: ubb_customer_sub_item
-    owner_slice: slice_8
-    reason: >-
-      `sub` is a short form beside a long form, which ADR-0006 §2 refuses. No
-      domain slice touches this model; slice 8's squash creates the table under
-      the correct name (#155 §11.1, and §5.5 for why no rename migration is
-      owed).
+  #
+  # ⚠ PAID BY THE CUTOVER (#190, W6), AND IT WAS THE LEDGER'S LAST ENTRY. The
+  # fresh initial set creates the table as `ubb_customer_subscription_item`, so
+  # `g9-customer-subscription-item-table-abbreviated` (found
+  # `ubb_customer_sub_item`) went from here and from `test_model_naming.py`'s
+  # copy in the commit that discharged it. No rename migration was written: the
+  # squash has no prior table to rename (#155 §5.5). The ledger is at zero, which
+  # is G22's first zero; G9 still runs over every model, and its negative
+  # controls still show it flags a planted mismatch.
 
   # --- G11: `_micros` means millionths of a currency unit ------------------
   #

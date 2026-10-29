@@ -32,7 +32,6 @@ from django.test import Client, TestCase
 
 from api.v1.tests._helpers import a_tenant, measure_of
 from api.v1.tests.test_the_one_economic_query import describe
-from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.work.models import Task
 from apps.referrals.models import ReferralProgram, Referral, Referrer
@@ -45,6 +44,7 @@ from core.vocabulary import (
     ANALYTICS_MEASURE_CUSTOMER_REVENUE, ANALYTICS_MEASURE_SUPPLIER_COGS,
     COSTING_STATUS_KNOWN,
     PRICING_STATUS_KNOWN, RECOGNITION_METHOD_ON_RECEIPT, TASK_STATUS_COMPLETED)
+from apps.metering.usage.tests._helpers import a_posting
 
 UTC = dt_timezone.utc
 #: The frozen clock: the 18th of March, mid-afternoon UTC. Today is the 18th.
@@ -95,7 +95,7 @@ class EconomicQuery(_Probe):
     path = "/api/v1/metering/analytics/economics"
 
     def seed(self, label, instant):
-        Posting.objects.create(
+        a_posting(
             tenant=self.case.tenant, customer=self.case.customer,
             idempotency_key=f"econ-{label}", effective_at=instant,
             provider="openai", event_type="chat.completion",
@@ -160,7 +160,7 @@ class BusinessRollup(_Probe):
         return f"/api/v1/margin/business/{self.case.business.external_id}"
 
     def seed(self, label, instant):
-        Posting.objects.create(
+        a_posting(
             tenant=self.case.tenant, customer=self.case.seat,
             idempotency_key=f"seat-{label}", effective_at=instant,
             provider="openai", event_type="chat.completion",
@@ -215,7 +215,7 @@ class WidgetUsage(_Probe):
                             HTTP_AUTHORIZATION=f"Bearer {token}")
 
     def seed(self, label, instant):
-        Posting.objects.create(
+        a_posting(
             tenant=self.case.tenant, customer=self.case.widget_customer,
             idempotency_key=f"widget-{label}", effective_at=instant,
             provider="openai", event_type="chat.completion",

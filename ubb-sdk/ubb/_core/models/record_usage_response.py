@@ -12,7 +12,7 @@ from ..models.record_usage_response_ceiling_status_type_0 import RecordUsageResp
 from ..models.record_usage_response_costing_status import RecordUsageResponseCostingStatus
 from ..models.record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
 from ..models.record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
-from ..models.record_usage_response_pricing_receipt_subject_type_type_0 import RecordUsageResponsePricingReceiptSubjectTypeType0
+from ..models.record_usage_response_pricing_receipt_subject_type import RecordUsageResponsePricingReceiptSubjectType
 from ..models.record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from ..models.record_usage_response_pricing_status_reason_type_0 import RecordUsageResponsePricingStatusReasonType0
 from ..models.record_usage_response_stop_scope_type_0 import RecordUsageResponseStopScopeType0
@@ -40,6 +40,7 @@ class RecordUsageResponse:
             costing_status (RecordUsageResponseCostingStatus):
             event_id (str):
             pricing_receipt (PricingReceipt): The Pricing Receipt, version 2 — see `RECEIPT_DESCRIPTION`.
+            pricing_receipt_subject_type (RecordUsageResponsePricingReceiptSubjectType):
             pricing_status (RecordUsageResponsePricingStatus):
             pricing_status_reason (None | RecordUsageResponsePricingStatusReasonType0): Why `pricing_status` applies, where
                 a specific published reason does; null where none does. `negative_price_unsupported` beside `unknown`: UBB
@@ -84,7 +85,6 @@ class RecordUsageResponse:
             not_applicable_reason (None | RecordUsageResponseNotApplicableReasonType0 | Unset):
             parent_task_id (None | str | Unset):
             pricing_method (None | RecordUsageResponsePricingMethodType0 | Unset):
-            pricing_receipt_subject_type (None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset):
             provider_cost_micros (int | None | Unset): The supplier cost (COGS) UBB resolved for this event: the one
                 canonical amount, whichever valid source supplied it — worked out from Cost Rates, or a reported figure that
                 arrived on the transport the Event Type's publication admitted when the event was recorded
@@ -110,6 +110,7 @@ class RecordUsageResponse:
     costing_status: RecordUsageResponseCostingStatus
     event_id: str
     pricing_receipt: PricingReceipt
+    pricing_receipt_subject_type: RecordUsageResponsePricingReceiptSubjectType
     pricing_status: RecordUsageResponsePricingStatus
     pricing_status_reason: None | RecordUsageResponsePricingStatusReasonType0
     stop_bound_micros: int | None
@@ -127,7 +128,6 @@ class RecordUsageResponse:
     not_applicable_reason: None | RecordUsageResponseNotApplicableReasonType0 | Unset = UNSET
     parent_task_id: None | str | Unset = UNSET
     pricing_method: None | RecordUsageResponsePricingMethodType0 | Unset = UNSET
-    pricing_receipt_subject_type: None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset = UNSET
     provider_cost_micros: int | None | Unset = UNSET
     stop: bool | Unset = False
     stop_context: list[Any] | None | Unset = UNSET
@@ -155,6 +155,8 @@ class RecordUsageResponse:
         event_id = self.event_id
 
         pricing_receipt = self.pricing_receipt.to_dict()
+
+        pricing_receipt_subject_type = self.pricing_receipt_subject_type.value
 
         pricing_status = self.pricing_status.value
 
@@ -247,14 +249,6 @@ class RecordUsageResponse:
         else:
             pricing_method = self.pricing_method
 
-        pricing_receipt_subject_type: None | str | Unset
-        if isinstance(self.pricing_receipt_subject_type, Unset):
-            pricing_receipt_subject_type = UNSET
-        elif isinstance(self.pricing_receipt_subject_type, RecordUsageResponsePricingReceiptSubjectTypeType0):
-            pricing_receipt_subject_type = self.pricing_receipt_subject_type.value
-        else:
-            pricing_receipt_subject_type = self.pricing_receipt_subject_type
-
         provider_cost_micros: int | None | Unset
         if isinstance(self.provider_cost_micros, Unset):
             provider_cost_micros = UNSET
@@ -338,6 +332,7 @@ class RecordUsageResponse:
             "costing_status": costing_status,
             "event_id": event_id,
             "pricing_receipt": pricing_receipt,
+            "pricing_receipt_subject_type": pricing_receipt_subject_type,
             "pricing_status": pricing_status,
             "pricing_status_reason": pricing_status_reason,
             "stop_bound_micros": stop_bound_micros,
@@ -367,8 +362,6 @@ class RecordUsageResponse:
             field_dict["parent_task_id"] = parent_task_id
         if pricing_method is not UNSET:
             field_dict["pricing_method"] = pricing_method
-        if pricing_receipt_subject_type is not UNSET:
-            field_dict["pricing_receipt_subject_type"] = pricing_receipt_subject_type
         if provider_cost_micros is not UNSET:
             field_dict["provider_cost_micros"] = provider_cost_micros
         if stop is not UNSET:
@@ -412,6 +405,11 @@ class RecordUsageResponse:
         event_id = d.pop("event_id")
 
         pricing_receipt = PricingReceipt.from_dict(d.pop("pricing_receipt"))
+
+
+
+
+        pricing_receipt_subject_type = RecordUsageResponsePricingReceiptSubjectType(d.pop("pricing_receipt_subject_type"))
 
 
 
@@ -615,26 +613,6 @@ class RecordUsageResponse:
         pricing_method = _parse_pricing_method(d.pop("pricing_method", UNSET))
 
 
-        def _parse_pricing_receipt_subject_type(data: object) -> None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            try:
-                if not isinstance(data, str):
-                    raise TypeError()
-                pricing_receipt_subject_type_type_0 = RecordUsageResponsePricingReceiptSubjectTypeType0(data)
-
-
-
-                return pricing_receipt_subject_type_type_0
-            except (TypeError, ValueError, AttributeError, KeyError):
-                pass
-            return cast(None | RecordUsageResponsePricingReceiptSubjectTypeType0 | Unset, data)
-
-        pricing_receipt_subject_type = _parse_pricing_receipt_subject_type(d.pop("pricing_receipt_subject_type", UNSET))
-
-
         def _parse_provider_cost_micros(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -772,6 +750,7 @@ class RecordUsageResponse:
             costing_status=costing_status,
             event_id=event_id,
             pricing_receipt=pricing_receipt,
+            pricing_receipt_subject_type=pricing_receipt_subject_type,
             pricing_status=pricing_status,
             pricing_status_reason=pricing_status_reason,
             stop_bound_micros=stop_bound_micros,
@@ -789,7 +768,6 @@ class RecordUsageResponse:
             not_applicable_reason=not_applicable_reason,
             parent_task_id=parent_task_id,
             pricing_method=pricing_method,
-            pricing_receipt_subject_type=pricing_receipt_subject_type,
             provider_cost_micros=provider_cost_micros,
             stop=stop,
             stop_context=stop_context,

@@ -46,11 +46,12 @@ copy.
 STATED LIMITS, recorded rather than discovered. A pass-through called
 POSITIONALLY from another module is not followed (every audit writer is
 keyword-only today, and the one positional helper family lives beside its
-callers). A value spread in through `**{...}` is not read. And the three
-historical database constraint names that still carry the word
-(`uq_<word>_def_key`, `uq_<word>_def_slot`, `uq_<word>_value`) are not names
-this gate reads at all: the owner handed them to W6, whose migration squash
-creates their final names.
+callers). A value spread in through `**{...}` is not read. And database
+constraint names are not names this gate reads at all: the three that carried
+the word (`uq_<word>_def_key`, `uq_<word>_def_slot`, `uq_<word>_value`) were
+handed to W6, whose migration squash (#190) created them under their final
+names, `uq_grouping_field_key`, `uq_grouping_field_slot` and
+`uq_grouping_field_value`.
 """
 
 import ast

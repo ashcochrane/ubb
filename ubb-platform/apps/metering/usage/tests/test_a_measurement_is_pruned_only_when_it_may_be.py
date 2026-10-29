@@ -27,7 +27,7 @@ G19's statement is about *field* transition classes, and this rule is about
 whether a row may cease to exist, which no column class states. Every column of
 this record is declared `RECORD_RULE` — outside `DATABASE_DEFENDED` — except
 `prunable_at`, which W5 made a SET_ONCE release fact held by a second trigger
-(`migrations/0052`). That declaration is true of the column's WRITE and says
+(`trg_posting_measurement_released_once`). That declaration is true of the column's WRITE and says
 nothing about this DELETE rule; `TheReleaseIsTheOnlyDefendedColumnTest` below
 holds the line between them. What G19's own notes did carry was the deferral,
 by name, and this is the ticket that pays it: an **extension** of the installed
@@ -100,15 +100,18 @@ inserts into this table on every metered call and deletes from it never.
 `reset_sandbox_tenant` outright and leave the sandbox unable to serve traffic —
 and no test in the tree would have caught it. `ADiscardIsNotAPruneTest` below
 carries the whole argument, its control, and the reason the exemption cannot be
-turned on for a live tenant; the migration's docstring carries the two
-mechanisms that would have expressed *the posting is going too* without a proxy,
-and why each is a larger decision than this rule.
+turned on for a live tenant, and names the two mechanisms that would have
+expressed *the posting is going too* without a proxy, and why each is a larger
+decision than this rule. (Before the cutover, #190, the installing migration —
+usage/0041 — carried that argument; the rule itself is `usage/0002`'s
+`POSTING_MEASUREMENT_PRUNING` now.)
 
 **What this ticket did NOT enforce, and what W5 closed.** The record rule's
 `UPDATE` line was declared and unenforced here, so a writer could set
 `prunable_at` to the past and then prune. W5 closed the part of that hole that
 matters to this rule: `prunable_at` is SET_ONCE and never a future instant
-(`migrations/0052`, proved in `test_the_measurement_horizon_is_enforced_daily.py`),
+(`trg_posting_measurement_released_once`, proved in
+`test_the_measurement_horizon_is_enforced_daily.py`),
 so a release cannot be moved or withdrawn once written. Writing it once, from
 NULL to a past instant, stays legal — that is what the prune does, and
 `release_and_prune` in `tests/_helpers.py` does it for a test.
@@ -116,14 +119,13 @@ NULL to a past instant, stays legal — that is what the prune does, and
 import re
 
 from django.apps import apps
-from django.db import IntegrityError, connection, migrations, transaction
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, connection, transaction
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.metering.usage.models import Posting, PostingMeasurement
 from apps.metering.usage.tests._helpers import (
-    committed_posting, rule_on_the_table, rules_on_the_table)
+    a_posting, committed_posting, rule_on_the_table, rules_on_the_table)
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.tests.test_transition_class_declarations import (
@@ -142,7 +144,6 @@ TRIGGER = "trg_posting_measurement_pruning"
 #: W5's second rule on this table: the release fact is written once.
 RELEASE_TRIGGER = "trg_posting_measurement_released_once"
 FUNCTION = "ubb_posting_measurement_pruning"
-MIGRATION = "0041_a_measurement_is_pruned_only_when_it_may_be"
 
 #: The tokens each refusal must NAME, beside the record rule it enforces. Two
 #: conditions on one record share a mechanism, so "something refused this" stops
@@ -434,7 +435,8 @@ class TheReleaseIsTheOnlyDefendedColumnTest(TestCase):
 
     Inverted at its own address by W5: until then no column of this record
     declared a defended class. `prunable_at` is now SET_ONCE — a true statement
-    about its WRITE, held by its own trigger (`migrations/0052`) — and every
+    about its WRITE, held by its own trigger
+    (`trg_posting_measurement_released_once`) — and every
     other column still declares `RECORD_RULE`. Declaring a column to make the
     walk notice THIS delete rule would still be a false statement.
     """
@@ -535,7 +537,8 @@ class TheRuleIsHeldByATriggerOnTheChildTableTest(TestCase):
     def test_the_child_table_carries_exactly_this_rule_and_the_release(self):
         """An exact set, so a rule arriving here is something a reader of this
         module has to agree to rather than something a count absorbs. The
-        second is W5's: the release fact, SET_ONCE (`migrations/0052`)."""
+        second is W5's: the release fact, SET_ONCE
+        (`trg_posting_measurement_released_once`)."""
         self.assertEqual(_rules_on_the_child_table(),
                          {TRIGGER, RELEASE_TRIGGER})
 
@@ -624,39 +627,11 @@ class TheRuleIsHeldByATriggerOnTheChildTableTest(TestCase):
             PostingMeasurement._meta.get_field("prunable_at").column,
             _body_without_its_comments())
 
-    def test_the_reverse_is_exercised_rather_than_merely_declared(self):
-        """Forward and back, against a real database, with a real refusal.
-
-        `docs/conventions/django-patterns.md` asks for a reverse *a test
-        actually runs*, and this migration's shape is why: a `RunPython` whose
-        two halves are DDL strings, where a typo in the reverse is invisible
-        until the day somebody needs it.
-
-        Asserted by BEHAVIOUR at both ends. With the rule out, a record that no
-        clock has released is deleted — which is the state the tree was in
-        before this ticket, and the thing worth being able to get back to.
-        """
-        migration = MigrationLoader(connection).get_migration("usage", MIGRATION)
-        run_python = next(op for op in migration.operations
-                          if isinstance(op, migrations.RunPython))
-
-        with connection.schema_editor() as editor:
-            run_python.reverse_code(None, editor)
-        # W5's release rule is its own migration's, and stays.
-        self.assertEqual(_rules_on_the_child_table(), {RELEASE_TRIGGER})
-        released = _measurement(_resolved_posting(), None)
-        _through_the_queryset(released)
-        self.assertFalse(
-            PostingMeasurement.objects.filter(pk=released.pk).exists())
-
-        with connection.schema_editor() as editor:
-            run_python.code(None, editor)
-        self.assertEqual(_rules_on_the_child_table(),
-                         {TRIGGER, RELEASE_TRIGGER})
-        held = _measurement(_resolved_posting(), None)
-        with self.assertRaises(IntegrityError):
-            with transaction.atomic():
-                _through_the_queryset(held)
+    # The rule's reverse — uninstalled, an unreleased record is deleted;
+    # reinstalled, the same delete is refused — was asserted here against
+    # usage/0041's own installer until the cutover (#190). It is proven for all
+    # 21 rules at once now, through `usage/0002_the_database_rules`, in
+    # `apps/platform/tests/test_the_database_rules_are_carried.py`.
 
 
 #: The shipped rule with one refusal's CAUSE removed and everything else left
@@ -820,7 +795,7 @@ def _sandbox_posting(**columns):
                                     parent_tenant=live)
     customer = Customer.objects.create(tenant=sandbox, external_id="c1")
     columns.setdefault("idempotency_key", "k")
-    return Posting.objects.create(tenant=sandbox, customer=customer, **columns)
+    return a_posting(tenant=sandbox, customer=customer, **columns)
 
 
 class ADiscardIsNotAPruneTest(TestCase):
@@ -847,9 +822,12 @@ class ADiscardIsNotAPruneTest(TestCase):
 
     The condition it stands in for — *the posting itself is going too* — is not
     expressible in a `BEFORE DELETE` trigger under Django's collector, which
-    deletes the child while its parent is still on disk. The migration's
-    docstring carries that argument and the two mechanisms that could express
-    it, both of which are larger decisions than this rule.
+    deletes the child while its parent is still on disk. Two mechanisms could
+    express it: a `DEFERRABLE INITIALLY DEFERRED` constraint trigger firing at
+    commit (a refusal far from its cause, which never fires under a
+    `TestCase`), or moving the cascade into the database (`ON DELETE CASCADE`
+    with Django's `DO_NOTHING`, changing what deleting a posting means
+    everywhere). Both are larger decisions than this rule.
     """
 
     def _prunes(self, measurement):

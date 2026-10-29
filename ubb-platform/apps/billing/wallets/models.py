@@ -35,8 +35,9 @@ from core.vocabulary import (
 # What one wallet movement was — the registry's closed
 # `wallet_transaction_type` (R10-W4), by reference. LOWERCASE since R10-W4
 # (ruling 7): the ledger spelled them in upper case until then, outside the
-# registry's token rule; `0014` moved the stored rows and
-# `ck_wallet_transaction_type_known` admits exactly these afterwards.
+# registry's token rule; R10-W4 moved the stored rows (`wallets/0014`, before
+# the cutover squash, #190) and `ck_wallet_transaction_type_known` admits
+# exactly these.
 WALLET_TXN_TYPES = [
     (WALLET_TRANSACTION_TYPE_TOP_UP, "Top Up"),
     (WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION, "Usage Deduction"),
@@ -180,8 +181,9 @@ class CustomerBillingProfile(BaseModel):
 # A credit grant's kind, status and source — the registry's closed
 # `grant_kind`, `grant_status` and `grant_source` (R10-W4), by reference.
 # The source carried the run-together spelling until R10-W4; one concept has
-# one spelling (ADR-0006 §2), and `0014` moved the stored rows with the
-# transaction types.
+# one spelling (ADR-0006 §2): R10-W4 moved the stored rows with the
+# transaction types (`wallets/0014`, before the cutover squash, #190), and
+# `ck_credit_grant_source_known` admits exactly these.
 GRANT_KINDS = [(GRANT_KIND_PAID, "Paid"), (GRANT_KIND_PROMO, "Promo")]
 GRANT_STATUSES = [
     (GRANT_STATUS_ACTIVE, "Active"),

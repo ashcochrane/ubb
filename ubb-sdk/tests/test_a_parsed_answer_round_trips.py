@@ -25,7 +25,7 @@ from tests._receipt import A_RECEIPT
 #: field is left out, the non-nullable object `grouping_fields` among them.
 ACK = {"event_id": "evt_1", "suspended": False, "costing_status": "known",
        "pricing_status": "known", "pricing_status_reason": None,
-       "pricing_receipt": A_RECEIPT, "trigger_source": None,
+       "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"], "trigger_source": None,
        "stop_bound_micros": None, "stop_measured_micros": None}
 
 #: A unit of work carrying only what the contract requires.
@@ -37,7 +37,7 @@ A_TASK = {"task_id": "t1", "status": "completed", "ceiling_status":
           "unpriced_event_count": 0, "unresolved_event_count": 0}
 
 #: A batch item carrying only what the contract requires.
-AN_ITEM = {"accepted": True, "pricing_receipt": None,
+AN_ITEM = {"accepted": True, "pricing_receipt": None, "pricing_receipt_subject_type": None,
            "pricing_status_reason": None, "stop_bound_micros": None,
            "stop_measured_micros": None, "trigger_source": None}
 

@@ -11,9 +11,9 @@ what stops "ten" quietly meaning "six plus the four you already had".
 **No slot carries an index.** Six of them used to, on top of a composite that led
 with two — seven index writes per row on the hottest insert path. Widening under
 that arrangement would have taxed every insert for capacity nobody is using yet.
-:class:`NoSlotCarriesAnIndexTest` is the half of that claim a migration cannot
-make on its own: an operation list says what was asked for, and only the live
-catalogue says what is there.
+:class:`NoSlotCarriesAnIndexTest` asks the live catalogue, because an
+operation list says what was asked for and only the catalogue says what is
+there.
 
 **The columns take the canonical noun.** Not because the forbidden-term sweep
 demanded it — the abbreviation they carried is not a whole-token match for the
@@ -21,14 +21,14 @@ retired word and the sweep never counted it — but because ADR-0006 §2 refuses
 short form beside a long form, and because these columns were being rebuilt
 anyway.
 
-**THE RETIRED SPELLING IS READ OFF THE MIGRATIONS, NOT TYPED — AND NOT FOR THE
-USUAL REASON.** #274 and #275 derived theirs because spelling a swept word in a
-living test module would have re-opened an extent the same commit was paying
-off. That does not apply here: this abbreviation is not a swept term, and this
-module could spell it freely. It is derived anyway because the derivation is a
-stronger assertion than the assertion it feeds — it pins that the migration
-renames these six columns and no others, so a seventh rename, or a rename of
-something else, fails here rather than passing quietly.
+**THE RETIRED SPELLING IS TYPED HERE, AND MAY BE.** #274 and #275 derived
+theirs because spelling a swept word in a living test module would have
+re-opened an extent the same commit was paying off. That never applied here:
+this abbreviation is not a swept term. Until the cutover (#190) it was read off
+the three migrations that renamed the six columns anyway, because that pinned
+the migrations renamed these six and no others; those migrations are gone, and
+what stays is the end state — the six old spellings are on no model, no table
+and no published schema — asserted against :data:`RETIRED_SPELLINGS`.
 
 **What this module does not cover, deliberately.** The registry's own invariants
 — slot rebinding, scope change, the cardinality cap, the two refusal lists, and a
@@ -40,10 +40,8 @@ and this is the copy that would rot.
 
 import json
 from functools import cache
-from importlib import import_module
 
-from django.db import connection, migrations as operations
-from django.db.migrations.loader import MigrationLoader
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
 
 from api.v1.openapi_export import GIT_ROOT
@@ -55,46 +53,26 @@ from apps.platform.grouping_fields.models import (
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
 
-REGISTRY_APP = "grouping_fields"
-REWRITE_MIGRATION = "0004_the_stored_slot_identifier_takes_the_canonical_noun"
-REGISTRY_PARENT = "0003_the_grouping_field_takes_its_name"
+#: The three tables that hold slot values. Named rather than discovered: a walk
+#: that found two of the three would report success exactly as loudly as one
+#: that found all three. (Before the cutover, #190, each was paired with the
+#: migration that reshaped it — `usage/0035`, `pricing/0017`, `work/0013`.)
+RESHAPED = (Posting, Rate, Task)
 
-#: The three tables that hold slot values, and the migration that reshaped each.
-#: Named rather than discovered: a walk that found two of the three would report
-#: success exactly as loudly as one that found all three.
-RESHAPED = (
-    (Posting, "usage", "0035_ten_slots_and_the_six_per_slot_indexes_dropped"),
-    (Rate, "pricing", "0017_ten_slots_on_the_rate"),
-    (Task, "work", "0013_ten_slots_on_the_task"),
-)
-
-#: The composite that led with two slots, and the two that lead with the columns
-#: a slot query actually filters on.
-RETIRED_COMPOSITE = "idx_usage_dim_attribution"
+#: The two indexes that lead with the columns a slot query actually filters on.
+#: (#276 dropped the composite that led with two slots instead; a fresh database
+#: never builds it, and the claim that survives it is
+#: `NoSlotCarriesAnIndexTest.test_no_index_covers_a_slot`.)
 SURVIVING_COMPOSITES = {
-    "idx_usage_tenant_effective": ["tenant_id", "effective_at"],
-    "idx_usage_customer_effective": ["customer_id", "effective_at"],
+    "idx_posting_tenant_effective": ["tenant_id", "effective_at"],
+    "idx_posting_customer_effective": ["customer_id", "effective_at"],
 }
 
 SLOTS = tuple(slot for slot, _ in SLOT_CHOICES)
 
-
-def _operations(app_label, migration_name):
-    return import_module(
-        f"apps.{'platform' if app_label in ('grouping_fields', 'work') else 'metering'}"
-        f".{app_label}.migrations.{migration_name}").Migration.operations
-
-
-def _renames(app_label, migration_name):
-    """{retired: canonical} read off one migration's `RenameField` operations."""
-    return {op.old_name: op.new_name
-            for op in _operations(app_label, migration_name)
-            if isinstance(op, operations.RenameField)}
-
-
-def _additions(app_label, migration_name):
-    return [op.name for op in _operations(app_label, migration_name)
-            if isinstance(op, operations.AddField)]
+#: The six slot columns' spelling before #276 put them under the canonical noun.
+#: Not a swept term (see the module docstring), so spelled rather than derived.
+RETIRED_SPELLINGS = tuple(f"dim{position}" for position in range(1, 7))
 
 
 @cache
@@ -181,8 +159,9 @@ class TheRegistryDeclaresTenSlotsTest(SimpleTestCase):
         equal would be asserting the definition — green whatever the vocabulary
         said. The number is written out instead, because a migration cannot
         import a module-level constant and expect it to mean the same thing
-        forever: `0004`'s `max_length=17` is frozen, and this is what holds the
-        live vocabulary to it.
+        forever: `grouping_fields/0001_initial`'s `max_length=17` is frozen (it
+        was `0004`'s before the cutover, #190), and this is what holds the live
+        vocabulary to it.
         """
         self.assertEqual(max(len(slot) for slot in SLOTS), 17)
 
@@ -191,9 +170,9 @@ class TheStoredSlotColumnIsWideEnoughTest(TestCase):
     """Asked of Postgres, which is the only place the answer can be wrong.
 
     Three declarations have to agree about how wide this column is: the
-    vocabulary, the model field, and migration `0004`'s frozen literal. The
-    model field is derived from the vocabulary so those two cannot disagree —
-    but the migration cannot be, and the LIVE column is whatever the migration
+    vocabulary, the model field, and the initial migration's frozen literal.
+    The model field is derived from the vocabulary so those two cannot disagree
+    — but the migration cannot be, and the LIVE column is whatever the migration
     built. A migration that said `max_length=8` would leave every canonical
     identifier truncating on write, and nothing else in this module would
     notice: a truncated slot is still a string, and the registry would simply
@@ -239,60 +218,23 @@ class EveryTableThatHoldsSlotsHasTenOfThemTest(TestCase):
     halves are asked separately rather than one being inferred from the other.
     """
 
-    def test_the_six_renames_are_exactly_the_six_slots(self):
-        for model, app_label, migration in RESHAPED:
-            with self.subTest(model=model.__name__):
-                renames = _renames(app_label, migration)
-                self.assertEqual(sorted(renames.values()),
-                                 sorted(SLOTS[:6]))
-
-    def test_the_four_additions_are_exactly_the_new_slots(self):
-        for model, app_label, migration in RESHAPED:
-            with self.subTest(model=model.__name__):
-                self.assertEqual(sorted(_additions(app_label, migration)),
-                                 sorted(SLOTS[6:]))
-
-    def test_no_slot_was_dropped_and_re_added(self):
-        """ADR-0007 §1, asked of the operations rather than of the commit message.
-
-        An `AddField` beside a `RemoveField` produces a column of the right name
-        holding none of the data, and every other assertion in this module would
-        pass straight over it. `AddField` alone is legitimate here — four of
-        these columns never existed — so what is forbidden is the removal.
-
-        Nested operations are walked: `SeparateDatabaseAndState` carries two
-        lists of its own, and a removal hidden in either is invisible to a check
-        that reads only the top level.
-        """
-        for _, app_label, migration in RESHAPED:
-            for op in self._every_operation(app_label, migration):
-                with self.subTest(app=app_label, operation=type(op).__name__):
-                    self.assertNotIsInstance(op, operations.RemoveField)
-
-    @staticmethod
-    def _every_operation(app_label, migration):
-        for op in _operations(app_label, migration):
-            yield op
-            yield from getattr(op, "database_operations", ())
-            yield from getattr(op, "state_operations", ())
-
     def test_the_model_carries_the_ten_and_not_the_retired_six(self):
-        for model, app_label, migration in RESHAPED:
+        for model in RESHAPED:
             names = {f.name for f in model._meta.get_fields()}
             for canonical in SLOTS:
                 with self.subTest(model=model.__name__, slot=canonical):
                     self.assertIn(canonical, names)
-            for retired in _renames(app_label, migration):
+            for retired in RETIRED_SPELLINGS:
                 with self.subTest(model=model.__name__, retired=retired):
                     self.assertNotIn(retired, names)
 
     def test_the_table_carries_the_ten_and_not_the_retired_six(self):
-        for model, app_label, migration in RESHAPED:
+        for model in RESHAPED:
             columns = _columns(model._meta.db_table)
             for canonical in SLOTS:
                 with self.subTest(table=model._meta.db_table, slot=canonical):
                     self.assertIn(canonical, columns)
-            for retired in _renames(app_label, migration):
+            for retired in RETIRED_SPELLINGS:
                 with self.subTest(table=model._meta.db_table, retired=retired):
                     self.assertNotIn(retired, columns)
 
@@ -302,8 +244,8 @@ class NoSlotCarriesAnIndexTest(TestCase):
 
     A migration's operation list records what was asked for. This asks Postgres
     what is actually built over ``ubb_posting`` — which is the question that
-    matters, since the cost this ticket is removing is paid per insert by
-    whatever the catalogue says, not by whatever the migration said.
+    matters, since the cost #276 removed is paid per insert by whatever the
+    catalogue says, not by whatever a migration said.
     """
 
     def setUp(self):
@@ -327,15 +269,6 @@ class NoSlotCarriesAnIndexTest(TestCase):
                 self.assertFalse(
                     set(spec["columns"]) & set(SLOTS),
                     f"{name} still covers a slot: {spec['columns']}")
-
-    def test_the_composite_that_led_with_two_slots_is_gone(self):
-        """Named, so that "no index covers a slot" cannot pass by accident.
-
-        The check above would also hold if this index had been left in place
-        over some OTHER pair of columns, or renamed. This one asks for the
-        specific object by the specific name it had.
-        """
-        self.assertNotIn(RETIRED_COMPOSITE, self.objects)
 
     def test_the_surviving_composites_match_a_real_query_shape(self):
         """What replaced it, and why nothing replaced it in kind.
@@ -367,102 +300,6 @@ class NoSlotCarriesAnIndexTest(TestCase):
         for name, expected in SURVIVING_COMPOSITES.items():
             with self.subTest(index=name):
                 self.assertEqual(self.objects[name]["columns"], expected)
-
-
-class TheStoredSlotIdentifierIsRewrittenBothWaysTest(TestCase):
-    """THE REVERSE, DRIVEN — not asserted from `op.reversible`.
-
-    `reversible` on a `RunPython` is `True` whenever a reverse callable was
-    passed, which says nothing about whether the callable works. #274 shipped
-    exactly that shape of dead gate on a `RenameField` and /code-review caught
-    it. So this writes a row, runs the migration's own reverse against the real
-    table, reads the value back through a raw cursor — deliberately bypassing
-    the model, which is the only thing that knows the canonical spelling — and
-    then runs it forwards again.
-
-    A stored slot is not a label: it IS a column name, handed to the posting's
-    `create()` as a keyword argument. A reverse that quietly did nothing would
-    leave a downgraded schema whose registry names columns it no longer has.
-
-    PostgreSQL runs this inside the transaction the `TestCase` rolls back.
-    """
-
-    def setUp(self):
-        self.tenant = Tenant.objects.create(name="T")
-        (self.rewrite,) = [op for op in
-                           _operations(REGISTRY_APP, REWRITE_MIGRATION)
-                           if isinstance(op, operations.RunPython)]
-        loader = MigrationLoader(connection)
-        self.after = loader.project_state((REGISTRY_APP, REWRITE_MIGRATION))
-        self.before = loader.project_state((REGISTRY_APP, REGISTRY_PARENT))
-        self.retired = _renames(*RESHAPED[0][1:])
-
-    def _stored_slot(self, field_id):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT slot FROM {connection.ops.quote_name(GroupingField._meta.db_table)} "
-                "WHERE id = %s", [field_id])
-            (slot,) = cursor.fetchone()
-        return slot
-
-    def _run(self, forwards):
-        with connection.schema_editor() as editor:
-            if forwards:
-                self.rewrite.database_forwards(
-                    REGISTRY_APP, editor, self.before, self.after)
-            else:
-                self.rewrite.database_backwards(
-                    REGISTRY_APP, editor, self.after, self.before)
-
-    def test_the_identifier_survives_the_round_trip(self):
-        field = GroupingField.objects.create(
-            tenant=self.tenant, key="region", slot="grouping_field_2", scope="task")
-
-        self._run(forwards=False)
-        self.assertEqual(self._stored_slot(field.id),
-                         {v: k for k, v in self.retired.items()}["grouping_field_2"])
-
-        self._run(forwards=True)
-        self.assertEqual(self._stored_slot(field.id), "grouping_field_2")
-
-    def test_the_reverse_refuses_a_slot_the_old_vocabulary_cannot_express(self):
-        """Slots seven to ten have nowhere to go, and the reverse says so.
-
-        The columns behind them did not exist before this ticket. Rewriting the
-        rest and leaving this one would produce a registry pointing at a column
-        the downgraded schema does not have — a declared field that silently
-        groups nothing. Refusing is louder and cheaper to undo, and it leaves
-        the reverse available the moment the declaration is removed.
-        """
-        GroupingField.objects.create(
-            tenant=self.tenant, key="tier", slot="grouping_field_9", scope="task")
-
-        with self.assertRaises(RuntimeError) as refusal:
-            self._run(forwards=False)
-        self.assertIn("grouping_field_9", str(refusal.exception))
-
-    def test_the_reverse_runs_when_nothing_is_bound_above_six(self):
-        """The control. Without it the refusal above passes on a broken reverse."""
-        GroupingField.objects.create(
-            tenant=self.tenant, key="region", slot="grouping_field_6", scope="task")
-        self._run(forwards=False)  # no raise
-        self._run(forwards=True)
-
-    def test_the_forward_rewrite_refuses_a_slot_it_does_not_understand(self):
-        """Data neither vocabulary contains is not silently left behind.
-
-        `choices` is not enforced by the database, so a row like this is
-        reachable. Leaving it alone while rewriting its neighbours is the one
-        outcome that produces a half-translated registry.
-        """
-        GroupingField.objects.filter(
-            id=GroupingField.objects.create(
-                tenant=self.tenant, key="region", slot="grouping_field_1",
-                scope="task").id).update(slot="whatever")
-
-        with self.assertRaises(RuntimeError) as refusal:
-            self._run(forwards=True)
-        self.assertIn("whatever", str(refusal.exception))
 
 
 class SlotOrderIsNotAlphabeticalOrderTest(TestCase):
@@ -573,18 +410,19 @@ class ThePublishedContractCaughtUpWithTheWideningTest(SimpleTestCase):
 
         That test read the retired spellings off #276's own `RenameField`
         operations and asserted the contract still published them. It is the
-        same six names, read the same way, asserted the other way round — which
-        is what makes this a replacement rather than a deletion, and what stops
-        a rename from landing as a DELETION of the properties. The test above
+        same six names asserted the other way round — read off those operations
+        until the cutover (#190) deleted them, spelled in
+        :data:`RETIRED_SPELLINGS` since — which is what makes this a replacement
+        rather than a deletion, and what stops a rename from landing as a
+        DELETION of the properties. The test above
         is the half that says the ten arrived; this is the half that says the
         six did not survive beside them, because two published spellings for one
         selector is the thing the join dictionary was and the thing #366 removed.
         """
-        retired = _renames(*RESHAPED[1][1:])
         for name in RATE_SCHEMAS:
             with self.subTest(schema=name):
                 self.assertFalse(
-                    set(retired) & set(schemas()[name]["properties"]),
+                    set(RETIRED_SPELLINGS) & set(schemas()[name]["properties"]),
                     f"{name} still publishes a slot under its older spelling")
 
     def test_the_declaration_body_admits_one_item_per_slot(self):

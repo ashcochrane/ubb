@@ -216,7 +216,9 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # `docs/research/**` admits #144's dated vendor survey, which carries
         # five retired words as the record of the day and moves no ledger
         # extent, because it had never reached `main` to be counted.
-        "frozen-dated-documents": ("permanent", 134, 7),
+        # 134 -> 135 in the cutover (#190): the dated record of its test
+        # disposition, `docs/reviews/2026-10-29-the-cutovers-test-disposition.md`.
+        "frozen-dated-documents": ("permanent", 135, 7),
         # 214 → 218 in #351: four migrations for the nullable customer price
         # and the three accumulators that count what they could not price.
         # 218 → 219 in #352: the trigger holding the price pair's transitions.
@@ -340,106 +342,6 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # column. It spells every retired stop word it rewrites, which is
         # what a historical migration is excluded for; the three backend
         # stop-word entries fell to the glossaries alone (14/8/18 -> 2/2/3),
-        # five openapi and sdk entries left the ledger outright, and the
-        # sites fell 75 -> 70 with the terms unmoved at 22.
-        # 254 -> 256 in #458: TWO migrations. The gating app's, which renames
-        # the signal ledger's family column onto the registry's word, moves
-        # the clearing cause into its own column, keys one row per line at
-        # the database and rewrites the customer stop pair's queued payloads
-        # -- it spells the ledger's two retired local family words, which is
-        # what a migration must do; and the work app's RunPython that stamps
-        # the control's family and id on every stopped unit and queued
-        # terminal payload. The sites and terms held at 22 in 70: the four
-        # G2/G4 entries this ticket paid left the ledger as a ratchet
-        # removal, not as a sweep change.
-        # 256 -> 257 in #461: ONE migration, the wallets app's, creating the
-        # prepaid reservation row a start of work sold at one agreed price
-        # writes against the owner's wallet. It spells no retired word; the
-        # sites and terms held at 22 in 66.
-        # 257 -> 259 in #462: TWO migrations, one per app a column moved
-        # between -- the tenant app's adding admission control's one setting
-        # to the tenant row, the gating app's carrying each risk row's value
-        # onto it and dropping its own column. Neither spells a retired word;
-        # the sites and terms held at 22 in 66.
-        # 259 -> 260 in #464: one migration, carrying the five control events'
-        # stored subscriptions and queued rows onto the names their families
-        # own. It spells the five retired names it renames FROM, which is
-        # exactly why a migration is excluded; the sites and terms fell
-        # 17 in 59 -> 16 in 43 as the five names' fifteen entries and the
-        # catalogue's four died.
-        # 260 -> 261 in #495: one migration, creating the table a tenant
-        # states what it earned somewhere other than UBB in. It names no
-        # retired word -- it renames nothing and carries nothing -- so the
-        # number moved for the file existing; the sites and terms held at
-        # 7 in 25.
-        # 264 -> 265 in #503: one migration, renaming the postpaid
-        # invoice-line grouping column onto the one vocabulary and carrying
-        # every stored value with it. The exclusion's worked example twice
-        # over: a `RenameField(old_name=...)` that HAS to spell the retired
-        # word, and a `RunPython` that has to recognise the two readings the
-        # old column had to carry each to what it actually meant.
-        # 265 -> 266 in #573: one migration, adding the column an Event Type
-        # keeps its last-published declaration in. It names no retired word,
-        # so the number moved for the file existing.
-        # 266 -> 268 in #575: two state-only migrations, each following a
-        # `choices=` list onto the set generated from the registry. Neither
-        # names a retired word, so the number moved for the files existing.
-        # 268 -> 269 in #571: one migration, adding the column a constant
-        # Measurement declares its value in and the guard before its rules.
-        # It names no retired word, so the number moved for the file existing.
-        # 269 -> 271 in #569: two migrations — the insert-only stop
-        # acknowledgement a recording keeps, and the signal ledger's columns
-        # for how a stop episode opened. Neither names a retired word, so the
-        # number moved for the files existing.
-        # 271 -> 273 in #603: two migrations — the price status's own reason
-        # on the posting with its rules, and the stamp onto queued payloads.
-        # Neither names a retired word, so the number moved for the files
-        # existing.
-        # 273 -> 275 in #553: two migrations — the agreed price's provenance
-        # and window trigger, and the rewrite of the removed posture reason
-        # under a one-time lift of the price trigger. Neither names a retired
-        # word, so the number moved for the files existing.
-        # 275 -> 276 in R10-W2 (#562): one migration — the unit of work's
-        # write-once rule. It names no retired word, so the number moved
-        # for the file existing.
-        # 276 -> 277 in R10-W2's consultant review: one migration — a unit's
-        # stop facts and its start's expiry policy as UBB's own columns. It
-        # names no retired word, so the number moved for the file existing.
-        # 277 -> 279 in R10-W1 (#568, #473): two migrations — a held name
-        # names its event, and an Event Type with no publication becomes a
-        # reason. Neither names a retired word, so the number moved for the
-        # files existing.
-        # 279 -> 280 in R10-W1 (#473 row 3): one migration — a declaration
-        # is not deleted from under its held names. It names no retired
-        # word, so the number moved for the file existing.
-        # 280 -> 281 in R10-W1 (#557): one migration — a customer price
-        # becomes known only through its door. It names no retired word, so
-        # the number moved for the file existing.
-        # 281 -> 283 in R10-W1's consultant round: two migrations — a
-        # publication keeps its supplier, and a held price states its reason.
-        # Neither names a retired word, so the number moved for the files
-        # existing.
-        # 283 -> 290 in R10-W3 (#555): seven migrations — UBB v1's USD
-        # CHECKs, one per app owning a currency column. None names a
-        # retired word, so the number moved for the files existing.
-        # 290 -> 292 in R10-W3 (#564, #565): two migrations — the mirror keeps
-        # what Stripe sent, and a billing period states its currency.
-        # 292 -> 293 in R10-W3 (slice 8's ledger): one migration — a tenant
-        # that bills elsewhere is `external`.
-        # 293 -> 294 in R10-W3 (G27): one migration — a money mode needs its
-        # payment rail activated first.
-        # 294 -> 296 in R10-W3 (#479, #516): two column renames.
-        # 296 -> 300 in R10-W4 (ruling 1): four column renames, each away
-        # from the word that ruling retires.
-        # 300 -> 303 in R10-W4: the wallet's vocabulary lowercased, a usage
-        # invoice's skip reason given its choices, and a selling rule's
-        # method stated on every row.
-        # 303 -> 306 in the owner's review of #620: the automatic top-up's
-        # one spelling (`topups/0006`) and two withheld statuses no longer
-        # offered (`tenant_billing/0016`, `referrals/0009`).
-        # 306 -> 307 in R10-W5: the measurement's release, once
-        # (`usage/0052`).
-        "historical-migrations": (UNTIL_SLICE_8, 307, 19),
         "vendored-dependency-manifests": ("permanent", 2, 2),
         # 10 -> 11 in #576: the registry gained a domain file of its own for
         # the Code Builder's concepts. ⚠ The migrations count above did NOT
@@ -448,7 +350,7 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # 11 -> 14 in R10-W4: the billing, referrals and team domain files.
         "the-vocabulary-registry": ("permanent", 14, 1),
         "the-gate-bookkeeping": ("permanent", 7, 1),
-        "checks-whose-subject-is-a-retired-word": ("permanent", 14, 14),
+        "checks-whose-subject-is-a-retired-word": ("permanent", 11, 11),
         "the-workflows-foreign-input-names": ("permanent", 1, 1),
     }
 
@@ -465,23 +367,6 @@ def test_the_frozen_document_exclusion_is_permanent(plan):
     for directory in ("docs/plans/", "docs/reviews/"):
         assert any(pattern.startswith(directory) for pattern in rule.paths), (
             f"{directory} is the category CLAUDE.md calls frozen history")
-
-
-def test_the_migration_exclusion_names_slice_8_as_its_end(plan, programme):
-    """#155 §5.4: the cutover squash DELETES the category rather than excusing it.
-
-    So the rule carries the slice that deletes it, and the reason a reader sees
-    carries it too. An exclusion with no stated end is how one outlives its
-    reason.
-    """
-    rule = _rule(plan, "historical-migrations")
-    assert rule.permanence == UNTIL_SLICE_8
-    assert "slice_8" in rule.reason
-    assert "slice_8" in programme.slices, (
-        "the exclusion's end date names a slice the programme does not declare")
-    assert not programme.slices["slice_8"].landed, (
-        "slice 8 has landed, so the historical-migration exclusion is due for "
-        "deletion rather than renewal")
 
 
 def test_no_rule_reaches_outside_the_two_declared_shapes(plan):
@@ -996,7 +881,10 @@ def test_negative_control_an_ending_exclusion_must_name_its_end(
         tmp_path, registry, programme):
     """#155 §5.4: the reason a reader sees carries the end date too."""
     exclusions = _exclusions()
-    ending = next(r for r in exclusions if r["permanence"] == UNTIL_SLICE_8)
+    # Planted: the shipped plan holds no ending exclusion since the cutover
+    # deleted the last one (#190), so the control declares its own.
+    ending = exclusions[0]
+    ending["permanence"] = UNTIL_SLICE_8
     ending["reason"] = "migrations carry historical column names."
     plan, faults = _load_synthetic(tmp_path, registry, programme,
                                    exclusions=exclusions)

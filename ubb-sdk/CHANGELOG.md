@@ -4,7 +4,74 @@ All notable changes to `ubb-sdk`. This project follows [semantic versioning](htt
 each release is stamped with the exact committed API-contract revision it was
 generated against (`ubb.__spec_revision__`).
 
-## 3.0.0
+## 4.0.0
+
+**The SDK's first release, cut at the cutover (#190; ADR-0026).** The tree
+carried the number 3.0.0 while the re-model was built, and nothing was ever
+released or tagged under it; everything listed under 3.0.0 below, and every
+pre-live edge in **[MIGRATION.md](./MIGRATION.md)** §8–§24, reaches a tenant for
+the first time here. The major is 4 rather than 3 because the SDK's own surface
+broke after the pre-release number was set — ADR-0003 §6 allows a major only
+then, and ADR-0026 records the departure from its "v3.x at launch".
+
+**The release is a tag and a wheel, and nothing publishes it** (R2, #190 spec
+part 3 §9). The tag is `sdk-v4.0.0`, annotated, on the cutover's merge commit
+on `main`. The wheel is built from a clean export of that tag by
+`release/build_wheel.py` — the tag's own copy — twice, on Python 3.13, with
+`SOURCE_DATE_EPOCH` set to the tagged commit's committer time, in a fresh
+environment holding exactly the tag's lock, `release/build-requirements.txt`
+(every package pinned and hashed, and no installer: the environment is created
+without pip and filled from outside), with no outside Python, pip or setuptools
+setting reaching it. The recipe refuses a dirty export, a tag on another
+commit, another Python, a backend `pyproject.toml` requires outside the lock, an
+environment that is not exactly the lock, and two builds that differ.
+
+**Release stamp** (verifiable on the release):
+
+| Stamp | Value |
+|---|---|
+| `ubb.__version__` | `4.0.0` |
+| `ubb.__spec_revision__` | `f9e2cabcc276be46bf28267b57f4cacb3be981de2a30e3cb8b55a4a680c89d92` |
+| `ubb.__spec_version__` | `v1` |
+| Generator | `openapi-python-client==0.29.0` |
+| Tag | `sdk-v4.0.0` |
+| Wheel and its SHA-256 | recorded here when the tag's wheel is built (the cutover's second pull request) |
+
+### Changed
+
+- **The version is 4.0.0** (`pyproject.toml`, `ubb.__version__`), and the
+  Integration Blueprint's Python target names SDK major 4.
+- **The build backend is pinned exactly** (`setuptools==80.9.0`), the one the
+  release recipe builds with.
+- **Every receipt states what it explains** (MIGRATION.md §26).
+  `RecordUsageResponse.pricing_receipt_subject_type` and
+  `UsageEventDetailOut.pricing_receipt_subject_type` are required and never
+  null, and their generated enums are `RecordUsageResponsePricingReceiptSubjectType`
+  and `UsageEventDetailOutPricingReceiptSubjectType` (each was `…Type0`, the
+  generator's name for the non-null member of a nullable union). On
+  `UsageBatchItemResponse` the field is required and nullable: null on a
+  rejected item, beside its null receipt.
+
+### Removed
+
+- **`ubb.vocabulary` loses the audit action no record could ever carry**
+  (MIGRATION.md §25): `AUDIT_ACTION_SYSTEM_PREPRODUCTION_MODEL_CUTOVER` and
+  `AUDIT_ACTION_WITHHELD_VALUES` are deleted, and `AUDIT_ACTION_VALUES` no
+  longer holds `'system.preproduction_model_cutover'`. The audit trail opens
+  with no synthetic row (#190, ruled 2026-10-23, option (i); ADR-0026 §6), so
+  the value was registered only to be refused, and the cutover deleted it with
+  its exclusion.
+
+No call or exception changed in this cut, and no model beyond the receipt's
+subject above: the SDK was settled in R10-W5 (MIGRATION.md §24).
+
+## 3.0.0 — the tree's pre-release number, never released
+
+> **Not a release.** No tag and no wheel ever carried 3.0.0; the entry below is
+> kept as the record of what the number described while the re-model was built,
+> and every change in it shipped first in **4.0.0**. Its stamp table recorded a
+> contract revision long since superseded (`b2d65899…`); the release stamp is
+> 4.0.0's, above.
 
 **The coordinated v3.0 release (#85).** One breaking cut carrying the generated
 typed core (#84) and the RFC 9457 problem+json error model (#78) together — the
@@ -12,10 +79,9 @@ one integrating tenant migrates exactly once. **No compatibility shim.**
 
 Full upgrade guide, covering every breaking edge: **[MIGRATION.md](./MIGRATION.md)**.
 
-_Release date is set at tag time; publishing is gated on operator↔tenant
-coordination recorded on issue #85 (see MIGRATION.md → Release checklist)._
+_Never tagged: the release this section planned is 4.0.0 (see above)._
 
-**Spec-revision stamp** (verifiable on the release):
+**Spec-revision stamp** (as it stood when the number was set; superseded):
 
 | Stamp | Value |
 |---|---|

@@ -48,6 +48,7 @@ from django.utils import timezone
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.customers.models import Customer
 from apps.subscriptions.models import StripeSubscription, CustomerSubscriptionItem
+from apps.metering.usage.tests._helpers import a_posting
 
 # A FULL calendar month window: subscription_nominal pro-rates amount_micros by
 # overlap_days / days_in_month; a full month => 130M * 30 // 30 == 130M exactly.
@@ -208,7 +209,7 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
             (seat1, "u-alice", 4_000_000, 1_000_000),
             (seat2, "u-bob", 3_000_000, 800_000),
         ]:
-            ev = Posting.objects.create(
+            ev = a_posting(
                 tenant=tenant, customer=seat, idempotency_key=key,
                 provider_cost_micros=provider, billed_cost_micros=billed)
             Posting.objects.filter(id=ev.id).update(effective_at=USAGE_AT)

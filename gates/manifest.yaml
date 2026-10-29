@@ -543,9 +543,12 @@ gates:
     status: installed
     notes: >-
       Managed concrete first-party models only (#154 §6.4) — an unmanaged model
-      maps a table UBB does not own. Three mismatches are in the ledger, owed by
-      slices 4 and 8; `ConnectOAuthState` is in the permanent exceptions, and is
-      an exception to the mechanism rather than to the rule. The same module
+      maps a table UBB does not own. The ledger owes it nothing: the pricing
+      inversion's two tables were paid in slice 4 (#367, #368), and
+      `ubb_customer_sub_item` by the cutover's fresh initial set (#190), which
+      created the table as `ubb_customer_subscription_item`.
+      `ConnectOAuthState` is in the permanent exceptions, and is an exception to
+      the mechanism rather than to the rule. The same module
       carries #154 §6.4's two pre-flight checks — that no two models canonicalise
       onto one table, and that no canonical name exceeds PostgreSQL's identifier
       limit — because a gate demanding a name the database cannot hold would have
@@ -945,9 +948,9 @@ gates:
       which drives it through `delete()`, `QuerySet.delete()` and raw SQL, names
       the admitted move beside the refusals, and removes each condition's CAUSE
       in turn to show the other stays standing. It is held by a `BEFORE DELETE`
-      trigger in
-      `ubb-platform/apps/metering/usage/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py`
-      — the first rule on the child table, and the first on either table that is
+      trigger, `trg_posting_measurement_pruning` (installed since the cutover by
+      `ubb-platform/apps/metering/usage/migrations/0002_the_database_rules.py`,
+      #190) — the first rule on the child table, and the first on either table that is
       not a `BEFORE UPDATE`. Its per-insert and per-update cost is zero by
       construction rather than by measurement, which the module asserts out of
       `pg_trigger`'s statement mask: a `BEFORE DELETE` trigger cannot fire on
@@ -1026,18 +1029,122 @@ gates:
     statement: Migrations carry their data — a rename, never an add-and-remove pair.
     oracle: ADR-0007 §1
     source: ADR-0007 §1
-    status: owned_by_slice_8
-    blocked_on: >-
-      ADR-0007 §1 states the data-carrying rule does not bind before the cutover
-      squash. Installing it now would gate the eight slices that are explicitly
-      exempt from it.
+    status: installed
+    notes: >-
+      Installed by slice 8's cutover (#190, ADR-0026). It holds every migration
+      AFTER the fresh initial set the squash left (26 files, named in one
+      constant, `FRESH_INITIAL_SET`); on the cutover's own commit that held set
+      is empty, and the test states the count rather than letting an empty walk
+      pass. Three rules, read statically with `ast`: within ONE app, a drop and
+      an add on the same model (`RemoveField` + `AddField`) or a `DeleteModel` +
+      `CreateModel`, in the same migration or in two ADJACENT migrations in
+      either order, is refused as a disguised rename whatever its types or
+      options, unless the migration declares `NOT_A_RENAME` with a reason; every
+      `RemoveField`/`DeleteModel` states its reason in `DROPS`; every `RunPython`
+      and `RunSQL` names a reverse or the module states `IRREVERSIBLE`. ITS
+      SCOPE IS STATED, NOT IMPLIED: a pair more than one migration apart, a
+      field moved to another model or app, `state_operations`, and a column
+      dropped by raw SQL are outside it, and a reverse is accepted as written —
+      G20 makes the anti-pattern impossible to write by splitting it across two
+      files; it is not a semantic migration engine. Shown red on planted
+      violations: the same-migration and adjacent-migration renames (both
+      orders, and a model), a rename with a type adjustment, a reasonless and a
+      blank-reasoned drop, a reverse-less `RunPython` and `RunSQL`, and a drop
+      inside a `SeparateDatabaseAndState`'s database half.
+    enforced_by:
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_the_fresh_initial_set_is_what_the_cutover_left
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_the_held_set_is_every_migration_after_the_fresh_set
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_every_migration_after_the_fresh_set_carries_its_data
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_a_drop_and_an_add_in_one_migration_is_a_disguised_rename
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_a_drop_then_an_add_in_the_next_migration_is_a_disguised_rename
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_an_add_then_a_drop_in_the_next_migration_is_a_disguised_rename
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_a_model_deleted_then_created_next_door_is_a_disguised_rename
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_a_rename_with_a_type_adjustment_is_still_a_rename
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_a_drop_with_no_reason_is_refused
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_a_runpython_with_no_reverse_is_refused
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_planted_a_runsql_with_no_reverse_is_refused
+      - suite: contracts
+        node: tests/contracts/test_migrations_carry_their_data.py::test_the_scope_is_adjacent_migrations_and_says_so
 
   G21:
     statement: The five cutover assertions.
     oracle: "#153 §13.5"
     source: "#155 §11.3"
-    status: owned_by_slice_8
-    blocked_on: The cutover itself — there is no migration squash, audit reset or baseline rotation to assert about.
+    status: installed
+    notes: >-
+      Installed by slice 8's cutover (#190, ADR-0026), in #153 §13.5's words:
+      (1) no old posting reaches a balance or a report; (2) no undeclared
+      measurement survives; (3) no legacy pricing provenance is read; (4) every
+      new event validates against its Event Type; (5) every new monetary record
+      uses the new receipt shape. NONE PASSES BECAUSE THE FRESH DATABASE IS
+      EMPTY: each records through the real doors first (the recording routes, a
+      publication, the Charge projection, the drawdown repair) and carries a
+      planted violation its own check reports. (1) is a REACHABILITY claim and
+      is pinned as one, in two halves: a pre-remodel posting fact with
+      distinctive money is planted in the posting's old table, shown readable,
+      and shown to reach neither the prepaid wallet balance through the
+      drawdown repair nor the one economic query; and no reader path survives
+      in production code — the retired posting structures (the old chain's
+      history, pinned with sources, plus the registry's retired names for the
+      same columns) are no field of the posting model, no raw SQL reads the old
+      table or names a retired column beside `ubb_posting`, and the posting
+      table holds no column outside its model. (3) likewise: every receipt
+      reader and the completion boundary refuse a planted version-1, versionless
+      or empty record, the public event read refuses one, and no production
+      code declares a second shape, dispatches on another version or names the
+      receipt's retired name. (4) covers every event that NAMES an Event Type;
+      an event naming none stays outside (#567), and the assertion is not
+      narrowed further. (5)'s record set is derived — every model declaring the
+      receipt column, which is the posting — and no Pricing Receipt is invented
+      for a wallet or invoice record.
+    enforced_by:
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoOldPostingReachesABalanceOrAReportTest::test_the_planted_old_posting_is_there_to_be_read
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoOldPostingReachesABalanceOrAReportTest::test_it_reaches_no_balance
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoOldPostingReachesABalanceOrAReportTest::test_it_reaches_no_report
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoOldPostingReachesABalanceOrAReportTest::test_the_posting_table_holds_no_column_outside_its_model
+      - suite: contracts
+        node: tests/contracts/test_no_retired_posting_or_receipt_reader_survives.py::test_the_posting_model_declares_no_retired_structure
+      - suite: contracts
+        node: tests/contracts/test_no_retired_posting_or_receipt_reader_survives.py::test_no_production_sql_reads_an_old_posting
+      - suite: contracts
+        node: tests/contracts/test_no_retired_posting_or_receipt_reader_survives.py::test_planted_a_reader_of_the_old_table_is_found
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoUndeclaredMeasurementSurvivesTest::test_every_recorded_name_is_declared_or_held
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoUndeclaredMeasurementSurvivesTest::test_planted_an_undeclared_name_nobody_held_is_reported
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoLegacyPricingProvenanceIsReadTest::test_every_reader_refuses_a_record_not_in_the_one_shape
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::NoLegacyPricingProvenanceIsReadTest::test_a_planted_legacy_receipt_is_refused_by_the_public_read
+      - suite: contracts
+        node: tests/contracts/test_no_retired_posting_or_receipt_reader_survives.py::test_no_production_code_reads_a_legacy_receipt
+      - suite: contracts
+        node: tests/contracts/test_no_retired_posting_or_receipt_reader_survives.py::test_planted_a_dispatch_on_an_older_version_is_found
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::EveryNewEventValidatesAgainstItsEventTypeTest::test_every_event_naming_a_published_event_type_validates
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::EveryNewEventValidatesAgainstItsEventTypeTest::test_planted_an_event_its_publication_refuses_is_reported
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::EveryNewMonetaryRecordUsesTheNewReceiptShapeTest::test_every_record_written_through_a_door_holds_the_one_shape
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::EveryNewMonetaryRecordUsesTheNewReceiptShapeTest::test_planted_records_in_another_shape_are_reported
+      - suite: platform
+        node: ubb-platform/api/v1/tests/test_the_cutover_assertions.py::EveryNewMonetaryRecordUsesTheNewReceiptShapeTest::test_an_omitted_receipt_fails_at_its_insert
 
   G22:
     statement: >-

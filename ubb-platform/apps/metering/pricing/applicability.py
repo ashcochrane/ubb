@@ -29,9 +29,11 @@ revenue for this event sits on the unit's Charge — and the billing mode is not
 encoded a second time in the pricing result; whether money is collected is the
 billing product's business, behind its own gate. With no producer left,
 `tenant_not_billing` was removed in the same change (a value nothing can
-produce is deleted with its last producer, not kept alive), the existing
-postings holding it were rewritten to the value that was always true of them
-(`usage/0047`), and the sealed receipts that hold it keep it as written.
+produce is deleted with its last producer, not kept alive), and the postings
+then holding it were rewritten to the value that was always true of them
+(`usage/0047`, before the cutover squash, #190). The table's closed set
+(`ck_posting_not_applicable_reason`) refuses it now, and no stored receipt
+holds it: the cutover started from a fresh database with one receipt shape.
 
 **Why this is a function and not a registry `value_semantics` block.** The rule
 is one fact, and the case where it is false — event-priced work — has no reason

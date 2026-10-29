@@ -39,7 +39,6 @@ from apps.metering.pricing.services.cost_settlement import (
     Settlement, settle_provider_cost)
 from apps.metering.pricing.services.price_resolution import (
     PriceResolution, resolve_customer_price)
-from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.work.models import Task
@@ -51,6 +50,7 @@ from core.vocabulary import (
     PRICING_STATUS_UNKNOWN,
     UNRESOLVED_REASON_COST_RATE_MISSING,
 )
+from apps.metering.usage.tests._helpers import a_posting
 
 #: What each door completes, how, what it answers when it does, and the unit's
 #: total and count it moves. One table, so a case written once covers both.
@@ -88,7 +88,7 @@ class _AUnitWithAnOpenPosting:
                 subtask.id, billed_cost_micros=None, provider_cost_micros=None,
                 costing_status=COSTING_STATUS_UNRESOLVED,
                 pricing_status=PRICING_STATUS_UNKNOWN)
-        posting = Posting.objects.create(
+        posting = a_posting(
             tenant=tenant, customer=customer, idempotency_key="late",
             task_id=subtask.id, provider_cost_micros=None,
             costing_status=COSTING_STATUS_UNRESOLVED,

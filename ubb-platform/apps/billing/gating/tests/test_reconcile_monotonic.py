@@ -14,9 +14,9 @@ from django.core.cache import cache
 from apps.billing.gating.models import CustomerSpendPool
 from apps.billing.gating.services.customer_spend_pool_service import CustomerSpendPoolService
 from apps.billing.gating.services.live_counter import Door, LiveCounter
-from apps.metering.usage.models import Posting
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
+from apps.metering.usage.tests._helpers import a_posting
 
 
 def _setup():
@@ -31,7 +31,7 @@ def _durable_event(t, c, billed, n):
     """A committed Posting contributes to the durable (Postgres) total that
     reconcile reads via get_customer_cost_totals (effective_at = now = in
     current month)."""
-    Posting.objects.create(
+    a_posting(
         tenant=t, customer=c, idempotency_key=f"i{n}",
         provider_cost_micros=billed, billed_cost_micros=billed)
 

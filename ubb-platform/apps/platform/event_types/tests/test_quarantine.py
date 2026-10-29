@@ -60,15 +60,13 @@ declaration rows either side of every path.
 """
 from datetime import datetime, timedelta, timezone as utc
 from decimal import Decimal
-from importlib import import_module
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from django.apps import apps as live_apps
 from django.test import TestCase
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError, connection, migrations, transaction
+from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 from apps.platform.event_types import hooks, quarantine
@@ -1118,67 +1116,63 @@ class TestAPeriodDoesNotCloseSilently:
 
 @pytest.mark.django_db
 class TestTheHeldRowCannotBeIncoherent:
-    """Every rule below is one a repair screen could otherwise write past."""
+    """Every rule below is one a repair screen could otherwise write past.
+
+    ⚠ EACH ROW IS WRITTEN WITH ITS EVENT, AND EACH REFUSAL NAMES ITS RULE. A
+    held name has named the event it arrived on since #473, and a row written
+    without one is refused by that column's NOT NULL before any rule below is
+    asked — so a case that only expected *some* refusal would pass with its own
+    rule deleted."""
+
+    def _refused_by(self, rule, **columns):
+        with pytest.raises(IntegrityError) as refused, transaction.atomic():
+            QuarantinedKey.objects.create(
+                tenant=_tenant(), event_type_key="acme.embed",
+                occurred_at=JANUARY, event_id=uuid4(), **columns)
+        assert rule in str(refused.value)
 
     def test_a_quantity_row_must_name_the_quantity(self):
-        tenant = _tenant()
-        with pytest.raises(IntegrityError), transaction.atomic():
-            QuarantinedKey.objects.create(
-                tenant=tenant, unrecognised=UNRECOGNISED_MEASUREMENT_KEY,
-                event_type_key="acme.embed", occurred_at=JANUARY)
+        self._refused_by("ck_quarantined_key_names_what_it_is_about",
+                         unrecognised=UNRECOGNISED_MEASUREMENT_KEY)
 
     def test_an_event_type_row_may_not_name_a_quantity(self):
         """Nothing beneath an unrecognised Event Type was ever looked up."""
-        tenant = _tenant()
-        with pytest.raises(IntegrityError), transaction.atomic():
-            QuarantinedKey.objects.create(
-                tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
-                event_type_key="acme.embed", measurement_key="prompt_tokens",
-                occurred_at=JANUARY)
+        self._refused_by("ck_quarantined_key_names_what_it_is_about",
+                         unrecognised=UNRECOGNISED_EVENT_TYPE,
+                         measurement_key="prompt_tokens")
 
     def test_a_resolution_without_a_date_is_refused(self):
-        tenant = _tenant()
-        with pytest.raises(IntegrityError), transaction.atomic():
-            QuarantinedKey.objects.create(
-                tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
-                event_type_key="acme.embed", occurred_at=JANUARY,
-                resolution=RESOLUTION_MAPPED, resolved_key="acme.embed")
+        self._refused_by("ck_quarantined_key_resolution_is_dated",
+                         unrecognised=UNRECOGNISED_EVENT_TYPE,
+                         resolution=RESOLUTION_MAPPED, resolved_key="acme.embed")
 
     def test_a_date_without_a_resolution_is_refused(self):
         """Checked in both directions: the row would read as open to a query
         and as finished to a person."""
-        tenant = _tenant()
-        with pytest.raises(IntegrityError), transaction.atomic():
-            QuarantinedKey.objects.create(
-                tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
-                event_type_key="acme.embed", occurred_at=JANUARY,
-                resolution=RESOLUTION_UNRESOLVED, resolved_at=timezone.now())
+        self._refused_by("ck_quarantined_key_resolution_is_dated",
+                         unrecognised=UNRECOGNISED_EVENT_TYPE,
+                         resolution=RESOLUTION_UNRESOLVED,
+                         resolved_at=timezone.now())
 
     def test_a_dismissal_may_not_name_a_declaration(self):
         """The fourth remediation path, refused before anyone invents it."""
-        tenant = _tenant()
-        with pytest.raises(IntegrityError), transaction.atomic():
-            QuarantinedKey.objects.create(
-                tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
-                event_type_key="acme.embed", occurred_at=JANUARY,
-                resolution=RESOLUTION_DISMISSED, resolved_at=timezone.now(),
-                resolved_key="acme.embed")
+        self._refused_by("ck_quarantined_key_resolution_and_key_agree",
+                         unrecognised=UNRECOGNISED_EVENT_TYPE,
+                         resolution=RESOLUTION_DISMISSED,
+                         resolved_at=timezone.now(), resolved_key="acme.embed")
 
     def test_a_mapping_must_say_what_the_name_now_means(self):
-        tenant = _tenant()
-        with pytest.raises(IntegrityError), transaction.atomic():
-            QuarantinedKey.objects.create(
-                tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
-                event_type_key="acme.embed", occurred_at=JANUARY,
-                resolution=RESOLUTION_MAPPED, resolved_at=timezone.now())
+        self._refused_by("ck_quarantined_key_resolution_and_key_agree",
+                         unrecognised=UNRECOGNISED_EVENT_TYPE,
+                         resolution=RESOLUTION_MAPPED, resolved_at=timezone.now())
 
     def test_a_remediation_outside_the_value_set_is_refused(self):
-        tenant = _tenant()
-        with pytest.raises(IntegrityError), transaction.atomic():
-            QuarantinedKey.objects.create(
-                tenant=tenant, unrecognised=UNRECOGNISED_EVENT_TYPE,
-                event_type_key="acme.embed", occurred_at=JANUARY,
-                resolution="ignored", resolved_at=timezone.now())
+        """`ck_quarantined_key_resolution` — the closed set. A value outside it
+        names no declaration either, so the agreement rule beside it refuses
+        the row too; whichever answers first, it is one of the two."""
+        self._refused_by("ck_quarantined_key_resolution",
+                         unrecognised=UNRECOGNISED_EVENT_TYPE,
+                         resolution="ignored", resolved_at=timezone.now())
 
     def test_the_validator_says_the_same_things_the_database_does(self):
         """A courtesy to the ordinary path (ADR-0007 §2), checked once.
@@ -1210,55 +1204,40 @@ class TestTheHeldRowCannotBeIncoherent:
 
 
 # ---------------------------------------------------------------------------
-# The migration that made a held name name its event (event_types 0010)
+# A held name names the event it arrived on (#473)
 # ---------------------------------------------------------------------------
 
-THE_EVENT_MIGRATION = import_module(
-    "apps.platform.event_types.migrations."
-    "0010_a_held_name_names_the_event_it_arrived_on")
-event_guard = THE_EVENT_MIGRATION.refuse_a_held_name_with_no_event
-
-
-def test_the_event_guard_runs_between_the_column_and_the_rule():
-    """After the column exists, so the rows it reads are the rows the rule
-    will judge; before NOT NULL is added, so its refusal — naming what it
-    found — arrives instead of a bare constraint violation."""
-    operations = THE_EVENT_MIGRATION.Migration.operations
-
-    assert [type(operation) for operation in operations] == [
-        migrations.AddField, migrations.RunPython, migrations.AlterField,
-        migrations.AddIndex]
-    assert operations[1].code is event_guard
-    assert operations[0].name == "event_id"
-
-
 @pytest.mark.django_db
-def test_the_event_guard_lets_a_table_where_every_name_has_its_event_through():
-    hold_an_unrecognised_event_type(
-        tenant=_tenant(), event_type_key="acme.embed", quantities={},
-        occurred_at=JANUARY, event_id=uuid4())
+class TestAHeldNameNamesItsEvent:
+    """Every held name is the remainder of ONE recorded event, and the event is
+    what a replay and a Resolution Run re-cost — the whole event's answers,
+    never one row's. So the row cannot exist without it, and the one read that
+    asks for an event's held names has its index.
 
-    event_guard(live_apps, None)
+    Before the cutover (#190) `event_types/0010` added the column, with a guard
+    that refused to run over a held name with no event and named it. A fresh
+    database holds no such row; what stays is the end state that guard led
+    to, pinned here."""
 
+    def test_a_held_name_with_no_event_is_refused(self):
+        with pytest.raises(IntegrityError) as refused, transaction.atomic():
+            QuarantinedKey.objects.create(
+                tenant=_tenant(), unrecognised=UNRECOGNISED_EVENT_TYPE,
+                event_type_key="acme.embed", occurred_at=JANUARY,
+                event_id=None)
 
-@pytest.mark.django_db
-def test_the_event_guard_refuses_a_held_name_with_no_event_and_names_it():
-    """Named by everything it takes to find it, with nothing repaired. A row
-    with no event is a state the column now refuses, so the rule is dropped
-    for the rest of this test's transaction, which rolls it back."""
-    tenant = Tenant.objects.create(name="Acme pre-launch")
-    with connection.cursor() as cursor:
-        cursor.execute("ALTER TABLE ubb_quarantined_key "
-                       "ALTER COLUMN event_id DROP NOT NULL")
-    held = hold_an_unrecognised_event_type(
-        tenant=tenant, event_type_key="acme.embed", quantities={},
-        occurred_at=JANUARY, event_id=None)
+        assert "event_id" in str(refused.value)
+        assert QuarantinedKey.objects.count() == 0
 
-    with pytest.raises(THE_EVENT_MIGRATION.HeldNameWithoutAnEvent) as refused:
-        event_guard(live_apps, None)
+    def test_the_event_a_held_name_names_is_read_through_its_index(self):
+        """`ix_quarantined_key_event`, on exactly the two columns the read
+        filters on: one tenant's held names for one recorded event."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT indexdef FROM pg_indexes "
+                "WHERE tablename = %s AND indexname = %s",
+                [QuarantinedKey._meta.db_table, "ix_quarantined_key_event"])
+            found = cursor.fetchall()
 
-    said = str(refused.value)
-    assert (f"held {UNRECOGNISED_EVENT_TYPE} 'acme.embed' (QuarantinedKey "
-            f"{held.pk}) of tenant {tenant.pk} ('Acme pre-launch')") in said
-    assert "UBB never invents one, and repairs nothing" in said
-    assert QuarantinedKey.objects.get(pk=held.pk).event_id is None
+        assert len(found) == 1, found
+        assert found[0][0].endswith("(tenant_id, event_id)"), found

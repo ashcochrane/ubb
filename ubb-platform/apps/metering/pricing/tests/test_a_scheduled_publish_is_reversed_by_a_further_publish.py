@@ -90,6 +90,7 @@ from apps.metering.usage.models import Posting
 from apps.platform.audit.actors import member_actor
 from core.problems import Problem
 from core.transitions import SET_ONCE
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 #: How far ahead the fixtures date a change. Comfortably inside the platform's
 #: horizon, and far enough that no case here could pass by the boundary having
@@ -321,7 +322,7 @@ class AReceiptWrittenBeforeTheScheduleSurvivesTest(AForwardDatingBookMixin,
         super().setUp()
         declares_a_markup(self.tenant)
         self.boundary = timezone.now() + A_MONTH
-        self.posting = Posting.objects.create(
+        self.posting = usage_helpers.a_posting(
             tenant=self.tenant, customer=self.customer,
             idempotency_key=str(uuid4()),
             **{Posting.RECEIPT_COLUMN: self.resolved(timezone.now())})

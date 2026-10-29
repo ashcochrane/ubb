@@ -5,13 +5,18 @@ LOWERCASE: the ledger spelled its eleven in upper case until R10-W4, outside the
 registry's token rule, and the owner ruled the canonical tokens lowercase with no
 per-concept exception and no dual acceptance. A credit grant's source spells the
 automatic top-up `auto_top_up`, one concept's one spelling (ADR-0006 §2). These
-go through the public route, the table's every door, and `wallets/0014` run for
-real.
+go through the public route and the table's every door, where
+`ck_wallet_transaction_type_known` and `ck_credit_grant_source_known` refuse
+the old spellings.
+
+Before the cutover (#190) a case here also ran `wallets/0014` through the
+executor and back, moving every stored upper-case type and every run-together
+grant source to the registry's token; that data step left with the squashed
+chain.
 """
 import json
 
 from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, TestCase
 
 from api.v1.tests._helpers import a_tenant
@@ -22,8 +27,8 @@ from core.vocabulary import (
     WALLET_TRANSACTION_TYPE_ADJUSTMENT, WALLET_TRANSACTION_TYPE_DEBIT,
     WALLET_TRANSACTION_TYPE_VALUES)
 
-#: The spellings the ledger stored before R10-W4, as data a migration test
-#: plants. Derived rather than listed: upper-casing the registry's value is what
+#: The spellings the ledger stored before R10-W4, as the refusals below send
+#: them. Derived rather than listed: upper-casing the registry's value is what
 #: the ledger used to do, and a list would be a second copy of the eleven.
 UPPERCASE = {value.upper(): value for value in WALLET_TRANSACTION_TYPE_VALUES}
 #: The automatic top-up's lots carried the run-together spelling.
@@ -110,57 +115,3 @@ class TheTableRefusesAnotherSpellingTest(_AWalletTestCase):
                           source=OLD_AUTO_TOP_UP))
         for value in sorted(GRANT_SOURCE_VALUES):
             CreditGrant.objects.filter(pk=grant.pk).update(source=value)
-
-
-class TheMigrationMovesEveryStoredRowTest(_AWalletTestCase):
-    """`wallets/0014` through the executor and back: every stored upper-case
-    type and every run-together grant source moves to the registry's token."""
-
-    BEFORE = ("wallets", "0013_a_wallet_movement_states_its_reason")
-    AFTER = ("wallets", "0014_wallet_vocabulary_is_the_registrys")
-
-    def _migrate_to(self, target):
-        with connection.cursor() as cursor:
-            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-        MigrationExecutor(connection).migrate([target])
-
-    def tearDown(self):
-        self._migrate_to(self.AFTER)
-
-    def _column(self, table, column, pk):
-        with connection.cursor() as cursor:
-            cursor.execute(f"SELECT {column} FROM {table} WHERE id = %s", [str(pk)])
-            return cursor.fetchone()[0]
-
-    def test_the_stored_rows_move_to_the_registrys_tokens_and_back(self):
-        rows = {upper: WalletTransaction.objects.create(
-            wallet=self.wallet, transaction_type=lower, amount_micros=1,
-            balance_after_micros=1) for upper, lower in UPPERCASE.items()}
-        grant = CreditGrant.objects.create(
-            tenant=self.tenant, wallet=self.wallet, kind="paid",
-            granted_micros=1, remaining_micros=1, currency="usd",
-            source=GRANT_SOURCE_AUTO_TOP_UP)
-
-        self._migrate_to(self.BEFORE)
-        with connection.cursor() as cursor:
-            for upper, row in rows.items():
-                cursor.execute("UPDATE ubb_wallet_transaction SET "
-                               "transaction_type = %s WHERE id = %s",
-                               [upper, str(row.pk)])
-            cursor.execute("UPDATE ubb_credit_grant SET source = %s "
-                           "WHERE id = %s", [OLD_AUTO_TOP_UP, str(grant.pk)])
-
-        self._migrate_to(self.AFTER)
-        for upper, row in rows.items():
-            self.assertEqual(self._column("ubb_wallet_transaction",
-                                          "transaction_type", row.pk),
-                             UPPERCASE[upper])
-        self.assertEqual(self._column("ubb_credit_grant", "source", grant.pk),
-                         GRANT_SOURCE_AUTO_TOP_UP)
-
-        self._migrate_to(self.BEFORE)
-        for upper, row in rows.items():
-            self.assertEqual(self._column("ubb_wallet_transaction",
-                                          "transaction_type", row.pk), upper)
-        self.assertEqual(self._column("ubb_credit_grant", "source", grant.pk),
-                         OLD_AUTO_TOP_UP)

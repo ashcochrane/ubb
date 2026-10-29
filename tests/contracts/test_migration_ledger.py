@@ -40,6 +40,7 @@ from _gate_helpers import (
     load,
     real,
     rejection,
+    synthetic_slices,
 )
 from _helpers import REPO_ROOT
 from tools.gates import errors as codes
@@ -100,7 +101,7 @@ def chain(tmp_path):
     force are still the real ones. Orders and issues are taken past the
     shipped ones, so a slice the programme adds later cannot collide with them.
     """
-    declared = yaml.safe_load(real("slices.yaml"))
+    declared = synthetic_slices()
     shipped = list(declared["slices"].values())
     order = max(body["order"] for body in shipped)
     issue = max(body["issue"] for body in shipped)

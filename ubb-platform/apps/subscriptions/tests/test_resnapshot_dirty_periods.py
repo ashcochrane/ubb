@@ -8,7 +8,7 @@ from unittest import mock
 import pytest
 from django.utils import timezone
 
-from apps.metering.usage.models import BackfillDirtyPeriod, Posting
+from apps.metering.usage.models import BackfillDirtyPeriod
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.subscriptions.economics.models import (
@@ -17,6 +17,7 @@ from apps.subscriptions.economics.models import (
 from apps.subscriptions.tasks import (
     RESNAPSHOT_MARKER_MIN_AGE, resnapshot_dirty_periods,
 )
+from apps.metering.usage.tests._helpers import a_posting
 
 
 def _setup():
@@ -38,7 +39,7 @@ def _postings(t, c, period_start, *, provider, billed, count):
     across `count` rows, which is all these cases need of them.
     """
     for index in range(count):
-        Posting.objects.create(
+        a_posting(
             tenant=t, customer=c, idempotency_key=f"resnapshot-{index}",
             event_type="chat.completion",
             provider_cost_micros=provider // count,

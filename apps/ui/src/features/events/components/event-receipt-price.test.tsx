@@ -109,6 +109,7 @@ const METERING_ONLY_DETAIL: UsageEventDetail = {
     totals: { provider_cost_micros: 61_000, billed_cost_micros: null },
     provenance: {},
   },
+  pricing_receipt_subject_type: "usage_event",
   metadata: {},
   task_id: null,
   stop_context: null,

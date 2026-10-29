@@ -45,23 +45,17 @@ describe("what a receipt explains", () => {
     );
   });
 
-  // Nullable on the wire, and a value the registry has never seen is legal
-  // there too. Neither is a Charge, so neither gets the charge's sentence —
-  // which would tell a reader the price was agreed for a posting nobody
-  // agreed anything about.
-  it("reads a stated, an unstated and an unfamiliar subject as the ordinary case", () => {
+  // Required and never null on the wire (#190), and a value the registry has
+  // never seen is legal there. It is not a Charge, so it does not get the
+  // charge's sentence — which would tell a reader the price was agreed for a
+  // posting nobody agreed anything about.
+  it("reads a stated subject as itself and an unfamiliar one as the ordinary case", () => {
     expect(explainsACharge("charge")).toBe(true);
     expect(explainsACharge("usage_event")).toBe(false);
-    expect(explainsACharge(null)).toBe(false);
-    expect(explainsACharge(undefined)).toBe(false);
     expect(explainsACharge("some_future_subject")).toBe(false);
 
     expect(receiptExplanation("charge")).toBe(RECEIPT_SUBJECT_EXPLANATIONS.charge);
     expect(receiptExplanation("usage_event")).toBe(
-      RECEIPT_SUBJECT_EXPLANATIONS.usage_event,
-    );
-    expect(receiptExplanation(null)).toBe(RECEIPT_SUBJECT_EXPLANATIONS.usage_event);
-    expect(receiptExplanation(undefined)).toBe(
       RECEIPT_SUBJECT_EXPLANATIONS.usage_event,
     );
     expect(receiptExplanation("some_future_subject")).toBe(

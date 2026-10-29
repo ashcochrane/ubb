@@ -70,6 +70,7 @@ from core.vocabulary import (
     PRICING_STATUS_KNOWN,
     PRICING_STATUS_UNKNOWN,
 )
+from apps.metering.usage.tests import _helpers as usage_helpers
 
 QUANTITY = "prompt_tokens"
 ONE_DENOMINATOR = 1_000_000
@@ -169,7 +170,7 @@ class _AMarkupPricedEventMixin:
         column still carries a word the registry retired and the ticket that
         renames it is not this one.
         """
-        posting = Posting.objects.create(
+        posting = usage_helpers.a_posting(
             tenant=tenant, customer=customer,
             idempotency_key=str(uuid4()),
             **{Posting.RECEIPT_COLUMN: receipt})

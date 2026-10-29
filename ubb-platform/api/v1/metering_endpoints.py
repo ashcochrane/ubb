@@ -473,11 +473,11 @@ def with_receipt_reads(result):
     contract carry the agreed vocabulary for it.
 
     **THE RECEIPT'S SHAPE IS ASKED FOR, NOT ASSUMED (#349).** An idempotent
-    replay answers with the receipt the posting was recorded with, so this is a
-    live read over rows written in the older shape as well as the current one —
-    a read-path obligation rather than a migration, since old receipts are read
-    and never rewritten. The tolerance is expressed once, in the receipts
-    module, because a second copy of it here is a second thing to repair."""
+    replay answers with the receipt the posting was recorded with, and the
+    receipts module's readers refuse any record not in the one shape this code
+    writes — the empty record included (#190). The question is asked once, in
+    that module, because a second copy of it here is a second thing to
+    repair."""
     # THE WIRE KEY, NOT THE COLUMN — spelled rather than taken from
     # `Posting.RECEIPT_COLUMN`. The two are the same word since #370 and that is
     # deliberate (ADR-0006 §2: one public name per concept), but they are two
@@ -536,13 +536,14 @@ def _rejected(code, detail):
     """A batch-item rejection verdict: the typed code plus the constant stop
     facts — a rejected item was never recorded, so nothing can have stopped,
     and nothing applied, bounded or measured a stop (#569: null, never 0) —
-    and no price, so no reason for one (#603). Every required-and-nullable
-    acknowledgement fact is here, null."""
+    and no price, so no reason for one (#603), and no receipt, so nothing it
+    explains (#190). Every required-and-nullable acknowledgement fact is here,
+    null."""
     return {"accepted": False, "code": code, "detail": detail,
             "stop": False, "stop_reason": None, "stop_scope": None,
             "trigger_source": None, "stop_bound_micros": None,
             "stop_measured_micros": None, "pricing_status_reason": None,
-            "pricing_receipt": None}
+            "pricing_receipt": None, "pricing_receipt_subject_type": None}
 
 
 def replay_or_record(tenant, customer, item):
@@ -826,8 +827,8 @@ def get_usage_event(request, event_id: UUID):
         # than recomputed (#355). The receipt is the authority on how an amount
         # was reached; re-deriving the method from today's configuration is the
         # failure the receipt exists to prevent. The shape is ASKED FOR, not
-        # assumed — the tolerance lives once in the receipts module, like the
-        # uncosted list on the recording surfaces.
+        # assumed — once, in the receipts module, like the uncosted list on the
+        # recording surfaces.
         "pricing_method": pricing_method_of(e.pricing_receipt),
         # WHAT THE RECEIPT EXPLAINS, on the same two arguments (#370): read out
         # of the record, never inferred from the row it hangs on.

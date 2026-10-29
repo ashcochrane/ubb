@@ -29,36 +29,35 @@ ADR-0007 §1's claim asked of a database rather than of a migration file. The
 column it round-tripped no longer exists — slice 3 replaced it with a reference
 and dropped it — so keeping the class would have meant rebuilding a table shape
 this repository deliberately removed, in order to assert something about it.
-**The claim is still made, by the migration that removed the column:**
-``test_a_rate_names_a_declared_quantity.py`` runs that migration's own data
-function forwards and backwards over real rows, including the ones it could not
-place. What remains here is what can still be asked: the operation list, the two
-database objects, and the published name.
+Before the cutover (#190) the claim was still made by the migration that
+removed the column, whose data function ran forwards and backwards over real
+rows; the squash deleted that migration, and with it the last way to put a row
+in the old shape. What remains here is what can still be asked: the two
+database objects, the reference the rate holds, and the published name.
 
-**THE RETIRED NAME IS NEVER SPELLED HERE.** It is read off the rename operation
-instead, exactly as #274 does. A test module is a living surface, so spelling it
-would re-open an extent this same commit is paying off, and the choice would
-then be a hand-written exclusion or a false ledger count. Deriving it costs one
-import and takes no seeding authorisation. The same rule is why the discriminator
-between cost and price books, the book foreign key and the shape-of-charge column
-are never named below either: all three are retired words slice 4 owns, and a
-count recorded there is a ceiling as much as a floor.
+**THE RETIRED NAME IS NEVER SPELLED HERE.** It was read off the rename
+operation, exactly as #274 does, until the squash deleted the operation; it is
+read off the registry that retired it now (`domain-vocabulary/concepts/
+retired.yaml`, `measurement_key`'s `retired_aliases`). A test module is a
+living surface, so spelling it would re-open an extent that was paid off, and
+the choice would then be a hand-written exclusion or a false ledger count. The
+same rule is why the discriminator between cost and price books, the book
+foreign key and the shape-of-charge column are never named below either: all
+three are retired words slice 4 owned, and a count recorded there is a ceiling
+as much as a floor.
 """
 
 import json
 from functools import cache
-from importlib import import_module
 
 from django.core.exceptions import FieldDoesNotExist
-from django.db import (IntegrityError, connection, migrations as operations,
-                       models, transaction)
-from django.db.migrations.loader import MigrationLoader
+from django.db import IntegrityError, connection, models, transaction
 from django.test import SimpleTestCase, TestCase
 
 from api.v1.openapi_export import GIT_ROOT
 from api.v1.schemas import BookRateChangeIn
-from apps.metering.pricing.models import (
-    CHANGE_ADD, LINE_RATE, NAMES_ONE_QUANTITY_CHECK, Rate)
+from api.v1.tests._helpers import retired_aliases
+from apps.metering.pricing.models import CHANGE_ADD, LINE_RATE, Rate
 from apps.metering.pricing.services.pricing_service import PricingService
 from apps.metering.pricing.tests._helpers import a_usage_event_subject
 from apps.platform.event_types.models import Measurement
@@ -67,22 +66,21 @@ from apps.platform.event_types.tests._helpers import declares_a_quantity
 from apps.platform.tenants.models import Tenant
 from core.vocabulary import PRICING_MODE_EVENT_PRICED
 
-APP_LABEL = "pricing"
-RENAME_MIGRATION = "0016_the_rates_quantity_name_takes_the_canonical_name"
-PARENT_MIGRATION = "0015_remove_rate_uq_rate_active_in_book_rate_dim1_and_more"
+#: The canonical name — the registry concept itself, and the name a tenant
+#: writes and reads on the wire.
+CANONICAL_COLUMN = "measurement_key"
 
-#: The two names, both read off the rename itself.
+#: The name it replaced, read off the registry that retired it.
 #:
-#: Unpacked from a one-element tuple on purpose: a migration that ever grew a
-#: second `RenameField` would make `next(...)` pick one silently, and every
-#: assertion below would then be about a column nobody meant.
-(_RENAME,) = tuple(
-    op for op in
-    import_module(
-        f"apps.metering.pricing.migrations.{RENAME_MIGRATION}").Migration.operations
-    if isinstance(op, operations.RenameField))
-RETIRED_COLUMN = _RENAME.old_name
-CANONICAL_COLUMN = _RENAME.new_name
+#: Picked by meaning rather than by position: the concept retired three
+#: spellings, and the one the rate's COLUMN carried is the one that names a
+#: NAME — the column held the quantity's name, and the other two are the
+#: entity word itself and a bag of them. Unpacked from a one-element list on
+#: purpose, so a registry that ever listed a second such spelling fails here
+#: loudly rather than silently picking one.
+(RETIRED_COLUMN,) = [alias for alias in retired_aliases("retired",
+                                                         CANONICAL_COLUMN)
+                     if alias.endswith("_name")]
 
 #: WHAT THE NAME BECAME (#326). Spelled rather than read off an operation,
 #: because the move that replaced the text with a reference is not a rename and
@@ -93,7 +91,8 @@ CANONICAL_COLUMN = _RENAME.new_name
 DECLARATION_FIELD = "measurement"
 
 #: The two database objects over the quantity a rate prices. They survived the
-#: RENAME untouched — the claim the state-only half of `0016` makes — and were
+#: RENAME untouched — the claim the state-only half of `pricing/0016` made,
+#: before the cutover squash (#190) — and were
 #: REBUILT by the conversion that replaced the column with a reference, because
 #: an index over a text column and one over a foreign key are not the same
 #: object. Their names did not change, which is why these two constants did not.
@@ -143,73 +142,15 @@ def _table_constraints():
             cursor, Rate._meta.db_table)
 
 
-class TheMoveIsARenameTest(TestCase):
-    """ADR-0007 §1, checked against the migration rather than the message."""
-
-    def setUp(self):
-        self.migration = MigrationLoader(connection).get_migration(
-            APP_LABEL, RENAME_MIGRATION)
-
-    def test_it_carries_no_add_plus_remove(self):
-        """The failure this rule exists to stop leaves no trace afterwards.
-
-        An `AddField` beside a `RemoveField` produces a column of the right
-        name holding none of the data, and every assertion in every other class
-        here would pass over it.
-
-        NESTED OPERATIONS ARE WALKED, which is what stops this being a restating
-        of the operation-list test below. `SeparateDatabaseAndState` carries two
-        lists of its own, and a field add hidden in either of them is invisible
-        to a check that only reads the top level — while being exactly the shape
-        this rule forbids, and a shape this migration's second operation makes
-        possible for the first time.
-        """
-        for op in self._every_operation():
-            with self.subTest(operation=type(op).__name__):
-                self.assertNotIsInstance(
-                    op, (operations.AddField, operations.RemoveField))
-
-    def _every_operation(self):
-        for op in self.migration.operations:
-            yield op
-            yield from getattr(op, "database_operations", ())
-            yield from getattr(op, "state_operations", ())
-
-    def test_it_renames_the_column_on_the_rate(self):
-        self.assertEqual(_RENAME.model_name.lower(), Rate._meta.model_name)
-
-    def test_the_only_database_work_is_the_rename(self):
-        """The second operation is a state correction and must stay one.
-
-        Django's project state does not carry a field rename into `Meta.indexes`
-        or `Meta.constraints`, so the two objects built over this column have to
-        be re-described or the autodetector proposes the change again on every
-        run. Postgres has already carried them across the `ALTER TABLE ...
-        RENAME COLUMN`, so re-describing them is a bookkeeping act — and doing it
-        with real operations instead would drop and rebuild a live unique index
-        to record a spelling. This asserts the database half is empty, which is
-        the whole difference between those two readings.
-        """
-        (state_only,) = [op for op in self.migration.operations
-                         if isinstance(op, operations.SeparateDatabaseAndState)]
-        self.assertEqual(list(state_only.database_operations), [])
-        self.assertEqual(
-            [type(op).__name__ for op in state_only.state_operations],
-            ["RemoveIndex", "AddIndex", "RemoveConstraint", "AddConstraint"])
-
-    def test_it_is_the_rename_and_the_state_correction_and_nothing_else(self):
-        self.assertEqual([type(op).__name__ for op in self.migration.operations],
-                         ["RenameField", "SeparateDatabaseAndState"])
-
-
 class TheDatabaseObjectsFollowedTheColumnTest(TestCase):
-    """The claim the state-only half rests on, asked of the database.
+    """The two objects over the quantity, asked of the database.
 
-    Declaring an index in `state_operations` says nothing about what is in
-    Postgres; if the rename had NOT carried these two objects, the migration
-    would have left an index over a column that no longer exists and this suite
-    would be the last place to find out. So both are read back off the live
-    table by introspection.
+    A model's `Meta` says nothing about what is in Postgres; an index left over
+    a column that no longer exists would be found here or nowhere. So both are
+    read back off the live table by introspection. (Until the cutover, #190,
+    this was the claim `pricing/0016`'s state-only half rested on, beside a
+    class that read that migration's operation list; the squash deleted both,
+    and the database half is what outlives them.)
 
     **BOTH OBJECTS MOVED A SECOND TIME (#326)**, and this class moved with them
     rather than being left asserting the previous shape. The rename carried them
@@ -340,13 +281,14 @@ class TheReceiptNamesTheQuantityCanonicallyTest(TestCase):
     and recorded in the ledger; re-taking it here would need the word spelled,
     which is the one thing this file must not do.
 
-    Receipts written before this commit are NOT rewritten and still carry the
-    old key — a receipt records what the engine did on a day, and back-dating it
+    Receipts written before this commit were NOT rewritten and kept the old
+    key — a receipt records what the engine did on a day, and back-dating it
     to a vocabulary that did not exist then would make it a worse record. The
-    engine version stamped beside it does NOT separate the two and is
+    engine version stamped beside it did NOT separate the two and was
     deliberately not bumped: it describes what the engine computed, and every
     amount is identical either side of a rename. `pricing_service._compute`
-    argues that in full.
+    argues that in full. (Since the cutover, #190, no such receipt exists: the
+    fresh database holds none, and the readers read schema 2 alone.)
     """
 
     def test_a_priced_line_carries_the_canonical_name(self):

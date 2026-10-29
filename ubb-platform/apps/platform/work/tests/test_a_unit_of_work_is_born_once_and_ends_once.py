@@ -1,8 +1,10 @@
 """A unit of work is born once and ends once, and the database holds both
 (#562, ADR-0007 §2).
 
-Five columns of `ubb_task` carried their write-once rule in prose until this
-module's migration: the model said what may happen to them and nothing kept it.
+Five columns of `ubb_task` carried their write-once rule in prose until #562
+gave them `trg_task_declared_transitions` (installed by `work/0028` before the
+cutover, #190; by `work/0002_the_database_rules` since): the model said what
+may happen to them and nothing kept it.
 
   * `parent_id` and `task_type` are FROZEN — a unit is never re-parented and
     never re-typed, which is what lets the accumulate primitive read both
@@ -13,8 +15,8 @@ module's migration: the model said what may happen to them and nothing kept it.
   * `outcome_reason` and `reason_detail` are SET_ONCE — written in the same
     write that ends the work, from nothing, and never again.
 
-And six more since `0029` (R10-W2), which widened the same rule rather than
-adding a second one:
+And six more since R10-W2 (`work/0029` before the cutover), which widened the
+same rule rather than adding a second one:
 
   * what UBB recorded when it stopped the unit — `reason_code`,
     `trigger_source`, `control_family`, `control_id` — is SET_ONCE, from
@@ -41,19 +43,16 @@ go through the same three doors — the ending write itself, every other column
 on a terminal row, and a full-row save re-sending unchanged values.
 """
 import importlib
+import re
 
-from django.db import connection
-from django.db.migrations.executor import MigrationExecutor
 from django.test import TestCase
 
 from apps.platform.tests.test_transition_class_declarations import (
     columns_the_database_does_not_defend, declaring_models_by_table)
-from apps.platform.work import queries as work_queries
 from apps.platform.work import reasons
 from apps.platform.work.models import (
     STOP_CAUSE_KEY, STOP_CONTROL_FAMILY_KEY, STOP_CONTROL_ID_KEY,
-    STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, UBB_STOPPED_TASK_STATUSES,
-    Task, TaskType)
+    STOP_MECHANISM_KEY, TERMINAL_TASK_STATUSES, Task)
 from apps.platform.work.services import (
     CloseDeclaration, TaskService, ceiling_control_id)
 from apps.platform.work.tests._helpers import (
@@ -65,15 +64,14 @@ from core.vocabulary import (
     OUTCOME_REASON_PARENT_CLOSED, OUTCOME_REASON_TIMEOUT,
     OUTCOME_REASON_UPSTREAM_PROVIDER_ERROR, TASK_OUTCOME_DELIVERED,
     TASK_OUTCOME_FAILED, TASK_STATUS_ACTIVE, TASK_STATUS_CANCELLED,
-    TASK_STATUS_COMPLETED, TASK_STATUS_EXPIRED, TASK_STATUS_FAILED,
-    TASK_STATUS_KILLED, TASK_TYPE_KIND_SUBTASK, TASK_TYPE_KIND_TASK,
+    TASK_STATUS_COMPLETED, TASK_STATUS_FAILED, TASK_STATUS_KILLED,
     TRIGGER_SOURCE_PARENT_CASCADE, TRIGGER_SOURCE_STALE_REAPER,
     TRIGGER_SOURCE_USAGE_INGEST)
 
 TABLE = Task._meta.db_table
 
 #: The rule this module drives, addressed BY NAME: `ubb_task` carries a second
-#: rule (`work/migrations/0022`'s containment check, BEFORE INSERT), and
+#: rule (`trg_task_containment_shares_the_pricing_regime`, BEFORE INSERT), and
 #: `pg_trigger` promises no order (#352).
 TRANSITION_TRIGGER = "trg_task_declared_transitions"
 CONTAINMENT_TRIGGER = "trg_task_containment_shares_the_pricing_regime"
@@ -96,17 +94,15 @@ DECLARED = {
 }
 
 #: What UBB recorded when it stopped the unit, and the expiry policy the start
-#: published — the two groups `0029` added.
+#: published — the two groups R10-W2 added.
 STOP_FACTS = (STOP_CAUSE_KEY, STOP_MECHANISM_KEY, STOP_CONTROL_FAMILY_KEY,
               STOP_CONTROL_ID_KEY)
 SNAPSHOT = ("start_absolute_deadline_seconds", "start_silence_window_seconds")
 
-MIGRATION = importlib.import_module(
-    "apps.platform.work.migrations.0028_a_unit_of_work_is_born_once_and_ends_once")
-INSTALLED_BY = ("work", "0028_a_unit_of_work_is_born_once_and_ends_once")
-WIDENING = importlib.import_module(
-    "apps.platform.work.migrations.0029_a_units_stop_and_its_start_are_ubbs_own_record")
-WIDENED_BY = ("work", "0029_a_units_stop_and_its_start_are_ubbs_own_record")
+#: The rules migration that installs the rule; its text is read off the
+#: module constant (a name starting with a digit, so `import_module`).
+RULES = importlib.import_module(
+    "apps.platform.work.migrations.0002_the_database_rules")
 
 
 def refused_as(column):
@@ -454,157 +450,38 @@ class TheDeclarationAndTheRuleAreOneClaimTest(TestCase):
         self.assertEqual(rule_names_on(TABLE),
                          {TRANSITION_TRIGGER, CONTAINMENT_TRIGGER})
 
-    def test_the_migration_spells_the_unresolved_state_the_registry_names(self):
-        """A migration must not import application code, so it spells
-        `active` itself; this is what holds that spelling to the registry's."""
-        self.assertEqual(MIGRATION.UNRESOLVED_STATUS, TASK_STATUS_ACTIVE)
-        self.assertEqual(MIGRATION.TRIGGER, TRANSITION_TRIGGER)
+    def test_the_rule_spells_the_unresolved_state_the_registry_names(self):
+        """A migration must not import application code, so the rule's text
+        (`TASK_DECLARED_TRANSITIONS`) spells `active` itself — once for the
+        RESOLVE_ONCE branch and once for each SET_ONCE explanation's "from
+        nothing, on the ending write" — and this is what holds that spelling to
+        the registry's. Before the cutover (#190) the spelling was `work/0028`'s
+        `UNRESOLVED_STATUS` constant."""
+        body = RULES.TASK_DECLARED_TRANSITIONS
+        self.assertIn(f"CREATE TRIGGER {TRANSITION_TRIGGER}\n", body)
+        spelled = re.findall(r"(?:OLD|NEW)\.status\s*(?:<>|=)\s*'([^']*)'", body)
+        self.assertEqual(len(spelled), 5, spelled)
+        self.assertEqual(set(spelled), {TASK_STATUS_ACTIVE})
 
-    def test_the_widening_spells_what_the_code_names(self):
-        """`0029` spells its words for the same reason, and its `WHEN` clause
-        must name every declared column — one it missed would never enter the
-        function, and its refusal could never fire."""
-        self.assertEqual(WIDENING.TRIGGER, TRANSITION_TRIGGER)
-        self.assertEqual(set(WIDENING.WATCHED), set(DECLARED))
-        self.assertEqual(WIDENING.STOP_FACTS, STOP_FACTS)
-        self.assertEqual(set(WIDENING.UBB_STOPPED_STATUSES),
-                         UBB_STOPPED_TASK_STATUSES)
+    def test_the_rule_watches_and_refuses_every_declared_column(self):
+        """The `WHEN` clause must name every declared column — one it missed
+        would never enter the function, and its refusal could never fire — and
+        the function must carry each column's own refusal, opening with the
+        class the model declares. The stop facts are the SET_ONCE-from-NULL
+        branch: UBB writes them from nothing, once."""
+        body = RULES.TASK_DECLARED_TRANSITIONS
+        when = re.search(r"^WHEN \((.*)\)$", body, re.MULTILINE)
+        self.assertIsNotNone(when, "the rule carries no WHEN clause")
+        watched = re.findall(r"OLD\.(\w+) IS DISTINCT FROM NEW\.(\w+)",
+                             when.group(1))
+        self.assertTrue(all(old == new for old, new in watched), watched)
+        self.assertEqual(len(watched), len(DECLARED))
+        self.assertEqual({old for old, _ in watched}, set(DECLARED))
+        for column in DECLARED:
+            with self.subTest(column=column):
+                self.assertIn(f"'{refused_as(column)}", body)
         self.assertEqual(
-            (WIDENING.CANCELLED, WIDENING.PARENT_CLOSED, WIDENING.PARENT_CASCADE),
-            (TASK_STATUS_CANCELLED, OUTCOME_REASON_PARENT_CLOSED,
-             TRIGGER_SOURCE_PARENT_CASCADE))
-        self.assertEqual((WIDENING.KIND_TASK, WIDENING.KIND_SUBTASK),
-                         (TASK_TYPE_KIND_TASK, TASK_TYPE_KIND_SUBTASK))
-        self.assertEqual(
-            (WIDENING.SILENCE_WINDOW_BACKSTOP_SECONDS,
-             WIDENING.ABSOLUTE_DEADLINE_BACKSTOP_SECONDS),
-            (work_queries.SILENCE_WINDOW_BACKSTOP_SECONDS,
-             work_queries.ABSOLUTE_DEADLINE_BACKSTOP_SECONDS))
-
-
-def _migrate_to(target):
-    with connection.cursor() as cursor:
-        cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
-    MigrationExecutor(connection).migrate([target])
-
-
-class Migration0029TakesTheStopOutOfTheCallersBagTest(WorkTestBase):
-    """`0029` run for real — through Django's own executor, back to `0028` and
-    forward again, inside the test's transaction: PostgreSQL runs the DDL
-    transactionally, so it leaves with the test (`SET CONSTRAINTS ALL
-    IMMEDIATE` first, for the reason `usage`'s #553 module gives). Rows are
-    written as the code before it wrote them: UBB's stop facts as keys of
-    `metadata`, beside the caller's own.
-
-    ⚠ ROWS ARE READ BACK AS `0029` LEFT THEM, through that state's own model
-    rather than the live one. The live `Task` is the LATEST schema, and once a
-    later migration changes the table (`0030` renames the count column, R10-W4)
-    the live model asks for a column `0029` does not have."""
-
-    CALLERS = {"kept": "the caller's own key"}
-
-    def setUp(self):
-        super().setUp()
-        _migrate_to(INSTALLED_BY)
-        loader = MigrationExecutor(connection).loader
-        self.before = loader.project_state(INSTALLED_BY).apps.get_model(
-            "work", "Task")
-        self.after = loader.project_state(WIDENED_BY).apps.get_model(
-            "work", "Task")
-
-    def _row(self, status, metadata, **more):
-        return self.before.objects.create(
-            tenant_id=self.tenant.id, customer_id=self.customer.id,
-            balance_snapshot_micros=0, status=status, metadata=metadata,
-            **more).id
-
-    def _recorded(self, unit_id):
-        unit = self.after.objects.get(id=unit_id)
-        return {column: getattr(unit, column) for column in STOP_FACTS}
-
-    def test_ubbs_stops_move_and_the_callers_keys_stay(self):
-        recorded = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
-                    STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST,
-                    STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
-                    STOP_CONTROL_ID_KEY: str(self.tenant.id)}
-        killed = self._row(TASK_STATUS_KILLED, {**recorded, **self.CALLERS})
-        expired = self._row(TASK_STATUS_EXPIRED, {
-            STOP_CAUSE_KEY: reasons.SILENCE_WINDOW,
-            STOP_MECHANISM_KEY: TRIGGER_SOURCE_STALE_REAPER,
-            STOP_CONTROL_FAMILY_KEY: "", STOP_CONTROL_ID_KEY: "",
-            **self.CALLERS})
-        container = self._row(TASK_STATUS_COMPLETED, {})
-        withdrawn = self._row(
-            TASK_STATUS_CANCELLED,
-            {STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE, **self.CALLERS},
-            parent_id=container, outcome_reason=OUTCOME_REASON_PARENT_CLOSED)
-        # Rows UBB never stopped: whatever they carry is the caller's.
-        running = self._row(TASK_STATUS_ACTIVE, {**recorded, **self.CALLERS})
-        cancelled = self._row(TASK_STATUS_CANCELLED, {**recorded, **self.CALLERS})
-
-        _migrate_to(WIDENED_BY)
-
-        self.assertEqual(self._recorded(killed), recorded)
-        self.assertEqual(self._recorded(expired), {
-            STOP_CAUSE_KEY: reasons.SILENCE_WINDOW,
-            STOP_MECHANISM_KEY: TRIGGER_SOURCE_STALE_REAPER,
-            STOP_CONTROL_FAMILY_KEY: None, STOP_CONTROL_ID_KEY: None})
-        self.assertEqual(self._recorded(withdrawn), {
-            **dict.fromkeys(STOP_FACTS),
-            STOP_MECHANISM_KEY: TRIGGER_SOURCE_PARENT_CASCADE})
-        for moved in (killed, expired, withdrawn):
-            self.assertEqual(self.after.objects.get(id=moved).metadata,
-                             self.CALLERS)
-        for untouched in (running, cancelled):
-            with self.subTest(untouched=untouched):
-                self.assertEqual(self._recorded(untouched),
-                                 dict.fromkeys(STOP_FACTS))
-                self.assertEqual(self.after.objects.get(id=untouched).metadata,
-                                 {**recorded, **self.CALLERS})
-
-    def test_the_reverse_puts_every_moved_fact_back(self):
-        bag = {STOP_CAUSE_KEY: reasons.TASK_COGS_CEILING,
-               STOP_MECHANISM_KEY: TRIGGER_SOURCE_USAGE_INGEST,
-               STOP_CONTROL_FAMILY_KEY: CONTROL_FAMILY_CEILING,
-               STOP_CONTROL_ID_KEY: str(self.tenant.id), **self.CALLERS}
-        killed = self._row(TASK_STATUS_KILLED, bag)
-        _migrate_to(WIDENED_BY)
-        _migrate_to(INSTALLED_BY)
-        self.assertEqual(self.before.objects.get(id=killed).metadata, bag)
-        _migrate_to(WIDENED_BY)
-
-    def test_every_unit_is_given_the_policy_its_ladder_resolves(self):
-        """The ladder `work.queries.expiry_windows` climbs, at the unit's own
-        altitude — and the same answer that ladder gives today."""
-        self.tenant.task_absolute_deadline_seconds = 7200
-        self.tenant.save(update_fields=["task_absolute_deadline_seconds"])
-        TaskType.objects.create(tenant=self.tenant, key="quiet", uncapped=True,
-                                silence_window_seconds=120)
-        TaskType.objects.create(tenant=self.tenant, key="unwatched",
-                                uncapped=True, silence_window_seconds=0)
-        TaskType.objects.create(tenant=self.tenant, key="piece",
-                                kind=TASK_TYPE_KIND_SUBTASK, uncapped=True,
-                                absolute_deadline_seconds=600)
-        undeclared = self._row(TASK_STATUS_ACTIVE, {})
-        quiet = self._row(TASK_STATUS_ACTIVE, {}, task_type="quiet")
-        unwatched = self._row(TASK_STATUS_KILLED, {}, task_type="unwatched")
-        piece = self._row(TASK_STATUS_ACTIVE, {}, task_type="piece",
-                          parent_id=quiet)
-
-        _migrate_to(WIDENED_BY)
-
-        expected = {
-            undeclared: (7200, work_queries.SILENCE_WINDOW_BACKSTOP_SECONDS),
-            quiet: (7200, 120),
-            unwatched: (7200, None),
-            piece: (600, work_queries.SILENCE_WINDOW_BACKSTOP_SECONDS),
-        }
-        ladder = work_queries.expiry_windows(self.tenant.id)
-        for unit_id, windows in expected.items():
-            unit = self.after.objects.get(id=unit_id)
-            live = work_queries.windows_of_a_unit(
-                ladder, parent_id=unit.parent_id, task_type=unit.task_type)
-            with self.subTest(task_type=unit.task_type):
-                self.assertEqual((unit.start_absolute_deadline_seconds,
-                                  unit.start_silence_window_seconds), windows)
-                self.assertEqual((live.absolute, live.silence), windows)
+            tuple(re.findall(
+                r"IF OLD\.(\w+) IS NOT NULL AND NEW\.\1 IS DISTINCT FROM OLD\.\1",
+                body)),
+            STOP_FACTS)
