@@ -16,7 +16,8 @@ from apps.platform.customers.models import Customer
 
 
 class Command(BaseCommand):
-    help = "Seed development data: tenant, API key, and test customer with wallet."
+    help = ("Seed development data: tenant, API key, a test customer and a published "
+            "Event Type.")
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -140,7 +141,8 @@ class Command(BaseCommand):
             self.stdout.write(f"Sandbox tenant ID: {test_key_obj.tenant_id}")
             self.stdout.write(f"Sandbox test key:  {raw_test_key}")
 
-        # Create test customer with wallet
+        # Create the test customer. No wallet: a wallet is a prepaid customer's,
+        # created by the billing flow it belongs to, never by a seed.
         defaults = {}
         if options["stripe_customer_id"]:
             defaults["stripe_customer_id"] = options["stripe_customer_id"]
@@ -154,10 +156,10 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Existing customer: {customer.id}")
 
-        # Declare the quantity the printed curl below prices (#326). A rate
-        # names the declared record now, so without this the seeded tenant's
-        # first rate is a 422 and the walkthrough stops at step two — which is
-        # a worse first hour than one extra seeded row.
+        # Declare the quantity the printed curl below prices (#326), and PUBLISH
+        # it: a rate names the declared record, and recording reads only an
+        # Event Type's publication (#605), so an unpublished declaration would
+        # leave the printed usage call held as undeclared (#568).
         from apps.platform.event_types.models import EventType, Measurement
         from core.vocabulary import (
             COSTING_METHOD_CALCULATED, SOURCE_KIND_CALLER_SUPPLIED, UNIT_TOKEN)
@@ -168,9 +170,10 @@ class Command(BaseCommand):
             event_type=event_type, code="input_tokens",
             defaults={"unit": UNIT_TOKEN,
                       "source_kind": SOURCE_KIND_CALLER_SUPPLIED})
+        event_type.publish()
         self.stdout.write(
             f"{'Declared' if quantity_created else 'Existing'} quantity: "
-            f"{event_type.key}/input_tokens")
+            f"{event_type.key}/input_tokens (published)")
 
         # Generate widget JWT
         from core.widget_auth import create_widget_token
@@ -217,13 +220,14 @@ class Command(BaseCommand):
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'http://localhost:8001/api/v1/metering/pricing/books/'
             f'$BOOK_ID/publishes/$PUBLISH_ID/publish\n')
-        self.stdout.write(f'# Record a usage event (engine computes COGS from the cost book)')
+        self.stdout.write(f'# Record a usage event naming the published Event Type (the '
+                          f'engine computes COGS from the cost book; a quantity is exact text)')
         self.stdout.write(
             f'curl -X POST -H "Authorization: Bearer {raw_key}" '
             f'-H "Content-Type: application/json" '
             f'-d \'{{"customer_id": "{customer.id}", '
-            f'"idempotency_key": "idem-1", '
-            f'"measurements": {{"input_tokens": 1000}}}}\' '
+            f'"idempotency_key": "idem-1", "event_type": "{event_type.key}", '
+            f'"measurements": {{"input_tokens": "1000"}}}}\' '
             f'http://localhost:8001/api/v1/metering/usage\n')
         self.stdout.write(f'# Per-customer cost analytics')
         self.stdout.write(
@@ -268,14 +272,14 @@ class Command(BaseCommand):
                 f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
                 f'  -H "Content-Type: application/json" \\\n'
                 f'  -d \'{{"plan_key":"pro-monthly","seats":5}}\' \\\n'
-                f'  http://localhost:8001/api/v1/subscriptions/customers/{customer.id}/subscribe\n'
+                f'  http://localhost:8001/api/v1/subscriptions/customers/{customer.external_id}/subscribe\n'
             )
             self.stdout.write(
                 f'# Change seat count\n'
                 f'curl -X POST -H "Authorization: Bearer {raw_key}" \\\n'
                 f'  -H "Content-Type: application/json" \\\n'
                 f'  -d \'{{"seats":8}}\' \\\n'
-                f'  http://localhost:8001/api/v1/subscriptions/customers/{customer.id}/seats\n'
+                f'  http://localhost:8001/api/v1/subscriptions/customers/{customer.external_id}/seats\n'
             )
             self.stdout.write(
                 f'# End-customer views their invoices (widget JWT)\n'

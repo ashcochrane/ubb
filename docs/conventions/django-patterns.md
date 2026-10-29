@@ -150,13 +150,13 @@ wire and validate.
   the model's docstring. `PostingMeasurement` is the first (insert once, never update — except its
   release, below — delete only at or after its horizon and only while its posting is not unresolved).
   Since W5 one of its columns does have a class: `prunable_at` is `SET_ONCE`, the release fact the
-  daily prune writes in the transaction that deletes the record (`usage/0052`, ADR-0025).
+  daily prune writes in the transaction that deletes the record
+  (`trg_posting_measurement_released_once`, ADR-0025).
 - ⚠ **A `RECORD_RULE` column is outside G19's statement, so nothing walks it and its rule owes its
   own tests.** G19 walks *field* transition classes; `RECORD_RULE` sits outside `DATABASE_DEFENDED`
   by construction, so no `RECORD_RULE` declaration is ever judged and a green board says nothing
   about whether the record's rule exists at all. `PostingMeasurement`'s `DELETE` condition (#354) is enforced
-  by a **`BEFORE DELETE`** trigger in
-  `usage/migrations/0041_a_measurement_is_pruned_only_when_it_may_be.py`, and its three doors are
+  by a **`BEFORE DELETE`** trigger, `trg_posting_measurement_pruning`, and its three doors are
   `delete()`, `QuerySet.delete()` and raw SQL rather than the `save()` / `QuerySet.update()` / raw
   SQL trio the bullets below use — a whole-record rule is about whether a row may cease to exist,
   not about whether a field may change. Its worked example
@@ -172,7 +172,7 @@ wire and validate.
   the exemption being turned on.
 - **⚠ The one rule that READS a session setting does so to name a writer, not to exempt a case, and
   it says so.** The price pair's admitted move (`unknown` to `known`) is admitted only on a statement
-  `price_resolution.resolve_customer_price` marked (`usage/migrations/0049`, #557): the
+  `price_resolution.resolve_customer_price` marked (`trg_posting_price_transitions`, #557): the
   transaction-local setting `ubb.price_door`, set by `marked_as_the_price_door` around the door's one
   `UPDATE` and cleared after. The bullet above still holds for what it is about — a case a rule must
   hold through is stated positively in the rule. This is a different question with no positive
@@ -188,13 +188,12 @@ wire and validate.
   `apps/platform/tests/test_transition_class_declarations.py` is what holds
   that line, and since #318 it holds it from the other side: it walks every declaration in the tree
   and fails on any column the database does not actually defend. **The first pair
-  (`Posting`, #318) is enforced by a `BEFORE UPDATE` trigger** installed alongside it in
-  `usage/migrations/0037_a_cost_settles_once_and_the_table_holds_it.py` — a `CHECK` cannot see the
+  (`Posting`, #318) is enforced by a `BEFORE UPDATE` trigger**, `trg_posting_declared_transitions`
+  — a `CHECK` cannot see the
   previous row, so it can carry a column's legal values but never a transition rule. A model-level
   `save()` guard is not enforcement and is never shipped as one (ADR-0007 §2).
 - **A second pair on the same table gets a second rule, in the same mechanism** — `Posting`'s
-  customer price pair (#352), in
-  `usage/migrations/0039_a_price_resolves_once_and_the_table_holds_it.py`. Another `BEFORE UPDATE`
+  customer price pair (#352), `trg_posting_price_transitions`. Another `BEFORE UPDATE`
   trigger with its own `WHEN` clause over its own columns, rather than a branch inside the first:
   the two govern disjoint columns, neither enters the other's function, and dropping either leaves
   the other standing. What is refused is a second *kind* of mechanism — a `CHECK` or a Postgres
@@ -265,10 +264,24 @@ wire and validate.
 
 - `makemigrations` for every model change; commit the migration with the change. CI runs against a
   fresh DB, so a missing migration fails there.
+- **The history starts at the cutover's fresh initial set** (#190, ADR-0026): one generated
+  `0001_initial` per app, and in each app that owns a database rule a hand-written
+  `0002_the_database_rules.py`. **Every trigger lives there**, one `RunSQL([install], [uninstall])` per
+  rule — a list, because a plain string is split and comment-stripped by `sqlparse` — and the rules
+  migration depends on the schema leaf of every app owning a table its SQL reads, never on an assumed
+  `0001` (`apps/platform/tests/test_the_database_rules_are_carried.py` holds all of it). A new rule
+  goes in a new migration after the fresh set, on the same pattern, with a behavioural refusal test.
+- **Every migration after the fresh set is held by G20** (ADR-0007 §1;
+  `tests/contracts/test_migrations_carry_their_data.py`): a rename is `RenameField` / `RenameModel`,
+  never a drop and an add in the same or the next migration of an app; a `RemoveField` /
+  `DeleteModel` states its reason in a module-level `DROPS = {...}`; a `RunPython` / `RunSQL` names a
+  reverse or the module states `IRREVERSIBLE = "<reason>"`; and the commit that adds the first one
+  moves `MIGRATIONS_SINCE_THE_CUTOVER`.
 - **A column that moves to another table carries its data** (ADR-0007 §1). The autodetector emits the
   `RemoveField` *before* the `CreateModel`, which is an add-plus-remove that empties what it claims to
   move — hand-order it create → `RunPython` → remove, and give the `RunPython` a real reverse that a
-  test actually runs. See `usage/migrations/0031_the_measurements_become_a_child_record.py`.
+  test actually runs. (The worked example, `usage/0031`'s move of the measurements into a child
+  record, went with the cutover squash, #190.)
 - **Migration numbers must not collide.** ADR-001 records a fork whose rival pricing schema carried
   colliding migration numbers on top of the live RateCard engine — never merge migrations that
   renumber onto shipped ones; rebase them to follow the current head.

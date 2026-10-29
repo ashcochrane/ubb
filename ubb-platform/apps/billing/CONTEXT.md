@@ -14,9 +14,10 @@ customer. (`apps/billing/wallets/models.py:Wallet`)
 **Ledger entry**:
 An append-only row recording one balance movement (its signed amount and resulting balance), made
 exactly-once per idempotency key. Its **transaction type** is the registry's closed
-`wallet_transaction_type`, in lowercase since R10-W4 (ruling 7): `wallets/0014` moved every stored
-row, `ck_wallet_transaction_type_known` admits only the registry's set, and no other spelling is
-accepted anywhere — no per-concept exception, no dual acceptance.
+`wallet_transaction_type`, in lowercase since R10-W4 (ruling 7), which moved every stored row
+(`wallets/0014`, before the cutover squash, #190); `ck_wallet_transaction_type_known` admits only
+the registry's set, and no other spelling is accepted anywhere — no per-concept exception, no dual
+acceptance.
 (`apps/billing/wallets/models.py:WalletTransaction`)
 _Avoid_: mutating a balance without writing a ledger entry; the upper-case spellings the column held
 until R10-W4.
@@ -66,9 +67,10 @@ consumed before paid. The registry's closed `grant_kind`.
 Where a lot came from — `checkout`, `auto_top_up`, `api` or `other` — the registry's closed
 `grant_source` (R10-W4). `ck_credit_grant_source_known` refuses any other value.
 (`apps/billing/wallets/models.py:CreditGrant.source`)
-_Avoid_: the run-together spelling the column held until `wallets/0014` moved it — one concept, one
-spelling (ADR-0006 §2). A top-up attempt's trigger, the wallet idempotency key's prefix, the outbox
-handler, the charge task, the SDK method and the `usage.recorded` field moved with it (`topups/0006`).
+_Avoid_: the run-together spelling the column held until R10-W4 moved it (`wallets/0014`, before the
+cutover squash, #190) — one concept, one spelling (ADR-0006 §2). A top-up attempt's trigger, the
+wallet idempotency key's prefix, the outbox handler, the charge task, the SDK method and the
+`usage.recorded` field moved with it (`topups/0006`, before the squash).
 
 **Consumption order**:
 The deterministic order lots are drawn down — soonest expiry first, promo before paid — with the
@@ -509,7 +511,7 @@ Why a usage invoice was skipped rather than pushed — the registry's closed `sk
 terminal truths about the period (`no_usage`, `nothing_to_bill`), one supersession
 (`seat_superseded`), and three recoverable states (`no_stripe_customer`, `not_charge_ready`,
 `payment_rail_closed`). Present only on a skipped invoice and STORED as null on every other — since
-R10-W4 (`invoicing/0011`) the column holds null or one of the six, `ck_usage_invoice_skip_reason_known`
+R10-W4 the column holds null or one of the six, `ck_usage_invoice_skip_reason_known`
 refuses anything else, and the read publishes what is stored rather than translating a blank.
 (`apps/billing/invoicing/models.py:CustomerUsageInvoice.skip_reason`)
 

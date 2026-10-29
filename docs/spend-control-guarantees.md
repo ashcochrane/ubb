@@ -234,7 +234,7 @@ can check them against a live database.
 | A top-up PaymentIntent is never credited twice | same constraint, key `auto_top_up:{payment_intent_id}` | `apps/billing/topups/services.py:13` |
 | A grant's remaining balance stays within `[0, granted]` | `ck_grant_remaining_bounds` | `apps/billing/wallets/models.py:190` |
 | A grant allocation is positive and never refunds more than it allocated | `ck_grant_allocation_positive`, `ck_grant_alloc_refund_bounds` | `apps/billing/wallets/models.py:233-238` |
-| A usage report is deduplicated per `(tenant, customer, idempotency_key)` | `uq_usage_event_idempotency_v2` | `apps/metering/usage/models.py:69` |
+| A usage report is deduplicated per `(tenant, customer, idempotency_key)` | `uq_posting_idempotency` | `apps/metering/usage/models.py:69` |
 | An outbox event is handled at most once per handler | `uq_checkpoint_event_handler` | `apps/platform/events/models.py:56` |
 | A Stripe webhook event is processed once | unique `stripe_event_id` | `apps/billing/stripe/models.py:21` |
 | One usage invoice per customer per period | `uq_usage_invoice_customer_period` | `apps/billing/invoicing/models.py:107` |
@@ -291,7 +291,7 @@ uniqueness constraint at all, because accepting your events must never wait on a
 and exactly-once was enforced downstream instead. **That table and the sweep that drained it
 were deleted in slice 1**, the last of the async path to go. Nothing is lost by it: the
 downstream enforcement was always the real one, and it is untouched — the `UsageEvent` is
-written under `uq_usage_event_idempotency_v2` and its debit under
+written under `uq_posting_idempotency` and its debit under
 `usage_deduction:{usage_event_id}`. Duplicates still die at the money boundary.
 
 ## 6. When our infrastructure fails
@@ -359,7 +359,7 @@ entries of their own — both ride the :25 pass.)
 
 **Two jobs left this table in slice 1**, with the two-step intake path they served: the sweep that
 drained the staging table, and the health monitor that watched the queue behind it. Exactly-once
-never depended on either — `uq_usage_event_idempotency_v2` and the `usage_deduction:{id}` key are
+never depended on either — `uq_posting_idempotency` and the `usage_deduction:{id}` key are
 where it is enforced, and both are untouched. The monitor also carried a known weakness, retired
 with it: it was itself a Celery task, in-band with the failure it reported. If a health probe of
 that kind is ever wanted again, [#11](https://github.com/ashcochrane/ubb/issues/11)'s decided shape
@@ -432,7 +432,7 @@ one level down.
 | 5 | `reconcile_prepaid` SETs a missed stop, not just clears a stale one | `ubb-platform/apps/billing/gating/tests/test_stop_resume_pins.py::TestPin5ReconcileSetsAMissedStop::test_reconcile_sets_a_missed_stop`, `::test_reconcile_sets_the_missed_stop_even_with_redis_down`, `::test_reconcile_is_idempotent_per_position` |
 | 6 | Resume fires at the exact re-cross — once per episode, via credit, reconcile, and durable paths | `ubb-platform/apps/billing/gating/tests/test_stop_resume_pins.py::TestPin6ResumeOncePerEpisode::test_credit_path_clears_at_the_exact_recross_once`, `::test_reconcile_path_clears_once`, `::test_durable_path_clears_when_redis_is_blind`, `::test_episodes_pair_up_across_a_full_cycle` |
 | 7 | Every recorded event answers 200 for a usage report. **This pin asserts the 200 and never drives a 409 path**, so "no 429/409" is held as "every one of these answers 200". The obligation's other half — **a close is never subject to the rate bound** — is admission control's, built in #462, and is asserted for a tenant with a wallet regime and for one that does not bill through UBB | `ubb-platform/api/v1/tests/test_one_rule_pins.py::Pin7TwoHundredAlwaysTest::test_no_usage_report_path_answers_429_or_409`; `ubb-platform/api/v1/tests/test_admission_control_runs_for_every_start.py::ATenantWithAWalletRegimeTest::test_a_close_is_never_subject_to_it`, `ATenantThatDoesNotBillThroughUbbTest::test_a_close_is_never_subject_to_it`, `::test_a_usage_report_is_always_accepted` |
-| 8 | `advisory` migrated to `off`; two-position mode; `off` leaves no customer-wide enforcement trace. **The scope is the customer-wide families**: what the cases drive is a wallet-floor crossing, and a declared Ceiling is outside the switch by design (§2) | `ubb-platform/apps/billing/gating/tests/test_mode_pins.py::TestAdvisoryRetired::test_migration_maps_advisory_to_off`, `::test_migration_leaves_both_live_positions_alone`, `::test_choices_are_two_position`, `::test_patch_advisory_refused_422`; `TestOffIsByteForBytePreEnforcement::test_floor_crossing_leaves_no_enforcement_trace`, `::test_tier1_baseline_survives_untouched` |
+| 8 | `advisory` retired (it was migrated to `off` until the cutover squash deleted the migration, #190); two-position mode; `off` leaves no customer-wide enforcement trace. **The scope is the customer-wide families**: what the cases drive is a wallet-floor crossing, and a declared Ceiling is outside the switch by design (§2) | `ubb-platform/apps/billing/gating/tests/test_mode_pins.py::TestAdvisoryRetired::test_choices_are_two_position`, `::test_patch_advisory_refused_422`; `TestOffIsByteForBytePreEnforcement::test_floor_crossing_leaves_no_enforcement_trace`, `::test_tier1_baseline_survives_untouched` |
 | 9 | Stops and breaches reconstructs an episode end-to-end, per family | `ubb-platform/api/v1/tests/test_spend_control_reports.py::ACeilingEpisodeTest::test_a_ceiling_row_is_explained_by_its_unit_and_the_events_after_the_stop`, `AWalletPolicyEpisodeTest::test_a_hard_floor_row_itemises_its_events_and_a_soft_floor_row_is_a_marker`; `ubb-platform/api/v1/tests/test_past_limit_pins.py::Pin9StopsAndBreachesTest::test_a_historical_customer_scope_tag_still_lands_in_itemization`, `::test_suspended_tag_stays_excluded_from_itemization` (the two cases the successor's own module does not drive) |
 | 10 | `negative_since` set on ≥0→<0, cleared on recovery; the aged-negatives count beside it. **The ops surface moved**: it is the `get_negative_balance_stats` read contract, the route that used to serve it having gone with the ingest pipeline it watched | `ubb-platform/api/v1/tests/test_past_limit_pins.py::Pin10NegativeSinceTest::test_negative_since_set_on_crossing_cleared_on_recovery` |
 | 11 | Zero-crossing `wallet.balance_overage` early warning unaffected | `ubb-platform/apps/billing/gating/tests/test_stop_resume_pins.py::TestPin11EarlyWarningUnaffected::test_zero_crossing_fires_overage_without_a_stop`, `::test_enforcement_off_is_tier1_byte_for_byte` |

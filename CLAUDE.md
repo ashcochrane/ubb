@@ -2,7 +2,7 @@
 
 Usage, spend-control, and margin infrastructure in front of Stripe. **UBB owns** metering, real-time
 spend control, provider/billed-cost tracking, customer margin, the **plan catalog** (access fee +
-per-seat fee + markup), and (for billing tenants) prepaid credit drawdown / period-close Stripe
+per-seat fee + the Pricing Book it prices usage from), and (for billing tenants) prepaid credit drawdown / period-close Stripe
 line-item push. **Stripe owns** the subscription billing *engine* — invoicing, payment collection,
 tax, dunning, portal, refunds, disputes, proration — which UBB drives as a control plane but never
 reimplements.
@@ -14,8 +14,9 @@ This directory (`ubb/`) is the git root; the Django project is `ubb-platform/`. 
 
 Four products — **metering, billing, subscriptions, referrals** — sit on a shared platform kernel
 (`apps/platform` + `core/`), which also owns the tenant's **plan catalog** (access fee + per-seat
-fee + markup) — a kernel concept because subscriptions realizes the first two axes (as Stripe
-Prices) and metering realizes the third (at rating time), and neither owns it. Products
+fee + the Pricing Book it prices usage from) — a kernel concept because subscriptions realizes the
+first two (as Stripe Prices) and metering prices usage from the third (at rating time), and neither
+owns it. Products
 communicate ONLY via four named channels:
 
 1. **Outbox events** — `apps.platform.events.outbox.write_event` + the handler registry (async default).
@@ -43,7 +44,14 @@ From `ubb-platform/` (venv at `ubb-platform/.venv`):
 
 - Full suite: `DJANGO_SETTINGS_MODULE=config.settings .venv/bin/python -m pytest`
 - Boundary check: `.venv/bin/python -m pytest apps/platform/tests/test_product_boundaries.py`
-- Migrations: `.venv/bin/python manage.py makemigrations` then `... migrate`
+- Migrations: `.venv/bin/python manage.py makemigrations` then `... migrate`. Every migration after
+  the cutover's fresh initial set is held by G20 (ADR-0007 §1): a rename is `RenameField` /
+  `RenameModel`, a drop states its reason in `DROPS`, a data step has a reverse or says why not.
+- **Developer database reset.** The cutover (#190, ADR-0026) replaced the whole migration history with
+  a fresh initial set, so a database migrated before it cannot migrate forward — drop and re-create
+  it, then migrate (and seed a working tenant):
+  `docker exec ubb-postgres psql -U ubb -d postgres -c "DROP DATABASE IF EXISTS ubb WITH (FORCE)" -c "CREATE DATABASE ubb"`,
+  then `.venv/bin/python manage.py migrate` and `.venv/bin/python manage.py seed_dev_data`.
 - Sanity: `.venv/bin/python manage.py check`
 - Spec regen (after any API surface change): `.venv/bin/python scripts/export_openapi.py` —
   refreshes the committed `openapi/v1.json`, the single source of truth for the tenant surface

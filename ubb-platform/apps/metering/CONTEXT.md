@@ -85,15 +85,16 @@ NULL, with the transaction's own clock, in the same transaction that deletes the
 **A fact, not a deadline**: recording leaves it NULL, and the horizon a record is judged against is
 the one configured at the time of the prune, so shortening the clock moves which records go next
 rather than rewriting a date stamped on each. SET_ONCE and never a future instant, held by a trigger
-through every door (`usage/0052`). (`apps/metering/usage/models.py:PostingMeasurement.prunable_at`)
+through every door (`trg_posting_measurement_released_once`).
+(`apps/metering/usage/models.py:PostingMeasurement.prunable_at`)
 _Avoid_: stamping a retention deadline at recording.
 
 **Measurement prune**:
 The daily job that enforces the measurement horizon (`apps/metering/usage/pruning.py`, beat entry
 `prune-measurement-detail`). A record goes when both its event and its recording are older than the
 current horizon and its posting is neither `unresolved` nor `unknown`; protected records are filtered
-by the query — the `usage/0041` delete trigger is the backstop beneath, never the filter — so an old
-unresolved record never starves younger ones. Bounded (`PRUNE_BATCH_SIZE` per atomic batch,
+by the query — the delete trigger `trg_posting_measurement_pruning` is the backstop beneath, never
+the filter — so an old unresolved record never starves younger ones. Bounded (`PRUNE_BATCH_SIZE` per atomic batch,
 `PRUNE_RUN_CAP` per run) and observable: one structured line per run, a zero run included, with what
 was released, deleted and skipped and the oldest eligible record left behind. That line is
 `measurement_prune.completed` only for a run that finished; a run that did not writes
@@ -175,9 +176,9 @@ tenant's own metadata. Soft-floor crossings never mark events.
 (`apps/metering/usage/services/stop_context.py`)
 _Avoid_: back-writing it onto an existing event — it is set at creation and immutable with the row;
 a value's meaning can be renamed later (`customer_floor` → the customer-wide stop's word,
-billing-surface-correctness task 1; the mechanism-named spellings → the bound's own word, #457's
-migration `work/0026` rewrote the unit rows but a posting's array is immutable) so the historical
-row itself never changes, and a reader keyed on a single current string will silently under-count
+billing-surface-correctness task 1; the mechanism-named spellings → the bound's own word: #457
+rewrote the unit rows, in `work/0026` before the cutover squash, #190, but a posting's array is
+immutable) so the historical row itself never changes, and a reader keyed on a single current string will silently under-count
 older events — key on scope/intent, not on an allow-listed literal.
 
 Note: `stop_context` used to carry a unit-scoped `crossed_floor_snapshot` verdict too — a per-task
@@ -310,8 +311,9 @@ re-taken by #418): a metering-only tenant's fixed-price postings named the tenan
 the regime. #553 superseded the tie-break, removed its only producer, and removed the value in the
 same change — the registry member, the posting's check member and every follower. Every posting
 that held it was rewritten to `fixed_task_pricing` by one migration under a one-time pre-live
-exception (ADR-0021 §5); a sealed Pricing Receipt still holding the old text is history, and still
-reads.
+exception (ADR-0021 §5; `usage/0047`, before the cutover squash, #190). No stored row or sealed
+Pricing Receipt holds the old text since the cutover started from a fresh database, and
+`ck_posting_not_applicable_reason` refuses it.
 **The regime decides the STATUS and the REASON.** A metering-only tenant's event-priced work is priced
 exactly as it always was.
 Coined and declared by slice 4 (#151 §17 owed it and nothing had ratified it). Its console consumer
@@ -496,7 +498,8 @@ the posting's amount to the top-level Task's billed total, in the same transacti
 and to nothing else — never the supplier cost, the event count or the unpriced count.
 (ADR-0013, which carries the whole argument and names every test that holds it;
 `apps/metering/pricing/models.py:Charge`; `pricing/services/charge_service.py`;
-`pricing/migrations/0031`; `api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py`;
+the trigger `trg_charge_declared_transitions`;
+`api/v1/tests/test_a_delivered_unit_of_work_is_charged_once.py`;
 `pricing/tests/test_a_charge_is_written_once_and_never_edited.py`)
 _Avoid_: reading the price pinned on the work as this record — that is the DETERMINATION, which is
 mutable, carries no currency, and may exist and never become a charge; and reading the
@@ -526,10 +529,11 @@ lost a distinction anything makes.
 **A selling rule states its method; nothing else states one** (R10-W4 ruling 4, ADR-0024 §5). A rule
 carries `pricing_method` if and only if it sits in a Pricing Book — `ck_rate_a_selling_rule_states_its_method`
 — so a cost book's rate carries null and a null never MEANS a method. Before W4 a selling rule with
-no method was read as `direct_event_price`; `pricing/0034` stored that reading on every such row, a
-publish writes it where a body is silent, and the resolver refuses a rule with none rather than
-defaulting. `RateOut` publishes it, required and nullable (#190 comment `5831552855`), so a margin
-rule — stored with zero terms — no longer reads as a price of zero.
+no method was read as `direct_event_price`; W4 stored that reading on every such row (`pricing/0034`,
+before the cutover squash, #190), a publish writes it where a body is silent, and the resolver
+refuses a rule with none rather than defaulting. `RateOut` publishes it, required and nullable
+(#190 comment `5831552855`), so a margin rule — stored with zero terms — no longer reads as a price
+of zero.
 (`apps/metering/pricing/models.py:Rate.pricing_method`;
 `apps/metering/pricing/tests/test_a_rule_declares_one_method_and_never_composes.py`;
 `api/v1/tests/test_a_selling_rule_states_its_method.py`)
@@ -636,7 +640,7 @@ carries `reported_cost_source_kind` — `caller_supplied` or `provider_response`
 transport carried it, which the Event Type's publication admitted at the time — so the record says
 where its one canonical cost came from after that publication has moved on, without a second amount
 or the transport's own field. A Resolution Run completing the price side leaves it as recording
-wrote it. A receipt written before #570 carries no such key, and is read as written, never rewritten.
+wrote it. No stored receipt predates #570: the cutover (#190) started from a fresh database.
 **The subject decides what its amounts owe** (#418). A receipt explains one usage row or one
 Charge, and only the first has amounts resolution DERIVED: a Charge's price was AGREED before the
 work ran and pinned to it, and its supplier cost is zero because there is no supplier behind a
@@ -655,9 +659,9 @@ acknowledgement (required — every recording writes one), the batch item (null 
 rejected) and the event detail (required). Every level is closed except `detail` and `provenance`,
 which ADR-0020 §3's additive rule keeps open: each types the keys UBB writes, admits another, and
 publishes exactly what was stored — a typed key the record does not hold stays absent. A record older
-than version 2 exists only on a development database, does not validate on the public read, and is
-reset at the cutover rather than accommodated (§0.4 D); the internal readers of versions 0 and 1 stay
-until W6 removes them.
+than version 2 only ever existed on a development database, and the cutover (#190) reset it rather
+than accommodating it (§0.4 D) and removed the internal readers of versions 0 and 1: one shape is
+written and one is read, and any other is refused.
 The record had three names and #370 settled them. This one is what the registry ratified, as
 `pricing_receipt_subject_type`; the stored column's older spelling is a retired alias on that
 concept and is not written here; and so is "audit trail", which is the name **this entry itself
@@ -669,8 +673,8 @@ everything addresses it and why the rename reached its callers without touching 
 _Avoid_: reading "pricing receipt" as "UBB charged my customer" — the qualification above is the
 whole difference between a record a metering-only tenant trusts and one they raise a support ticket
 about, and it belongs on the concept, on the schema description and in the console's own words;
-rewriting a historical receipt written under the older spelling — old receipts are read, never
-rewritten, and the cutover squash is what eventually removes the two spellings, not this work.
+rewriting a stored receipt — receipts are read, never rewritten; the older spelling left with the
+pre-cutover rows when the cutover squash (#190) started from a fresh database, not by any rewrite.
 
 ## Putting a resolution right
 
