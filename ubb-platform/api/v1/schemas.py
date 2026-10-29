@@ -586,13 +586,16 @@ PricingMethod = Annotated[
 #: field is what lets the contract carry the agreed set. The rule for WHERE it
 #: sits is therefore the mechanical one: wherever the receipt goes.
 #:
-#: NULLABLE, AND NULL MEANS THE RECORD DOES NOT SAY. Before the cutover (#190)
-#: a receipt written before the subject was typed carried no subject at all,
-#: and such receipts were read and never rewritten (#148 §4.6) — so the honest
-#: answer for one of them was that the record does not say, not a value
-#: invented by whoever read it. (The cutover's fresh database holds none.) The
-#: marker therefore lands in the STRING MEMBER of `Optional[...]`, never on the
-#: union node, because `enum` and `anyOf` at one node are read conjunctively.
+#: REQUIRED AND NEVER NULL wherever a receipt is published (#190, ADR-0026
+#: §5). Every receipt is version 2, and the one construction boundary refuses a
+#: record whose subject is not one of the closed set, so every receipt UBB holds
+#: states what it explains. It was nullable before the cutover only because a
+#: receipt written before the subject was typed carried none; the cutover
+#: deleted those shapes, and their null with them. The one null left is a
+#: REJECTED batch item's, which recorded nothing and so explains nothing (see
+#: `UsageBatchItemResponse`) — and there the marker lands in the STRING MEMBER
+#: of `Optional[...]`, never on the union node, because `enum` and `anyOf` at
+#: one node are read conjunctively.
 #:
 #: NO HAND-WRITTEN `description`, for the reason `UnresolvedReason` gives: the
 #: registry owns this concept's summary and generates its values, and a sentence
@@ -1115,10 +1118,9 @@ class RecordUsageResponse(Schema):
     # WHAT THAT RECEIPT EXPLAINS — one usage row, or one canonical Charge
     # (#370). Read off the record rather than derived from whichever column is
     # populated: the receipt is the authority, and a subject inferred at read
-    # time is a second answer able to disagree with the recorded one. Null says
-    # the record does not say, which is the honest answer for a receipt written
-    # before the subject was typed.
-    pricing_receipt_subject_type: Optional[PricingReceiptSubjectType] = None
+    # time is a second answer able to disagree with the recorded one. Required
+    # and never null: every receipt states its subject (#190; see the type).
+    pricing_receipt_subject_type: PricingReceiptSubjectType
     # WHICH quantities went uncosted — the status above says THAT the cost is
     # unresolved, and this says which declaration to fix. Both, because neither
     # answers the other's question (#320). Since #428 it also names a quantity
@@ -1181,6 +1183,10 @@ class UsageBatchItemResponse(RecordUsageResponse):
     # and nullable, on `pricing_status_reason`'s footing — never absent.
     pricing_receipt: Optional[PricingReceipt] = Field(
         description=RECEIPT_DESCRIPTION)
+    # What that receipt explains — null on a REJECTED item, beside its null
+    # receipt, and on nothing else. Required and nullable on the receipt's
+    # footing (#190): never absent, and never null on an accepted item.
+    pricing_receipt_subject_type: Optional[PricingReceiptSubjectType]
 
 
 class UsageBatchResponse(Schema):
@@ -1449,8 +1455,9 @@ class UsageEventDetailOut(Schema):
     # projection both build one — so a read has one to publish.
     pricing_receipt: PricingReceipt = Field(description=RECEIPT_DESCRIPTION)
     # WHAT THE RECEIPT ABOVE EXPLAINS (#370) — see `RecordUsageResponse`, which
-    # publishes the same record and therefore the same field.
-    pricing_receipt_subject_type: Optional[PricingReceiptSubjectType] = None
+    # publishes the same record and therefore the same field: required, never
+    # null.
+    pricing_receipt_subject_type: PricingReceiptSubjectType
     # The one open bag (#273) — see `RecordUsageRequest.metadata`.
     metadata: dict = {}
     task_id: Optional[str] = None

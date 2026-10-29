@@ -506,20 +506,24 @@ class TheThreeAreRequiredKeysWhoseValuesMayBeNullTest(SimpleTestCase):
                             branch)
 
     def test_a_body_without_one_is_refused_and_a_negative_figure_is_kept(self):
+        receipt = a_receipt_agreeing_with(provider_cost_micros=4_000,
+                                          billed_cost_micros=4_800)
         bodies = {
             RecordUsageResponse: {"event_id": "e1", "suspended": False,
                                   "costing_status": "known",
                                   "pricing_status": "known",
                                   "pricing_status_reason": None,
-                                  "pricing_receipt": a_receipt_agreeing_with(
-                                      provider_cost_micros=4_000,
-                                      billed_cost_micros=4_800)},
+                                  "pricing_receipt": receipt,
+                                  "pricing_receipt_subject_type":
+                                      receipt["subject_type"]},
             # A rejected item recorded nothing; it carries the three as null
             # (and the price status's reason, required and nullable, #603,
-            # and its receipt, null only here, #558).
+            # and its receipt and what that explains, null only here, #558,
+            # #190).
             UsageBatchItemResponse: {"accepted": False, "code": "refused",
                                      "pricing_status_reason": None,
-                                     "pricing_receipt": None},
+                                     "pricing_receipt": None,
+                                     "pricing_receipt_subject_type": None},
         }
         nothing = dict.fromkeys(HOW_IT_WAS_APPLIED)
         for model, body in bodies.items():

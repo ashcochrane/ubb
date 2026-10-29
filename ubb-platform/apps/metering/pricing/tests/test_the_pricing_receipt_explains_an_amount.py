@@ -342,6 +342,22 @@ class TestTheBoundaryRefusesARecordThatExplainsNothing:
             a_receipt(subject=ReceiptSubject(subject_type="invoice_line",
                                              subject_id="x"))
 
+    @pytest.mark.parametrize("missing", [None, ""])
+    def test_a_subject_that_names_no_type_is_refused(self, missing):
+        """EVERY RECEIPT STATES WHAT IT EXPLAINS (#190): the published
+        `pricing_receipt_subject_type` is required and never null because the
+        one boundary refuses a receipt whose subject names no type at all."""
+        with pytest.raises(ReceiptShapeError, match="subject_type"):
+            a_receipt(subject=ReceiptSubject(subject_type=missing,
+                                             subject_id="x"))
+
+    def test_a_record_without_the_subject_key_is_refused(self):
+        receipt = a_receipt()
+        del receipt["subject_type"]
+
+        with pytest.raises(ReceiptShapeError, match="exactly"):
+            receipts.validate_receipt(receipt)
+
     def test_a_subject_with_no_id_is_refused(self):
         with pytest.raises(ReceiptShapeError, match="subject_id"):
             a_receipt(subject=ReceiptSubject(

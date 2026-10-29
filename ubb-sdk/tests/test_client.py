@@ -66,7 +66,7 @@ class UBBClientTest(unittest.TestCase):
         mock_met_request.return_value = MagicMock(
             status_code=200, json=lambda: {
                 "event_id": "evt_1", "new_balance_micros": 8500000, "suspended": False,
-                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
                 "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None,
             }
         )
@@ -145,7 +145,7 @@ class UBBClientTest(unittest.TestCase):
             data=[from_wire(UsageEventOut, {
                 "id": "00000000-0000-0000-0000-0000000000e1",
                 "kind": "metered_usage",
-                "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+                "billed_cost_micros": 10000, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
                 "metadata": {}, "effective_at": "2025-01-01T00:00:00Z"})],
             next_cursor="cur_abc", has_more=True,
         )

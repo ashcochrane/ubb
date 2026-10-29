@@ -101,6 +101,16 @@ receipt" (that is `null`, on a batch item that never created a record). Both pro
 posting pass a built receipt at insert, so the receipt column's `{}` default was needed by nothing; it
 is gone, and a creator that omits the receipt fails at its insert.
 
+**The contract loses the older shapes' null with them** (the owner's review of the first pull request,
+2026-10-29). `pricing_receipt_subject_type` was nullable on the acknowledgement and the usage detail
+only because a receipt written before the subject was typed carried none. The one construction boundary
+refuses a version-2 receipt whose subject is not one of the closed set, so every receipt UBB can hold
+states what it explains: the field is **required and never null** on both, and on a batch item it is
+required and null only beside a rejected item's null receipt. This is the one contract change the
+cutover makes, a tightening of three response fields (no breaking edge against `api-v1-launch` or
+`main`), made before §7's baseline is cut so that the baseline does not freeze a state nothing can
+produce.
+
 ### 6. The audit trail opens with no synthetic row (option (i))
 
 No opening entry is written. The registration `system.preproduction_model_cutover`, which no writer
@@ -115,7 +125,8 @@ inside #190, not a change to the audit model.
 `api-v1-cutover` is an annotated, immutable tag on the cutover's merge commit on `main`; the cumulative
 breaking gate moves to it and both suppression files are reset to their header comments. The tag is cut
 after the cutover merges, because it must name a commit already on `main`, so the repoint is the
-cutover's second pull request, which may not change the contract it baselines. `api-v1-launch` is never
+cutover's second pull request, which may not change the contract it baselines. The baseline is the
+first pull request's contract, §5's tightening included. `api-v1-launch` is never
 moved or deleted. The dated compatibility note stays until platform admission (W7).
 
 ### 8. The SDK's first release is 4.0.0: a tag and a reproducible wheel
@@ -138,6 +149,7 @@ its members did, and the renderer contract stayed 3: what generated code does di
 | §3 — G20, with its planted renames split across files | `tests/contracts/test_migrations_carry_their_data.py` — `test_every_migration_after_the_fresh_set_carries_its_data`, `test_planted_a_drop_then_an_add_in_the_next_migration_is_a_disguised_rename`, `test_the_scope_is_adjacent_migrations_and_says_so` |
 | §4 — the posting's final names; the ledger at zero with G9 still biting | `ubb-platform/apps/metering/usage/tests/test_the_usage_record_is_the_posting.py` — `ThePostingTableCarriesItsKeysAndIndexesTest`; `ubb-platform/apps/platform/tests/test_model_naming.py` — `test_table_name_is_the_canonical_snake_cased_model_name`, `test_negative_control_a_mismatched_table_is_flagged`; `tests/contracts/test_model_naming_ledger_agreement.py` — `test_the_gate_module_exists_and_declares_both_allowlists` |
 | §5 — one receipt shape, `{}` refused, an omitted receipt refused at its insert | `ubb-platform/api/v1/tests/test_the_cutover_assertions.py` — `NoLegacyPricingProvenanceIsReadTest`, `EveryNewMonetaryRecordUsesTheNewReceiptShapeTest` |
+| §5 — every receipt states its subject: required and never null, null only on a rejected batch item | `ubb-platform/api/v1/tests/test_the_pricing_receipt_is_typed.py` — `EveryReceiptStatesWhatItExplainsTest`; `ubb-platform/apps/metering/pricing/tests/test_the_pricing_receipt_explains_an_amount.py` — `TestTheBoundaryRefusesARecordThatExplainsNothing` |
 | §6 — no opening entry, and none can be written | `ubb-platform/api/v1/tests/test_the_audit_catalogue_is_the_registrys.py` — `test_no_opening_entry_can_be_written`, `test_the_recordable_set_is_the_registrys` |
 | G21 — the five assertions, each with a planted violation | `ubb-platform/api/v1/tests/test_the_cutover_assertions.py` — `NoOldPostingReachesABalanceOrAReportTest`, `NoUndeclaredMeasurementSurvivesTest`, `EveryNewEventValidatesAgainstItsEventTypeTest`; `tests/contracts/test_no_retired_posting_or_receipt_reader_survives.py` — `test_no_production_sql_reads_an_old_posting`, `test_no_production_code_reads_a_legacy_receipt` |
 | §8 — v4.0.0, the recipe's refusals, the Blueprint's major | `ubb-sdk/tests/test_release.py` — `test_sdk_is_v4`, `TestTheReleaseRecipe`; `tests/contracts/test_the_blueprint_targets_the_sdk_that_ships.py` — `test_the_python_target_names_the_major_of_the_sdk_in_this_tree` |

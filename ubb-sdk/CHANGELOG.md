@@ -28,7 +28,7 @@ builds that differ.
 | Stamp | Value |
 |---|---|
 | `ubb.__version__` | `4.0.0` |
-| `ubb.__spec_revision__` | `c04aed31ad1bb8e7c1c7f115ae75fbf91092864e4bd5ae2972ea8635080553ba` |
+| `ubb.__spec_revision__` | `f9e2cabcc276be46bf28267b57f4cacb3be981de2a30e3cb8b55a4a680c89d92` |
 | `ubb.__spec_version__` | `v1` |
 | Generator | `openapi-python-client==0.29.0` |
 | Tag | `sdk-v4.0.0` |
@@ -40,6 +40,14 @@ builds that differ.
   Integration Blueprint's Python target names SDK major 4.
 - **The build backend is pinned exactly** (`setuptools==80.9.0`), the one the
   release recipe builds with.
+- **Every receipt states what it explains** (MIGRATION.md §26).
+  `RecordUsageResponse.pricing_receipt_subject_type` and
+  `UsageEventDetailOut.pricing_receipt_subject_type` are required and never
+  null, and their generated enums are `RecordUsageResponsePricingReceiptSubjectType`
+  and `UsageEventDetailOutPricingReceiptSubjectType` (each was `…Type0`, the
+  generator's name for the non-null member of a nullable union). On
+  `UsageBatchItemResponse` the field is required and nullable: null on a
+  rejected item, beside its null receipt.
 
 ### Removed
 
@@ -51,8 +59,8 @@ builds that differ.
   the value was registered only to be refused, and the cutover deleted it with
   its exclusion.
 
-No call, model or exception changed in this cut: the SDK was settled in R10-W5
-(MIGRATION.md §24).
+No call or exception changed in this cut, and no model beyond the receipt's
+subject above: the SDK was settled in R10-W5 (MIGRATION.md §24).
 
 ## 3.0.0 — the tree's pre-release number, never released
 

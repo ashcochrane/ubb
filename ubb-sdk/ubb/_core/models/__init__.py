@@ -285,7 +285,7 @@ from .record_usage_response_grouping_fields import RecordUsageResponseGroupingFi
 from .record_usage_response_measurements_type_0 import RecordUsageResponseMeasurementsType0
 from .record_usage_response_not_applicable_reason_type_0 import RecordUsageResponseNotApplicableReasonType0
 from .record_usage_response_pricing_method_type_0 import RecordUsageResponsePricingMethodType0
-from .record_usage_response_pricing_receipt_subject_type_type_0 import RecordUsageResponsePricingReceiptSubjectTypeType0
+from .record_usage_response_pricing_receipt_subject_type import RecordUsageResponsePricingReceiptSubjectType
 from .record_usage_response_pricing_status import RecordUsageResponsePricingStatus
 from .record_usage_response_pricing_status_reason_type_0 import RecordUsageResponsePricingStatusReasonType0
 from .record_usage_response_stop_scope_type_0 import RecordUsageResponseStopScopeType0
@@ -421,7 +421,7 @@ from .usage_event_detail_out_measurements_status import UsageEventDetailOutMeasu
 from .usage_event_detail_out_metadata import UsageEventDetailOutMetadata
 from .usage_event_detail_out_not_applicable_reason_type_0 import UsageEventDetailOutNotApplicableReasonType0
 from .usage_event_detail_out_pricing_method_type_0 import UsageEventDetailOutPricingMethodType0
-from .usage_event_detail_out_pricing_receipt_subject_type_type_0 import UsageEventDetailOutPricingReceiptSubjectTypeType0
+from .usage_event_detail_out_pricing_receipt_subject_type import UsageEventDetailOutPricingReceiptSubjectType
 from .usage_event_detail_out_pricing_status import UsageEventDetailOutPricingStatus
 from .usage_event_detail_out_pricing_status_reason_type_0 import UsageEventDetailOutPricingStatusReasonType0
 from .usage_event_detail_out_unresolved_reason_type_0 import UsageEventDetailOutUnresolvedReasonType0
@@ -744,7 +744,7 @@ __all__ = (
     "RecordUsageResponseMeasurementsType0",
     "RecordUsageResponseNotApplicableReasonType0",
     "RecordUsageResponsePricingMethodType0",
-    "RecordUsageResponsePricingReceiptSubjectTypeType0",
+    "RecordUsageResponsePricingReceiptSubjectType",
     "RecordUsageResponsePricingStatus",
     "RecordUsageResponsePricingStatusReasonType0",
     "RecordUsageResponseStopScopeType0",
@@ -880,7 +880,7 @@ __all__ = (
     "UsageEventDetailOutMetadata",
     "UsageEventDetailOutNotApplicableReasonType0",
     "UsageEventDetailOutPricingMethodType0",
-    "UsageEventDetailOutPricingReceiptSubjectTypeType0",
+    "UsageEventDetailOutPricingReceiptSubjectType",
     "UsageEventDetailOutPricingStatus",
     "UsageEventDetailOutPricingStatusReasonType0",
     "UsageEventDetailOutUnresolvedReasonType0",

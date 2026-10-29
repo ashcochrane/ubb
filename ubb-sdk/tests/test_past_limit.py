@@ -30,7 +30,7 @@ class StopContextAckTest(unittest.TestCase):
         """A stopped ack is RAISED by default (#421), so the context arrives
         on the signal's ``result`` — the same acknowledgement, nothing lost."""
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
             "trigger_source": "usage_ingest", "stop_bound_micros": 5_000_000,
             "stop_measured_micros": 5_500_000,
             "stop": True, "stop_reason": REASON_CODE_TASK_COGS_CEILING,
@@ -45,7 +45,7 @@ class StopContextAckTest(unittest.TestCase):
     @patch("ubb.metering.httpx.Client.post")
     def test_stop_context_defaults_none(self, mock_post):
         mock_post.return_value = MagicMock(status_code=200, json=lambda: {
-            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+            "event_id": "e1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
             "trigger_source": None, "stop_bound_micros": None, "stop_measured_micros": None})
         result = self.client.record_usage(customer_id="c1",
                                           idempotency_key="i1")
@@ -66,7 +66,7 @@ class UsageFiltersTest(unittest.TestCase):
             "data": [{"id": "00000000-0000-0000-0000-0000000000e1",
                       "kind": "metered_usage",
                       "metadata": {}, "effective_at": "2026-06-01T00:00:00Z",
-                      "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "stop_context": _CTX}],
+                      "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"], "stop_context": _CTX}],
             "next_cursor": None, "has_more": False})
         page = self.client.get_usage("c1", past_limit=True, stop_scope="task",
                                      episode_seq=3)

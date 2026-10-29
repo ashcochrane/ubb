@@ -4,9 +4,10 @@
 > written while the tree carried the pre-release number 3.0.0, which was never
 > released or tagged; where it says "v3.0" below, read the release you are
 > installing, 4.0.0. Coming from v2.x, every section applies. Coming from an
-> earlier build of this tree, §8–§25 are the pre-live edges added since. No call,
-> model or exception changed in the 4.0.0 cut itself (§24 settled the SDK); the
-> cut deletes two `ubb.vocabulary` constants (§25).
+> earlier build of this tree, §8–§26 are the pre-live edges added since. No call
+> or exception changed in the 4.0.0 cut itself (§24 settled the SDK); the cut
+> deletes two `ubb.vocabulary` constants (§25) and makes the receipt's subject
+> required (§26).
 
 v3.0 is the **one coordinated breaking release** for the self-serve launch. The
 generated typed core (#84) and the RFC 9457 problem+json error model (#78) —
@@ -1264,6 +1265,26 @@ could be refused, and the cutover deleted it together with its exclusion:
 
 No audit record ever carried the value, so no response changes. **Code that
 imports either deleted constant stops importing**; delete the reference.
+
+## 26. Every receipt states what it explains (the 4.0.0 cut, #190 — pre-live)
+
+`pricing_receipt_subject_type` — whether a receipt explains one usage row
+(`usage_event`) or one Charge (`charge`) — was nullable because a receipt
+written before the subject was typed carried none. The cutover deleted those
+receipt shapes, and every receipt UBB can hold now states its subject, so:
+
+- on `RecordUsageResponse` and `UsageEventDetailOut` the field is **required
+  and never null**. Its generated enum is renamed with it:
+  `RecordUsageResponsePricingReceiptSubjectTypeType0` →
+  `RecordUsageResponsePricingReceiptSubjectType`, and
+  `UsageEventDetailOutPricingReceiptSubjectTypeType0` →
+  `UsageEventDetailOutPricingReceiptSubjectType`;
+- on `UsageBatchItemResponse` it is **required and nullable**: null on a
+  rejected item, beside its null `pricing_receipt`, and set on every accepted
+  one.
+
+**Code that branched on a null subject** for a recorded event or its detail
+can drop the branch; code importing either `…Type0` enum takes the new name.
 
 ## Release checklist (operator)
 

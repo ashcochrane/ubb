@@ -19,7 +19,7 @@ from tests._receipt import A_RECEIPT
 #: parses it: the stop facts (#569) and the price status's reason (#603) are
 #: required and nullable.
 ACK = {"event_id": "evt_1", "suspended": False, "costing_status": "known",
-       "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+       "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
        "trigger_source": None, "stop_bound_micros": None,
        "stop_measured_micros": None}
 

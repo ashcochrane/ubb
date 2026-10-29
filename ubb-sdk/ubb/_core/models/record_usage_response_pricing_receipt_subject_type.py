@@ -1,6 +1,6 @@
 from enum import Enum
 
-class UsageEventDetailOutPricingReceiptSubjectTypeType0(str, Enum):
+class RecordUsageResponsePricingReceiptSubjectType(str, Enum):
     CHARGE = "charge"
     USAGE_EVENT = "usage_event"
 

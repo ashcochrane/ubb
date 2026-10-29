@@ -90,6 +90,7 @@ function responseWith(price: CustomerPriceScenario): VerifiedAcknowledgement {
     measurements: { input_tokens: "900" },
     uncosted_measurement_keys: [],
     pricing_receipt: A_RECEIPT,
+    pricing_receipt_subject_type: A_RECEIPT.subject_type,
     stop: false,
     stop_reason: null,
     stop_scope: null,

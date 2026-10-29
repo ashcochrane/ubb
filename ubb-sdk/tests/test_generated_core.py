@@ -37,7 +37,7 @@ class TestOpenWorldFieldTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
-                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
                 **NOTHING_STOPPED,
                 # A field added to the response after this client was pinned:
                 "brand_new_field": {"nested": 1},
@@ -72,7 +72,7 @@ class TestOpenEnumTolerance:
             {
                 "event_id": "evt_1",
                 "suspended": False,
-                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+                "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
                 **NOTHING_STOPPED,
                 "stop": True,
                 "stop_scope": "a_scope_invented_next_year",
@@ -99,18 +99,18 @@ class TestRequiredWhereTrueTyping:
 
     def test_optional_field_defaults_to_unset(self):
         r = RecordUsageResponse.from_dict(
-            {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT,
+            {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
              **NOTHING_STOPPED})
         assert isinstance(r.task_id, Unset)
         assert r.task_id is UNSET
 
     @pytest.mark.parametrize("model, body", [
         (RecordUsageResponse,
-         {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT}),
+         {"event_id": "evt_1", "suspended": False, "costing_status": "known", "pricing_status": "known", "pricing_status_reason": None, "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"]}),
         # A rejected batch item recorded nothing, and carries the three as null.
         (UsageBatchItemResponse,
          {"accepted": False, "code": "validation_error", "detail": "refused", "stop": False,
-          "pricing_status_reason": None, "pricing_receipt": None}),
+          "pricing_status_reason": None, "pricing_receipt": None, "pricing_receipt_subject_type": None}),
     ])
     def test_a_stop_fact_is_a_required_key_whose_value_may_be_null(self, model, body):
         # The owner's review of #612: the three are REQUIRED AND NULLABLE.
@@ -131,12 +131,12 @@ class TestRequiredWhereTrueTyping:
         # item's null.
         (RecordUsageResponse,
          {"event_id": "evt_1", "suspended": False, "costing_status": "known",
-          "pricing_status": "known", "pricing_receipt": A_RECEIPT}),
+          "pricing_status": "known", "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"]}),
         # A rejected batch item states no price at all, and still carries the
         # reason's key, as null.
         (UsageBatchItemResponse,
          {"accepted": False, "code": "validation_error", "detail": "refused", "stop": False,
-          "pricing_receipt": None}),
+          "pricing_receipt": None, "pricing_receipt_subject_type": None}),
     ])
     def test_the_price_status_reason_is_a_required_key_whose_value_may_be_null(
             self, model, body):
@@ -152,7 +152,7 @@ class TestRequiredWhereTrueTyping:
         parsed = RecordUsageResponse.from_dict({
             "event_id": "evt_1", "suspended": False, "costing_status": "known",
             "pricing_status": "unknown",
-            "pricing_status_reason": "negative_price_unsupported", "pricing_receipt": A_RECEIPT,
+            "pricing_status_reason": "negative_price_unsupported", "pricing_receipt": A_RECEIPT, "pricing_receipt_subject_type": A_RECEIPT["subject_type"],
             **NOTHING_STOPPED})
         assert parsed.pricing_status == "unknown"
         assert parsed.pricing_status_reason == "negative_price_unsupported"

@@ -536,13 +536,14 @@ def _rejected(code, detail):
     """A batch-item rejection verdict: the typed code plus the constant stop
     facts — a rejected item was never recorded, so nothing can have stopped,
     and nothing applied, bounded or measured a stop (#569: null, never 0) —
-    and no price, so no reason for one (#603). Every required-and-nullable
-    acknowledgement fact is here, null."""
+    and no price, so no reason for one (#603), and no receipt, so nothing it
+    explains (#190). Every required-and-nullable acknowledgement fact is here,
+    null."""
     return {"accepted": False, "code": code, "detail": detail,
             "stop": False, "stop_reason": None, "stop_scope": None,
             "trigger_source": None, "stop_bound_micros": None,
             "stop_measured_micros": None, "pricing_status_reason": None,
-            "pricing_receipt": None}
+            "pricing_receipt": None, "pricing_receipt_subject_type": None}
 
 
 def replay_or_record(tenant, customer, item):
