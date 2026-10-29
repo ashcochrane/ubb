@@ -36,6 +36,7 @@ already what every case here wants.
 """
 
 import json
+from datetime import timedelta
 
 from django.db import IntegrityError
 from django.test import Client, TestCase
@@ -94,10 +95,15 @@ class ARateReferencesTheEarliestDeclarationOfItsNameTest(TestCase):
     function, beside the claim that the live lookup agreed with it. The squash
     deleted the function; the live half is the one that outlives it, and it is
     driven here through the act that writes every rule now — a publish.
+
+    **The order is STATED, never left to the clock.** The lookup orders by
+    `created_at` and then by a random UUID, so two inserts landing in one clock
+    tick would make the pick a coin toss. Each case sets both declarations'
+    `created_at` outright, an hour apart, and the second case reverses the
+    insertion order to show the pick follows the timestamp and nothing else.
     """
 
-    def test_a_rule_published_today_references_the_earliest_declaration(self):
-        tenant = _tenant()
+    def _two_declarations_of_one_name(self, tenant):
         first = declares_a_quantity(tenant, DECLARED_NAME, key="first.call")
         second = Measurement.objects.create(
             event_type=EventType.objects.create(
@@ -105,19 +111,46 @@ class ARateReferencesTheEarliestDeclarationOfItsNameTest(TestCase):
                 costing_method=COSTING_METHOD_CALCULATED),
             code=DECLARED_NAME, unit=UNIT_TOKEN,
             source_kind=SOURCE_KIND_CALLER_SUPPLIED)
-        book = cost_book(tenant, key="openai", provider="openai")
+        return first, second
 
+    def _declared_in_this_order(self, earlier, later):
+        moment = timezone.now()
+        Measurement.objects.filter(pk=earlier.pk).update(
+            created_at=moment - timedelta(hours=1))
+        Measurement.objects.filter(pk=later.pk).update(created_at=moment)
+
+    def _the_rule_published_today(self, tenant):
+        book = cost_book(tenant, key="openai", provider="openai")
         BookService.publish_declared(BookService.declare(
             book, [{"line": LINE_RATE, "kind": CHANGE_ADD,
                     "measurement_key": DECLARED_NAME, "provider": "openai",
                     "rate_per_unit_micros": 5}]))
+        return Rate.objects.get(cost_book=book)
 
-        rate = Rate.objects.get(cost_book=book)
+    def test_a_rule_published_today_references_the_earliest_declaration(self):
+        tenant = _tenant()
+        first, second = self._two_declarations_of_one_name(tenant)
+        self._declared_in_this_order(first, second)
+
+        rate = self._the_rule_published_today(tenant)
+
         self.assertEqual(rate.measurement_id, first.id)
         self.assertNotEqual(rate.measurement_id, second.id)
         self.assertEqual(
             declaration_named(tenant=tenant, measurement_key=DECLARED_NAME).id,
             rate.measurement_id)
+
+    def test_the_pick_follows_the_timestamp_not_the_insertion_order(self):
+        tenant = _tenant()
+        first, second = self._two_declarations_of_one_name(tenant)
+        self._declared_in_this_order(second, first)
+
+        rate = self._the_rule_published_today(tenant)
+
+        self.assertEqual(rate.measurement_id, second.id)
+        self.assertEqual(
+            declaration_named(tenant=tenant, measurement_key=DECLARED_NAME).id,
+            second.id)
 
 
 class ARateNamingAnUndeclaredQuantityIsRefusedTest(TestCase):
