@@ -9,6 +9,12 @@ ubb-sdk/ubb/_core/** text eol=lf
 ubb-sdk/ubb/_exceptions_generated.py text eol=lf
 ubb-sdk/ubb/_spec_revision.py text eol=lf
 
+# The release recipe refuses to run unless it is byte-for-byte the copy the
+# release tag carries (#190; ADR-0026 §8), and the tag's blob is LF — so its
+# working copy stays LF on every platform too, or a checkout with
+# core.autocrlf=true would refuse to build the release it was cut for.
+ubb-sdk/release/** text eol=lf
+
 # The vocabulary registry is the input every generated vocabulary artifact is
 # byte-compared against (#200, #207, #208). Pin it to LF now, before anything
 # rides a zero-diff gate off it, so a contributor's core.autocrlf can never

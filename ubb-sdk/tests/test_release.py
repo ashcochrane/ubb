@@ -172,6 +172,14 @@ class TestTheReleaseRecipe:
         with pytest.raises(recipe.RefusedRelease, match="two builds of one tag differ"):
             recipe.refuse_unless_reproduced("ab", "cd")
 
+    def test_the_recipes_working_copy_is_lf_on_every_platform(self):
+        """The recipe compares its own bytes with the tag's LF blob, so the
+        repository keeps it LF in every working tree, whatever a checkout's
+        core.autocrlf is — and the copy that runs here is LF."""
+        attributes = (SDK_ROOT.parent / ".gitattributes").read_text(encoding="utf-8")
+        assert re.search(r"(?m)^ubb-sdk/release/\*\* text eol=lf$", attributes)
+        assert b"\r\n" not in (SDK_ROOT / "release" / "build_wheel.py").read_bytes()
+
     def test_planted_a_recipe_that_is_not_the_tags_is_refused(self):
         """The pins and the recipe are the TAG's: an edited local copy of either
         never builds a release (the recipe running is compared with the one the
