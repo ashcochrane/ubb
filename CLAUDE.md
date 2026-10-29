@@ -51,7 +51,8 @@ From `ubb-platform/` (venv at `ubb-platform/.venv`):
   a fresh initial set, so a database migrated before it cannot migrate forward — drop and re-create
   it, then migrate (and seed a working tenant):
   `docker exec ubb-postgres psql -U ubb -d postgres -c "DROP DATABASE IF EXISTS ubb WITH (FORCE)" -c "CREATE DATABASE ubb"`,
-  then `.venv/bin/python manage.py migrate` and `.venv/bin/python manage.py seed_dev_data`.
+  then `.venv/bin/python manage.py migrate` and
+  `.venv/bin/python manage.py seed_dev_data --stripe-account acct_<your test account>`.
 - Sanity: `.venv/bin/python manage.py check`
 - Spec regen (after any API surface change): `.venv/bin/python scripts/export_openapi.py` —
   refreshes the committed `openapi/v1.json`, the single source of truth for the tenant surface
