@@ -1,3 +1,8 @@
+import hashlib
+import hmac
+import json
+import time
+
 import stripe
 from unittest.mock import patch, MagicMock, PropertyMock
 from django.test import TestCase, RequestFactory
@@ -916,3 +921,56 @@ class InvoicePaidTenantInvoiceTest(TestCase):
         request = self.factory.post("/api/v1/webhooks/stripe/", content_type="application/json")
         response = stripe_webhook(request)
         self.assertEqual(response.status_code, 200)
+
+
+class LiveReceiverFailsClosedTest(TestCase):
+    """W7 preparation finding F5, ruled 2026-10-30: the LIVE receiver fails
+    closed on a missing or blank STRIPE_WEBHOOK_SECRET, persisting nothing.
+
+    Nothing is mocked: Stripe's own verifier is given a real `Stripe-Signature`
+    header, so the cases say what a real delivery would get. Before the fix an
+    empty secret went straight to the verifier, and an event signed with the
+    empty key was accepted and recorded.
+    """
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.payload = json.dumps({
+            "id": "evt_w7_fail_closed", "object": "event", "type": "w7.probe",
+            "livemode": True, "created": int(time.time()),
+            "data": {"object": {"id": "w7", "object": "probe"}}}).encode()
+
+    def _signed_with(self, secret):
+        ts = int(time.time())
+        digest = hmac.new(secret.encode(), f"{ts}.".encode() + self.payload,
+                          hashlib.sha256).hexdigest()
+        return f"t={ts},v1={digest}"
+
+    def _deliver(self, signature):
+        request = self.factory.post("/api/v1/webhooks/stripe", data=self.payload,
+                                    content_type="application/json",
+                                    HTTP_STRIPE_SIGNATURE=signature)
+        return stripe_webhook(request)
+
+    def _refused_and_nothing_persisted(self, response):
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(StripeWebhookEvent.objects.exists())
+
+    def test_an_unset_secret_refuses_even_the_empty_key_signature(self):
+        with self.settings(STRIPE_WEBHOOK_SECRET=""):
+            self._refused_and_nothing_persisted(self._deliver(self._signed_with("")))
+
+    def test_a_blank_secret_refuses_even_its_own_signature(self):
+        with self.settings(STRIPE_WEBHOOK_SECRET="   "):
+            self._refused_and_nothing_persisted(self._deliver(self._signed_with("   ")))
+
+    def test_a_wrong_signature_is_refused_with_a_configured_secret(self):
+        with self.settings(STRIPE_WEBHOOK_SECRET="whsec_w7_configured"):
+            self._refused_and_nothing_persisted(self._deliver(self._signed_with("whsec_other")))
+
+    def test_a_correct_signature_is_accepted_with_a_configured_secret(self):
+        with self.settings(STRIPE_WEBHOOK_SECRET="whsec_w7_configured"):
+            response = self._deliver(self._signed_with("whsec_w7_configured"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(StripeWebhookEvent.objects.filter(
+            stripe_event_id="evt_w7_fail_closed").exists())
