@@ -112,19 +112,30 @@ def handle_usage_recorded_subscriptions(event_id, payload):
     )
 
     if rows == 0:
-        from django.db import IntegrityError
+        # The period's first event for this customer: INSERT, and if a
+        # concurrent first event won the row in between, apply this event's
+        # increment to it instead — exactly once, the same five columns the
+        # UPDATE above adds. The insert runs under its own savepoint: the
+        # handler is already inside the dispatcher's transaction, and on
+        # PostgreSQL a failed statement poisons the whole transaction, so
+        # without the savepoint the fallback UPDATE could never run — the
+        # losing event raised TransactionManagementError and the handler failed
+        # (W7 preparation finding F6, ruled 2026-10-30; repaired then only by
+        # the outbox retry).
+        from django.db import IntegrityError, transaction
         try:
-            CustomerCostAccumulator.objects.create(
-                tenant_id=evt.tenant_id,
-                customer_id=evt.customer_id,
-                period_start=period_start,
-                period_end=period_end,
-                total_provider_cost_micros=provider,
-                unresolved_event_count=unresolved,
-                total_billed_cost_micros=billed,
-                unpriced_event_count=unpriced,
-                posting_count=1,
-            )
+            with transaction.atomic():
+                CustomerCostAccumulator.objects.create(
+                    tenant_id=evt.tenant_id,
+                    customer_id=evt.customer_id,
+                    period_start=period_start,
+                    period_end=period_end,
+                    total_provider_cost_micros=provider,
+                    unresolved_event_count=unresolved,
+                    total_billed_cost_micros=billed,
+                    unpriced_event_count=unpriced,
+                    posting_count=1,
+                )
         except IntegrityError:
             CustomerCostAccumulator.objects.filter(
                 tenant_id=evt.tenant_id,
@@ -134,5 +145,6 @@ def handle_usage_recorded_subscriptions(event_id, payload):
                 total_provider_cost_micros=F("total_provider_cost_micros") + provider,
                 unresolved_event_count=F("unresolved_event_count") + unresolved,
                 total_billed_cost_micros=F("total_billed_cost_micros") + billed,
+                unpriced_event_count=F("unpriced_event_count") + unpriced,
                 posting_count=F("posting_count") + 1,
             )
