@@ -50,7 +50,6 @@ def _per_owner_reconcile(tenant):
     from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.customer_spend_pool_service import _period
     from apps.metering.queries import get_customer_ids_with_postings
-    from core.vocabulary import CUSTOMER_BILLING_MODE_POSTPAID
 
     flag_realigned = 0
 
@@ -58,7 +57,10 @@ def _per_owner_reconcile(tenant):
         return 1 if outcome and outcome.get("flag_realigned") else 0
 
     try:
-        if tenant.billing_mode == CUSTOMER_BILLING_MODE_POSTPAID:
+        # Owners to visit: where there is no wallet (`postpaid`, `external`)
+        # the period's recorded customers; where there is one, its holders.
+        from apps.platform.tenants.flags import holds_a_wallet
+        if not holds_a_wallet(tenant):
             _label, start, end = _period()
             cust_ids = list(get_customer_ids_with_postings(tenant.id, start, end))
             owners = {c.resolve_billing_owner().id

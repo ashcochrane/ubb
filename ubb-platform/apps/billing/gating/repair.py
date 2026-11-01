@@ -52,7 +52,7 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.platform.tenants.flags import live_counter_maintenance_on
+from apps.platform.tenants.flags import holds_a_wallet, live_counter_maintenance_on
 from apps.platform.work import reasons
 
 logger = logging.getLogger("ubb.billing")
@@ -95,8 +95,7 @@ def repair_live_balances(tenant):
     # switch (#46, §E) is the same one that arms the synchronous debit and its
     # crossing check: with it off nothing debits and nothing reads the
     # counter — a deficit is moot, and the repair is inert.
-    if (not live_counter_maintenance_on(tenant)
-            or tenant.billing_mode == "postpaid"):
+    if not live_counter_maintenance_on(tenant) or not holds_a_wallet(tenant):
         return counts
     for owner_id in Wallet.objects.filter(
             customer__tenant=tenant).values_list("customer_id", flat=True):

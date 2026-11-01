@@ -12,6 +12,15 @@ from apps.billing.tenant_billing.models import BillingTenantConfig, TenantBillin
 from apps.metering.usage.tests._helpers import a_posting
 
 
+# Every wallet test here builds a `prepaid` tenant, said so: the drawdown is the
+# wallet's, and only `prepaid` keeps one (`apps/platform/tenants/flags.py::
+# holds_a_wallet`, W7 preparation finding F3). These used to leave the mode at
+# its default — `external` — and still drew down, because the handler asked
+# "not postpaid?"; the same question read an external tenant's absent wallet as
+# a zero balance and suspended its customers. `rail_activated` is the money
+# mode's precondition (G27).
+
+
 @pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestBillingOutboxHandler:
@@ -19,7 +28,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -48,7 +57,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -81,7 +90,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -107,7 +116,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -138,7 +147,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -173,7 +182,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -207,7 +216,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -235,7 +244,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         BillingTenantConfig.objects.create(
@@ -268,7 +277,7 @@ class TestBillingOutboxHandler:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         BillingTenantConfig.objects.create(
@@ -402,6 +411,7 @@ class TestBillingOutboxHandler:
         assert WalletTransaction.objects.filter(wallet=bw, transaction_type="usage_deduction").count() == 1
 
 
+@pytest.mark.usefixtures("rail_activated")
 class TestBillingHandlerEmitsWalletBalanceLow:
     """After wallet deduction, if balance drops below auto top-up threshold,
     emit a balance.low event instead of dispatching a Stripe task."""
@@ -412,7 +422,7 @@ class TestBillingHandlerEmitsWalletBalanceLow:
         from apps.billing.topups.models import AutoTopUpConfig
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -454,7 +464,7 @@ class TestBillingHandlerEmitsWalletBalanceLow:
         from apps.billing.topups.models import AutoTopUpConfig
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -492,7 +502,7 @@ class TestBillingHandlerEmitsWalletBalanceLow:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         customer = Customer.objects.create(tenant=tenant, external_id="ext1")
@@ -519,13 +529,14 @@ class TestBillingHandlerEmitsWalletBalanceLow:
         ).exists()
 
 
+@pytest.mark.usefixtures("rail_activated")
 class TestBillingHandlerEmitsCustomerSuspended:
     @pytest.mark.django_db
     def test_emits_customer_suspended_on_min_balance_breach(self):
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         BillingTenantConfig.objects.create(
@@ -563,7 +574,7 @@ class TestBillingHandlerEmitsCustomerSuspended:
         from apps.billing.handlers import handle_usage_recorded_billing
 
         tenant = Tenant.objects.create(
-            name="Test", products=["metering", "billing"],
+            name="Test", products=["metering", "billing"], billing_mode="prepaid",
             stripe_connected_account_id="acct_test",
         )
         BillingTenantConfig.objects.create(

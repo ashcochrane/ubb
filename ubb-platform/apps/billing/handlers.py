@@ -2,6 +2,7 @@ import logging
 
 from core.exceptions import NegativeKnownPriceRefused
 from apps.platform.events.schemas import CustomerDeleted, UsageRecorded
+from apps.platform.tenants.flags import holds_a_wallet
 from apps.platform.tenants.models import Tenant
 from apps.billing.tenant_billing.services import TenantBillingService
 from core.vocabulary import USAGE_EVENT_KIND_METERED_USAGE
@@ -81,7 +82,9 @@ def handle_usage_recorded_billing(event_id, payload):
         # ledger row to write for it, which is also what drawdown repair's
         # `iter_billable_postings` selects on — the two agree on what a
         # drawdown is owed for.
-        if tenant.billing_mode != "postpaid" and billed_cost_micros != 0:
+        # The drawdown is the wallet's (F3): `prepaid` only — never `external`,
+        # which keeps no wallet for a drawdown to create, floor or suspend on.
+        if holds_a_wallet(tenant) and billed_cost_micros != 0:
             from apps.billing.wallets import operations as wallet_ops
 
             owner_id = evt.billing_owner_id or str(seat.resolve_billing_owner().id)
