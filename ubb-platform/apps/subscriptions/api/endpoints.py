@@ -177,6 +177,11 @@ def subscriptions_stripe_webhook(request):
         if hasattr(settings, "STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET")
         else settings.STRIPE_WEBHOOK_SECRET
     )
+    # Fail closed on an unset or blank secret, as the test endpoint below
+    # does: an empty secret must never verify (W7 preparation finding F5,
+    # ruled 2026-10-30). Refused before anything is verified or persisted.
+    if not (secret or "").strip():
+        return HttpResponse(status=400)
     return _subscriptions_stripe_webhook(request, secret=secret, is_test_endpoint=False)
 
 

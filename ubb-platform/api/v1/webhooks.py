@@ -47,6 +47,18 @@ PROCESSING_TTL_MINUTES = 30
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
+    """Stripe LIVE-mode webhook endpoint.
+
+    Fails closed, exactly as the test endpoint below does, when
+    STRIPE_WEBHOOK_SECRET is unset or blank: an empty secret must never
+    verify. It used to be handed straight to Stripe's verifier, which then
+    accepted any event signed with the empty key — a deployment that uses no
+    Stripe (an `external` tenant's) would have left the live receiver open
+    (W7 preparation finding F5, ruled 2026-10-30). Refused before anything is
+    verified or persisted.
+    """
+    if not (settings.STRIPE_WEBHOOK_SECRET or "").strip():
+        return HttpResponse(status=400)
     return _stripe_webhook(
         request, secret=settings.STRIPE_WEBHOOK_SECRET, is_test_endpoint=False)
 

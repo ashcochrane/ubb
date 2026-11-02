@@ -82,11 +82,11 @@ from core.crossing import (floor_line, month_label_bounds, past_floor,
                            spend_pool_stop_threshold)
 from apps.billing.gating.services.stop_signal_service import (
     NO_OPENING_FACTS, OPENING_FACTS, StopSignalService, opening_facts)
-from apps.platform.tenants.flags import enforcing, live_counter_maintenance_on
+from apps.platform.tenants.flags import (enforcing, holds_a_wallet,
+                                         live_counter_maintenance_on)
 from apps.platform.work import reasons
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 from core.vocabulary import (
-    CUSTOMER_BILLING_MODE_POSTPAID,
     STOP_SCOPE_CUSTOMER,
     TRIGGER_SOURCE_ENFORCEMENT_PATROL,
     TRIGGER_SOURCE_USAGE_INGEST,
@@ -343,19 +343,21 @@ class LiveCounter:
         try:
             from django.utils import timezone
             now = now or timezone.now()
-            postpaid = tenant.billing_mode == CUSTOMER_BILLING_MODE_POSTPAID
-            # I9: a prior-month backdated event must not inflate THIS month's
-            # spend counter (mirrors handlers.py's spend-pool tail). Postpaid
-            # has no wallet to lower, so there is nothing else to apply —
-            # and the standing stop is still read (ADR-0019 §7).
+            # The wallet leg runs only where a wallet IS (F3): `prepaid`.
+            # `postpaid` and `external` carry no wallet to lower, so for them
+            # a prior-month backdated event has nothing else to apply —
+            # I9: it must not inflate THIS month's spend counter (mirrors
+            # handlers.py's spend-pool tail) — and the standing stop is still
+            # read (ADR-0019 §7).
+            wallet = holds_a_wallet(tenant)
             in_this_month = same_month(effective_at, now)
-            if postpaid and not in_this_month:
+            if not wallet and not in_this_month:
                 return LiveCounter.read(owner_id, tenant, customer_id=customer_id)
-            base = {"mode": "postpaid" if postpaid else "prepaid",
+            base = {"mode": tenant.billing_mode,
                     "balance_micros": None, "spend_micros": None}
             opened = {}
             balance = None
-            if not postpaid:
+            if wallet:
                 # The wallet leg — mirror the async wallet drawdown branch.
                 from apps.billing.queries import get_customer_balance
                 seed = int(get_customer_balance(owner_id))
@@ -736,7 +738,9 @@ class LiveCounter:
             LiveCounter._repoint_stop_flag(owner_id, surviving[0])
             return False
         realigned = LiveCounter._clear_stop(owner_id)
-        if tenant.billing_mode == "postpaid":
+        if not holds_a_wallet(tenant):
+            # No wallet, so no durable balance to gate the un-suspend on (D15
+            # is the wallet's rule): `postpaid` and `external` alike.
             LiveCounter._maybe_unsuspend(owner_id)
         else:
             from apps.billing.queries import (get_customer_balance,
@@ -800,7 +804,7 @@ class LiveCounter:
                        "stop_customer_id": whose}
         if counter:
             try:
-                if tenant.billing_mode == "postpaid":
+                if not holds_a_wallet(tenant):
                     from django.utils import timezone
                     label, _, _ = month_label_bounds(now or timezone.now())
                     c = _client().get(_livespend_key(owner_id, label))
@@ -829,7 +833,7 @@ class LiveCounter:
         calls this hook, so a top-up that re-crosses the floor during a Redis
         blind window still resumes now, not an hour later at reconcile. (A
         negative credit / grant-expiry never clears.)"""
-        if not enforcing(tenant) or tenant.billing_mode == "postpaid" or amount_micros == 0:
+        if not enforcing(tenant) or not holds_a_wallet(tenant) or amount_micros == 0:
             return
         v = None
         try:
@@ -954,7 +958,7 @@ class LiveCounter:
         completed pass, None when neither pass completed. ``now`` scopes the
         pool's month (beat callers omit it)."""
         passes = []
-        if tenant.billing_mode != CUSTOMER_BILLING_MODE_POSTPAID:
+        if holds_a_wallet(tenant):
             passes.append(LiveCounter._reconcile_prepaid(owner_id, tenant))
         passes.append(LiveCounter._reconcile_pool(owner_id, tenant, now=now))
         completed = [p for p in passes if p is not None]

@@ -274,3 +274,99 @@ def test_the_relative_import_control_anchors_where_it_claims_to():
     control pass for the wrong reason."""
     assert list(iter_body_imports(_task_with_a_live_relative_import)) == [
         ("apps.platform.work.models", ("Task",))]
+
+
+# ---------------------------------------------------------------------------
+# What a REAL process sees (W7 preparation findings F1 and F2, ruled 2026-10-30).
+#
+# Everything above resolves a beat entry by importing its module first, so it
+# cannot notice a task that no process imports. Two were: `core.tasks` (not an
+# installed app) and `apps.platform.events.tasks_webhook_cleanup` (not named
+# `tasks.py`), both invisible to `autodiscover_tasks`, so beat published them by
+# bare name to the default `celery` queue no worker consumes. And the web process
+# never imported `config.celery` at all, so every `.delay()` it issued bound to
+# Celery's default app and failed. Each check below therefore runs in a FRESH
+# interpreter, doing only what the real process does, and reports back as JSON.
+# ---------------------------------------------------------------------------
+import json
+import os
+import subprocess
+import sys
+
+_WORKER_VIEW = """
+import json, django
+django.setup()
+from django.conf import settings
+from config.celery import app
+app.loader.import_default_modules()   # what worker and beat do at start-up
+declared = sorted(q.name for q in settings.CELERY_TASK_QUEUES)
+entries = {}
+for name, spec in settings.CELERY_BEAT_SCHEDULE.items():
+    task = app.tasks.get(spec["task"])
+    entries[spec["task"]] = {"registered": task is not None,
+                             "queue": getattr(task, "queue", None) if task else None}
+print(json.dumps({"declared": declared, "entries": entries}))
+"""
+
+_WEB_VIEW = """
+import json, logging, sys, uuid
+import config.wsgi           # exactly what gunicorn imports
+import config.urls           # what the first routed request loads
+from django.conf import settings
+from apps.platform.events import outbox, tasks
+app = tasks.process_single_event._get_app()
+marker = str(uuid.uuid4())
+records = []
+class Capture(logging.Handler):
+    def emit(self, record):
+        records.append(record.getMessage())
+logging.getLogger("ubb.events").addHandler(Capture())
+outbox._dispatch(marker)     # the doorbell a usage write rings on commit
+import redis
+client = redis.from_url(app.conf.broker_url)
+raw = next((m for m in client.lrange("ubb_events", 0, 200) if marker.encode() in m), None)
+if raw is not None:
+    client.lrem("ubb_events", 1, raw)
+print(json.dumps({
+    "config_celery_loaded": "config.celery" in sys.modules,
+    "app": app.main,
+    "broker_is_settings_broker": app.conf.broker_url == settings.CELERY_BROKER_URL,
+    "dispatch_failed_logged": any("dispatch_failed" in m for m in records),
+    "message_reached_ubb_events": raw is not None,
+}))
+"""
+
+
+def _as_a_fresh_process(script):
+    env = dict(os.environ, DJANGO_SETTINGS_MODULE="config.settings",
+               PYTHONIOENCODING="utf-8", PYTHONPATH=str(settings.BASE_DIR))
+    proc = subprocess.run([sys.executable, "-c", script], cwd=settings.BASE_DIR,
+                          capture_output=True, text=True, encoding="utf-8", env=env)
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    return json.loads(proc.stdout.strip().splitlines()[-1])
+
+
+def test_every_scheduled_task_is_registered_and_routable_as_the_worker_sees_it():
+    """F2. Registered after the loader's own start-up import — not after this
+    test imported it — and carrying a `queue` the worker is told to consume."""
+    view = _as_a_fresh_process(_WORKER_VIEW)
+    declared = set(view["declared"])
+    faults = [f"{name}: registered={facts['registered']} queue={facts['queue']}"
+              for name, facts in sorted(view["entries"].items())
+              if not facts["registered"] or facts["queue"] not in declared]
+    assert not faults, "\n".join(faults)
+    # The two this fix exists for, named so the assertion can never go vacuous.
+    for name in ("core.tasks.flush_api_key_last_used",
+                 "apps.platform.events.tasks_webhook_cleanup.cleanup_webhook_delivery_attempts"):
+        assert view["entries"][name]["registered"], name
+
+
+def test_the_web_import_path_binds_shared_tasks_to_the_configured_app():
+    """F1. Importing what gunicorn imports loads the configured app, and the
+    outbox doorbell publishes to its broker without `outbox.dispatch_failed`."""
+    view = _as_a_fresh_process(_WEB_VIEW)
+    assert view["config_celery_loaded"], view
+    assert view["app"] == "ubb_platform", view
+    assert view["broker_is_settings_broker"], view
+    assert not view["dispatch_failed_logged"], view
+    assert view["message_reached_ubb_events"], view

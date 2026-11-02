@@ -52,7 +52,29 @@ NOT governed — always on where declared:
     only the announcement of the resulting expiry is the switch's.
 
 See docs/plans/2026-07-15-one-rule-enforcement-spec.md §G.
+
+⚠ THE WALLET POLICY HAS A SUBJECT ONLY WHERE A WALLET IS (W7 preparation
+finding F3, ruled 2026-10-30). `holds_a_wallet` below is the one answer to
+"does this tenant's mode keep a customer wallet?", and every wallet leg —
+the live debit's balance counter and hard-floor check, the drawdown, the
+reconcile's wallet pass, the credit hook, the upward repair — asks it. Before
+it, those legs asked "not postpaid?", which answered YES for `external`: a
+tenant that bills its customers elsewhere, holds no wallet, and had an absent
+wallet read as a zero balance — so under `enforcing` its first priced event
+crossed a floor it does not have and suspended the customer for good. An
+absent wallet is never a zero-balance wallet.
 """
+from core.vocabulary import CUSTOMER_BILLING_MODE_PREPAID
+
+
+def holds_a_wallet(tenant) -> bool:
+    """Does the tenant's billing mode keep a customer wallet to debit, floor
+    and reconcile? True for `prepaid` only: `postpaid` carries a spend counter
+    with no wallet, and `external` meters only (posture `metering_only`) —
+    neither has a wallet-policy subject, in any enforcement mode. What
+    `enforcing` still governs for them is the customer spend pool and the
+    unit ceilings, which ask no wallet."""
+    return getattr(tenant, "billing_mode", None) == CUSTOMER_BILLING_MODE_PREPAID
 
 
 def enforcement_mode(tenant) -> str:

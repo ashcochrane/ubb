@@ -136,3 +136,55 @@ class TestSubscriptionsWebhookEndpoint(TestCase):
         evt = StripeWebhookEvent.objects.get(stripe_event_id="evt_dup_1")
         self.assertEqual(evt.status, "succeeded")
         self.assertEqual(evt.duplicate_count, 1)
+
+
+class TestLiveSubscriptionsReceiverFailsClosed(TestCase):
+    """W7 preparation finding F5, ruled 2026-10-30, for the subscriptions
+    LIVE receiver: a missing or blank STRIPE_WEBHOOK_SECRET refuses the
+    delivery before anything is verified or persisted. Stripe's own verifier
+    judges real signatures here — nothing is mocked."""
+
+    def setUp(self):
+        import hashlib, hmac, time
+        self.http_client = Client()
+        self.payload = json.dumps({
+            "id": "evt_w7_subs_fail_closed", "object": "event", "type": "w7.probe",
+            "livemode": True, "created": int(time.time()),
+            "data": {"object": {"id": "w7", "object": "probe"}}}).encode()
+
+        def signed_with(secret):
+            ts = int(time.time())
+            digest = hmac.new(secret.encode(), f"{ts}.".encode() + self.payload,
+                              hashlib.sha256).hexdigest()
+            return f"t={ts},v1={digest}"
+        self.signed_with = signed_with
+
+    def _deliver(self, signature):
+        return self.http_client.post("/api/v1/subscriptions/webhooks/stripe",
+                                     data=self.payload, content_type="application/json",
+                                     HTTP_STRIPE_SIGNATURE=signature)
+
+    def _refused_and_nothing_persisted(self, response):
+        from apps.billing.stripe.models import StripeWebhookEvent
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(StripeWebhookEvent.objects.exists())
+
+    def test_an_unset_secret_refuses_even_the_empty_key_signature(self):
+        with self.settings(STRIPE_WEBHOOK_SECRET=""):
+            self._refused_and_nothing_persisted(self._deliver(self.signed_with("")))
+
+    def test_a_blank_secret_refuses_even_its_own_signature(self):
+        with self.settings(STRIPE_WEBHOOK_SECRET="   "):
+            self._refused_and_nothing_persisted(self._deliver(self.signed_with("   ")))
+
+    def test_a_wrong_signature_is_refused_with_a_configured_secret(self):
+        with self.settings(STRIPE_WEBHOOK_SECRET="whsec_w7_configured"):
+            self._refused_and_nothing_persisted(self._deliver(self.signed_with("whsec_other")))
+
+    def test_a_correct_signature_is_accepted_with_a_configured_secret(self):
+        from apps.billing.stripe.models import StripeWebhookEvent
+        with self.settings(STRIPE_WEBHOOK_SECRET="whsec_w7_configured"):
+            response = self._deliver(self.signed_with("whsec_w7_configured"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(StripeWebhookEvent.objects.filter(
+            stripe_event_id="evt_w7_subs_fail_closed").exists())
