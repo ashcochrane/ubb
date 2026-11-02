@@ -310,7 +310,6 @@ class TestAWalletExistsOnlyWhereOneIsHeld:
             with transaction.atomic():
                 lock_for_billing(c.id)
         assert refused.value.billing_mode == mode
-        assert refused.value.tenant_id == t.id
         # The detail names the MODE the wallet capability is absent in —
         # never the product, which this tenant holds.
         assert f"billing mode ({mode})" in str(refused.value)

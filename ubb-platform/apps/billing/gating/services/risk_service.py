@@ -390,8 +390,9 @@ class Floors(NamedTuple):
     """
 
     #: The hard floor: customer override -> tenant default -> 0. `None` only
-    #: where no floor applies at all (postpaid, or an answer made before a
-    #: wallet was read).
+    #: where no floor applies at all (a mode that holds no wallet —
+    #: `holds_a_wallet` is false — or an answer made before a wallet was
+    #: read).
     min_balance_micros: int | None
     #: The soft floor AT THE ALTITUDE THE QUESTION NAMED. `None` where no
     #: wind-down line applies to this start: contained work under a running
@@ -402,8 +403,9 @@ class Floors(NamedTuple):
     soft_min_balance_micros: int | None
 
 
-#: The floors where no wallet lane applies: a postpaid owner, or a verdict
-#: made before any wallet was read.
+#: The floors where no wallet lane applies: an owner whose tenant holds no
+#: wallet (`holds_a_wallet` is false), or a verdict made before any wallet
+#: was read.
 NO_FLOORS = Floors(None, None)
 
 
@@ -453,8 +455,9 @@ def _floor_refusal(available_micros, floors):
     starts are refused while a contained start under a running parent
     passes (the parent's own liveness is validated separately, by
     `TaskService.parent_for`, under that parent's own lock), and the hard
-    floor's refusal wins below both lines. `NO_FLOORS` — a postpaid owner —
-    admits everything: the wallet lane's lines do not exist for it.
+    floor's refusal wins below both lines. `NO_FLOORS` — an owner whose
+    tenant holds no wallet — admits everything: the wallet lane's lines do
+    not exist for it.
     """
     if floors.min_balance_micros is None:
         return None

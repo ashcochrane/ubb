@@ -66,7 +66,7 @@ def refuse_a_wallet_operation_without_a_wallet(tenant):
     from core.exceptions import NoWalletSubjectError
 
     if not holds_a_wallet(tenant):
-        raise NoWalletSubjectError(tenant.billing_mode, tenant_id=tenant.id)
+        raise NoWalletSubjectError(tenant.billing_mode)
 
 
 def lock_for_billing(customer_id):

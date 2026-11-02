@@ -5,7 +5,7 @@ from apps.platform.customers.models import Customer
 from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.topups.models import TopUpAttempt, AutoTopUpConfig
 from apps.billing.connectors.stripe.tasks import charge_auto_top_up_task
-from core.exceptions import StripePaymentError
+from core.exceptions import NoWalletSubjectError, StripePaymentError
 
 
 @pytest.mark.usefixtures("rail_activated")
@@ -60,6 +60,34 @@ class TestChargeTask:
         assert "billing mode (external)" in a.failure_reason["message"]
         assert Wallet.objects.get(customer=c).balance_micros == 0
         assert not WalletTransaction.objects.filter(wallet__customer=c).exists()
+
+    def test_a_refusal_after_a_successful_charge_fails_the_task_once_and_credits_nothing(self):
+        """The one window the pre-charge guard cannot close: the tenant leaves
+        `prepaid` between the guard and the credit, after Stripe has taken
+        the money. That refusal is deliberately NOT caught — marking the
+        attempt failed would be a lie about a charge that succeeded — so the
+        task fails loudly, exactly once (its autoretry is for Stripe's
+        transient errors only), the attempt stays `pending` with no credit
+        recorded, and the hourly Stripe reconcile reports it by name until
+        it is dealt with (`test_reconcile_repair.py`)."""
+        c, a = self._attempt(balance=0)
+
+        def charged_then_the_tenant_left(customer, amount_micros, attempt):
+            tenant = customer.tenant
+            tenant.billing_mode = "external"
+            tenant.save()
+            return MagicMock(id="pi_late", status="succeeded",
+                             latest_charge=MagicMock(id="ch_late"))
+
+        with patch("apps.billing.connectors.stripe.tasks.charge_saved_payment_method",
+                   side_effect=charged_then_the_tenant_left):
+            with pytest.raises(NoWalletSubjectError):
+                charge_auto_top_up_task(str(a.id))
+        a.refresh_from_db()
+        assert a.status == "pending"
+        assert a.stripe_payment_intent_id in (None, "")
+        assert not WalletTransaction.objects.filter(idempotency_key="auto_top_up:pi_late").exists()
+        assert Wallet.objects.get(customer=c).balance_micros == 0
 
     def test_sca_sets_requires_action_and_emits_event(self):
         c, a = self._attempt(balance=0)

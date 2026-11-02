@@ -124,9 +124,8 @@ class NoWalletSubjectError(UBBError):
     not enabled in this billing mode" — NOT that the tenant lacks the
     ``billing`` product, which an ``external + billing`` tenant has."""
 
-    def __init__(self, billing_mode, *, tenant_id=None):
+    def __init__(self, billing_mode):
         self.billing_mode = billing_mode
-        self.tenant_id = tenant_id
         self.detail = (
             "wallet operations are not available in this tenant's billing "
             f"mode ({billing_mode})")
