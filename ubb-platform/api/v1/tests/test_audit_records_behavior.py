@@ -13,13 +13,15 @@ from apps.platform.audit.models import AuditRecord
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.billing.wallets.models import Wallet
+from apps.platform.tenants.tests._rails import RailActivated
 from core.widget_auth import create_widget_token
 
 
-class MoneyRecordThroughHttpTest(TestCase):
+class MoneyRecordThroughHttpTest(RailActivated, TestCase):
     def setUp(self):
         self.http = Client()
-        self.tenant = Tenant.objects.create(name="Acme", products=["metering", "billing"])
+        self.tenant = Tenant.objects.create(name="Acme", products=["metering", "billing"],
+                                            billing_mode="prepaid")  # the wallet holder
         self.key_obj, self.key = TenantApiKey.create_key(self.tenant, label="primary")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         Wallet.objects.create(customer=self.customer)
@@ -53,11 +55,12 @@ class MoneyRecordThroughHttpTest(TestCase):
             AuditRecord.objects.filter(action="wallet.credited").count(), 1)
 
 
-class WidgetTopUpActorTest(TestCase):
+class WidgetTopUpActorTest(RailActivated, TestCase):
     def setUp(self):
         self.http = Client()
         # No Stripe connector => the top-up takes the event branch (no Stripe).
-        self.tenant = Tenant.objects.create(name="Acme", products=["metering", "billing"])
+        self.tenant = Tenant.objects.create(name="Acme", products=["metering", "billing"],
+                                            billing_mode="prepaid")  # the wallet holder
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         Wallet.objects.create(customer=self.customer)
         self.token = create_widget_token(

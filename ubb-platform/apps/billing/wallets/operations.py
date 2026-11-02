@@ -234,12 +234,15 @@ def debit(*, customer_id, tenant, amount_micros, idempotency_key,
           allow_negative=False, audit=_NO_AUDIT):
     """Hand-moved debit. Respects the overdraft floor unless forced
     (``allow_negative`` logs ``forced_overdraw``). Mirrors the drawdown gate —
-    non-postpaid only; postpaid balances are meant to go negative."""
+    the floor is the wallet's, so it is asked of the wallet holder
+    (``holds_a_wallet``). A tenant whose mode holds no wallet never reaches
+    this: the boundary refused it before the wallet was read."""
     def prepare(wallet, owner):
         from apps.billing.wallets.grants import GrantLedger
+        from apps.platform.tenants.flags import holds_a_wallet
 
         new_balance = wallet.balance_micros - amount_micros
-        if tenant.billing_mode != "postpaid":
+        if holds_a_wallet(tenant):
             from apps.billing.queries import get_customer_min_balance
             from core.crossing import past_floor
             floor = get_customer_min_balance(wallet.customer_id, tenant.id)

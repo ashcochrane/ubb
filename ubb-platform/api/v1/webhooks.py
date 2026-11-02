@@ -13,7 +13,7 @@ from django.views.decorators.http import require_POST
 
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.models import StripeWebhookEvent
-from core.exceptions import StripeFatalError
+from core.exceptions import NoWalletSubjectError, StripeFatalError
 from apps.subscriptions.stripe.items import paid_amounts
 from apps.billing.locking import lock_invoice
 
@@ -170,6 +170,26 @@ def _stripe_webhook(request, *, secret, is_test_endpoint):
         logger.error(
             "Webhook handler fatal error",
             extra={"data": {"event_id": event.id, "error": str(e)}},
+        )
+        webhook_event.status = "failed"
+        webhook_event.failure_reason = {
+            "error": str(e), "type": type(e).__name__, "retryable": False
+        }
+        webhook_event.processed_at = timezone.now()
+        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
+        return JsonResponse({"status": "failed"})  # 200 — no Stripe retry
+    except NoWalletSubjectError as e:
+        # The wallet boundary refused: the matched tenant's billing mode holds
+        # no wallet (`external`, `postpaid`), so there is no wallet for this
+        # money to land on or leave — an out-of-band Checkout Session, or a
+        # dispute/refund/payment on an attempt whose tenant has since left
+        # `prepaid`. Nothing a retry could change: recorded on the event row
+        # by name as a NON-retryable failure and acknowledged, so Stripe never
+        # loops on it. The money stays where Stripe holds it, for the tenant.
+        logger.error(
+            "Webhook handler refused: no wallet subject",
+            extra={"data": {"event_id": event.id, "error": str(e),
+                            "billing_mode": e.billing_mode}},
         )
         webhook_event.status = "failed"
         webhook_event.failure_reason = {

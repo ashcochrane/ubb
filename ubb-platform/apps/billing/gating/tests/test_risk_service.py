@@ -15,7 +15,10 @@ from apps.platform.tenants.tests._rails import RailActivated
 
 class RiskServiceTest(RailActivated, TestCase):
     def setUp(self):
-        self.tenant = Tenant.objects.create(name="Test")
+        # The wallet lane under test is the wallet holder's (Stage A):
+        # `prepaid`, with the rail the mixin above asks for.
+        self.tenant = Tenant.objects.create(
+            name="Test", products=["metering", "billing"], billing_mode="prepaid")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="u1")
         RiskConfig.objects.create(tenant=self.tenant)
 

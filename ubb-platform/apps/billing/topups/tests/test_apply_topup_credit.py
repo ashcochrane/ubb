@@ -7,10 +7,12 @@ from apps.billing.topups.models import TopUpAttempt
 from apps.billing.topups.services import AutoTopUpService
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestApplyTopupCredit:
     def _setup(self):
-        t = Tenant.objects.create(name="T")
+        t = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                  billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
@@ -34,6 +36,7 @@ class TestApplyTopupCredit:
         assert w.balance_micros == 20_000_000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestApplyTopupCreditBillingOwnerRouting:
     """Task 7 — apply_topup_credit must credit the PINNED billing_owner_id,
@@ -43,7 +46,8 @@ class TestApplyTopupCreditBillingOwnerRouting:
     trigger through this same method, not just auto_top_up."""
 
     def _seat_and_owner(self, topology, external_prefix):
-        t = Tenant.objects.create(name=f"T_{external_prefix}")
+        t = Tenant.objects.create(name=f"T_{external_prefix}",
+                                  products=["metering", "billing"], billing_mode="prepaid")
         if topology is None:
             customer = Customer.objects.create(tenant=t, external_id=f"{external_prefix}_ind")
             return customer, customer
@@ -81,7 +85,8 @@ class TestApplyTopupCreditBillingOwnerRouting:
         assert Wallet.objects.get(customer=seat).balance_micros == 5_000_000
 
     def test_missing_billing_owner_id_refuses_loudly(self):
-        t = Tenant.objects.create(name="T_null")
+        t = Tenant.objects.create(name="T_null", products=["metering", "billing"],
+                                  billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="null_owner")
         Wallet.objects.create(customer=c, balance_micros=0)
         attempt = TopUpAttempt.objects.create(

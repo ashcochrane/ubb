@@ -16,10 +16,12 @@ def _event(pi, account=None):
     return MagicMock(data=MagicMock(object=pi), account=account)
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPIWebhook:
     def _setup(self):
-        t = Tenant.objects.create(name="T")
+        t = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                  billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
@@ -44,13 +46,15 @@ class TestPIWebhook:
         assert WalletTransaction.objects.filter(idempotency_key="auto_top_up:pi_x").count() == 0
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestPIWebhookCrossAccountGuard:
     """B4: the payment_intent handlers must verify event.account against the
     attempt's tenant.stripe_connected_account_id before acting on the credit."""
 
     def _setup(self, acct="acct_tenant_1"):
-        t = Tenant.objects.create(name="T", stripe_connected_account_id=acct)
+        t = Tenant.objects.create(name="T", stripe_connected_account_id=acct,
+                                  products=["metering", "billing"], billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,

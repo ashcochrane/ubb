@@ -5,6 +5,7 @@ from celery import shared_task
 from django.utils import timezone
 
 from apps.platform.events.tasks import RETRY_HORIZON as OUTBOX_RETRY_HORIZON
+from core.exceptions import NoWalletSubjectError
 from core.vocabulary import (
     GRANT_STATUS_ACTIVE,
     WALLET_TRANSACTION_TYPE_USAGE_DEDUCTION,
@@ -224,6 +225,16 @@ def expire_credit_grants():
         try:
             if wallet_ops.expire_due_sweep(customer_id, now=now):
                 expired_wallets += 1
+        except NoWalletSubjectError as refused:
+            # The wallet boundary refused: this customer's tenant no longer
+            # holds a wallet (it left `prepaid` with lots still on the
+            # ledger). Its due lots cannot be expired through a wallet it
+            # may not touch; recorded by name, and the sweep goes on. The
+            # same fault isolation as below, under its own record rather
+            # than as an unexplained failure.
+            logger.warning("grants.expiry_sweep_refused_no_wallet_subject",
+                           extra={"data": {"customer_id": str(customer_id),
+                                           "billing_mode": refused.billing_mode}})
         except Exception:
             # Fault isolation: a single poisoned wallet/customer must never
             # stall the whole sweep — its grant stays due, so without this it

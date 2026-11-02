@@ -177,6 +177,19 @@ def install_problem_handlers(api):
         # a subscription started, resumed or re-priced — refused by name.
         return problem_response(exc.code, exc.explanation)
 
+    from core.exceptions import NoWalletSubjectError
+
+    @api.exception_handler(NoWalletSubjectError)
+    def _no_wallet_subject(request, exc):
+        # A wallet operation for a tenant whose billing mode holds no wallet
+        # (`external`, `postpaid`), refused at the wallet boundary
+        # (`apps/billing/locking.py`) or at the two doors that write
+        # wallet-adjacent state before reaching it. Answered as the
+        # registered `feature_not_enabled` (403): the wallet capability is
+        # not enabled in this billing mode. The detail says that and only
+        # that — the tenant may well hold the billing product.
+        return problem_response("feature_not_enabled", exc.detail)
+
     @api.exception_handler(Http404)
     def _not_found(request, exc):
         # No detail: Django's Http404 message names the model class.

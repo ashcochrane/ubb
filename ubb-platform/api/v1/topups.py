@@ -40,8 +40,17 @@ def _audit_top_up(customer, owner, tenant, attempt, payload, trigger):
 
 
 def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
+    from apps.billing.locking import refuse_a_wallet_operation_without_a_wallet
     from apps.billing.topups.models import TopUpAttempt
     from apps.platform.queries import get_tenant_stripe_account, get_customer_stripe_id
+
+    # A top-up is a wallet operation that writes its attempt row (and, with
+    # no connector, its outbox event) BEFORE the wallet boundary is reached,
+    # so the wallet-subject rule is asked here, at the door, before any of
+    # that lands: a tenant whose billing mode holds no wallet (`external`,
+    # `postpaid`) registers no attempt and emits nothing. Both twins — the
+    # tenant route and `/me/top-up` — pass through here.
+    refuse_a_wallet_operation_without_a_wallet(tenant)
 
     # Task 7: pin the billing owner at creation, exactly like
     # Task.billing_owner_id / Posting.billing_owner_id — `customer` stays

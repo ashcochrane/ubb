@@ -94,3 +94,17 @@ class TestReconcileDrawdowns:
         reconcile_usage_drawdowns()
         w.refresh_from_db()
         assert w.balance_micros == 0
+
+    @pytest.mark.parametrize("mode", ["external", "postpaid"])
+    def test_a_tenant_whose_mode_holds_no_wallet_is_never_visited(self, mode):
+        """Stage A (2026-11-02): the repair selects wallet holders (`prepaid`)
+        and never reaches the wallet boundary for a tenant whose mode holds
+        none — an aged, priced, undebited posting on such a tenant repairs
+        nothing and mints no wallet."""
+        t = Tenant.objects.create(name=mode, products=["metering", "billing"],
+                                  billing_mode=mode)
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        e = _old_event(t, c, c.id, 2_000_000, "i1")
+        reconcile_usage_drawdowns()  # no raise
+        assert not Wallet.all_objects.filter(customer=c).exists()
+        assert not WalletTransaction.objects.filter(usage_event_id=e.id).exists()

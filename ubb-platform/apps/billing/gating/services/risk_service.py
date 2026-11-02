@@ -235,33 +235,47 @@ class RiskService:
             if LiveCounter.read(owner.id, customer.tenant)["stop"]:
                 return _verdict(AFFORDABILITY_REASON_CUSTOMER_STOPPED, None, None)
 
-        # Affordability check: read wallet from billing owner (business for pooled seat, else self)
-        from apps.billing.wallets.models import Wallet
-        try:
-            balance = Wallet.objects.get(customer=owner).balance_micros
-        except Wallet.DoesNotExist:
-            balance = 0
-
+        # THE WALLET LANE RUNS ONLY WHERE A WALLET IS (`holds_a_wallet`,
+        # F3 and the wallet-subject rule): the balance read, the open
+        # reservations and the floors are the wallet's, and `external` and
+        # `postpaid` hold none — an absent wallet is never a zero-balance
+        # wallet to test a floor against. What still runs for them above and
+        # below is everything that asks no wallet: the standing, the
+        # enforcing-only stop flag, and the customer spend pool.
+        #
         # AFFORDABILITY IS THE BALANCE LESS OPEN RESERVATIONS (#461, slice 6
         # §5, #139 §4.1), tested against the tenant's own floors and never a
         # new threshold. A prepaid start of a kind of work sold at one agreed
         # price reserves that price (`reserve_agreed_price` below); every
         # start on the wallet lane is then judged on what is left after the
         # work already admitted — so three starts cannot each read the same
-        # balance and all pass. Postpaid reserves nothing, so its term is
-        # zero without a read.
-        on_the_wallet_lane = owner.tenant.billing_mode != "postpaid"
+        # balance and all pass. Off the lane nothing is reserved, so the
+        # term is zero without a read. A wallet holder's customer who has
+        # never been credited has no row yet and reads zero — the row's
+        # absence is not the question (`_TENANT_HAS_A_WALLET`'s comment in
+        # the composition layer says why), so that customer is still floored.
+        from apps.platform.tenants.flags import holds_a_wallet
+        on_the_wallet_lane = holds_a_wallet(owner.tenant)
+        balance = 0
         reserved = 0
         floors = NO_FLOORS
         if on_the_wallet_lane:
+            # Read the wallet off the billing owner (the business for a
+            # pooled seat, else the customer itself).
+            from apps.billing.wallets.models import Wallet
             from apps.billing.wallets.reservations import open_reservations_micros
+            try:
+                balance = Wallet.objects.get(customer=owner).balance_micros
+            except Wallet.DoesNotExist:
+                balance = 0
             reserved = open_reservations_micros(owner.id)
             floors = _floors(owner.id, customer.tenant, parent_task_id)
         available = balance - reserved
 
         # The hard floor, then the soft floor at its own altitude — the one
         # walk `reserve_agreed_price` makes again with the price included.
-        # Wallet-based, so postpaid has neither, and reports neither.
+        # Wallet-based, so a mode with no wallet has neither, and reports
+        # neither.
         refusal = _floor_refusal(available, floors)
         if refusal is not None:
             return _verdict(refusal, balance, available, floors)
@@ -322,16 +336,19 @@ class RiskService:
         both takes.
 
         Reserves nothing, and answers allowed, wherever there is nothing to
-        reserve: a postpaid tenant (no wallet to encumber — the same fork
-        ``check`` makes) and a unit with no pinned price (event-priced work,
-        contained work). A tenant that does not bill through UBB never
-        reaches here: the composition layer conditions the whole money-shaped
-        half on the product, as it does for ``check``.
+        reserve: a tenant whose billing mode holds no wallet (``external``,
+        ``postpaid`` — ``holds_a_wallet``, the same fork ``check`` makes: no
+        wallet to encumber, and the start itself is legitimate, so this is
+        the empty verdict and never the boundary's refusal) and a unit with
+        no pinned price (event-priced work, contained work). A tenant that
+        does not bill through UBB never reaches here: the composition layer
+        conditions the whole money-shaped half on the product, as it does
+        for ``check``.
 
         The owner is the one the unit's start already stamped
         (``task.billing_owner_id``, resolved by the same rule ``check`` uses)
         rather than a second resolution of it. The billing lock creates the
-        owner's wallet lazily where none exists — a billing tenant's customer
+        owner's wallet lazily where none exists — a prepaid tenant's customer
         who has never been credited — which is the row every credit and
         drawdown path would create on its first use anyway: a reservation
         against a wallet is what makes the wallet exist. ``parent_task_id``
@@ -341,10 +358,11 @@ class RiskService:
         """
         from apps.billing.locking import lock_for_billing
         from apps.billing.wallets import reservations
+        from apps.platform.tenants.flags import holds_a_wallet
 
         tenant = customer.tenant
         price = task.agreed_price_micros
-        if tenant.billing_mode == "postpaid" or price is None:
+        if not holds_a_wallet(tenant) or price is None:
             return _verdict(None, None, None)
 
         owner_id = task.billing_owner_id

@@ -11,6 +11,7 @@ from datetime import timedelta
 
 from apps.billing.stripe.models import StripeWebhookEvent
 from apps.platform.tenants.models import Tenant
+from apps.platform.tenants.tests._rails import RailActivated
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.wallets.models import Wallet, WalletTransaction
@@ -23,7 +24,7 @@ from apps.billing.connectors.stripe.webhooks import (
 )
 
 
-class WebhookDispatcherTest(TestCase):
+class WebhookDispatcherTest(RailActivated, TestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
@@ -89,6 +90,9 @@ class WebhookDispatcherTest(TestCase):
         tenant = Tenant.objects.create(
             name="Test Tenant",
             stripe_connected_account_id="acct_test_123",
+            # The wallet holder (Stage A, 2026-11-02): a top-up credits a
+            # wallet, and only `prepaid` holds one.
+            products=["metering", "billing"], billing_mode="prepaid",
         )
         customer = Customer.objects.create(
             tenant=tenant,
@@ -175,12 +179,13 @@ class WebhookDispatcherTest(TestCase):
         self.assertEqual(wallet.balance_micros, 0)
 
 
-class HandleCheckoutCompletedTest(TestCase):
+class HandleCheckoutCompletedTest(RailActivated, TestCase):
     """Tests for Phase 1 hardening: null safety, PI extraction, idempotency."""
 
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
+            products=["metering", "billing"], billing_mode="prepaid",
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1", stripe_customer_id="cus_1",
@@ -272,7 +277,7 @@ class HandleCheckoutCompletedTest(TestCase):
         )
 
 
-class PooledSeatTopUpWebhookTest(TestCase):
+class PooledSeatTopUpWebhookTest(RailActivated, TestCase):
     """Task 7 — checkout.session.completed must credit the billing OWNER's
     wallet, never the seat's, even though the credit lands via a webhook
     long after the request that started the top-up. This async boundary is
@@ -283,6 +288,7 @@ class PooledSeatTopUpWebhookTest(TestCase):
         self.factory = RequestFactory()
         self.tenant = Tenant.objects.create(
             name="Pooled Webhook Tenant", stripe_connected_account_id="acct_pooled",
+            products=["metering", "billing"], billing_mode="prepaid",
         )
 
     def _pooled_seat(self, stripe_customer_id):
@@ -403,10 +409,11 @@ class PooledSeatTopUpWebhookTest(TestCase):
         self.assertFalse(Wallet.objects.filter(customer=seat).exists())
 
 
-class ChargeDisputeCreatedTest(TestCase):
+class ChargeDisputeCreatedTest(RailActivated, TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
+            products=["metering", "billing"], billing_mode="prepaid",
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1", stripe_customer_id="cus_1",
@@ -444,10 +451,11 @@ class ChargeDisputeCreatedTest(TestCase):
         handle_charge_dispute_created(event)
 
 
-class ChargeDisputeClosedTest(TestCase):
+class ChargeDisputeClosedTest(RailActivated, TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
+            products=["metering", "billing"], billing_mode="prepaid",
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1", stripe_customer_id="cus_1",
@@ -578,10 +586,11 @@ class ChargeDisputeClosedTest(TestCase):
         self.assertEqual(self.wallet.balance_micros, 8_000_000)
 
 
-class ChargeRefundedTest(TestCase):
+class ChargeRefundedTest(RailActivated, TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
+            products=["metering", "billing"], billing_mode="prepaid",
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1", stripe_customer_id="cus_1",
@@ -699,7 +708,7 @@ class ChargeRefundedTest(TestCase):
         self.assertTrue(WalletTransaction.objects.filter(idempotency_key="stripe_refund:re_2").exists())
 
 
-class PooledSeatClawbackWebhookTest(TestCase):
+class PooledSeatClawbackWebhookTest(RailActivated, TestCase):
     """Task 8a — the seventh instance of the seat/owner defect: dispute-lost
     and Stripe-refund clawbacks (`handle_charge_dispute_closed`,
     `handle_charge_refunded`) passed `attempt.customer_id` (the SEAT) into
@@ -713,6 +722,7 @@ class PooledSeatClawbackWebhookTest(TestCase):
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Clawback Tenant", stripe_connected_account_id="acct_clawback",
+            products=["metering", "billing"], billing_mode="prepaid",
         )
 
     def _pooled_seat(self, suffix):
@@ -974,3 +984,140 @@ class LiveReceiverFailsClosedTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(StripeWebhookEvent.objects.filter(
             stripe_event_id="evt_w7_fail_closed").exists())
+
+
+class NoWalletSubjectWebhookTest(RailActivated, TestCase):
+    """Stage A of the pre-Ash billing readiness (2026-11-02): an inbound
+    Stripe event that would move wallet money for a tenant whose billing
+    mode holds no wallet is refused by name at the wallet boundary and
+    RECORDED on the event row as a non-retryable failure, acknowledged with
+    200 — never the 500 Stripe would retry for three days. Two ways to get
+    here on real data: an out-of-band Checkout Session for an `external +
+    billing` tenant's Stripe customer (no attempt to correlate), and a
+    dispute, refund or PaymentIntent on an attempt whose tenant has since
+    left `prepaid`. The money stays where Stripe holds it; no wallet is
+    made or moved; a redelivery is answered as already processed.
+    """
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _dispatch(self, event):
+        with patch("api.v1.webhooks.stripe.Webhook.construct_event", return_value=event):
+            request = self.factory.post(
+                "/api/v1/webhooks/stripe/", content_type="application/json")
+            return stripe_webhook(request)
+
+    def _recorded_not_retried(self, event):
+        response = self._dispatch(event)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content)["status"], "failed")
+        row = StripeWebhookEvent.objects.get(stripe_event_id=event.id)
+        self.assertEqual(row.status, "failed")
+        self.assertEqual(row.failure_reason["type"], "NoWalletSubjectError")
+        self.assertIs(row.failure_reason["retryable"], False)
+        self.assertIn("billing mode (external)", row.failure_reason["error"])
+        # A redelivery is a duplicate of a settled failure, not a re-run.
+        again = self._dispatch(event)
+        self.assertEqual(json.loads(again.content)["status"], "already_processed")
+        self.assertEqual(StripeWebhookEvent.objects.get(
+            stripe_event_id=event.id).duplicate_count, 1)
+
+    def _a_tenant_that_left_prepaid(self, *, charge_id):
+        """A prepaid tenant with a credited wallet and a succeeded top-up,
+        which then leaves `prepaid` — the one way a dispute, refund or
+        PaymentIntent can name an attempt on a no-wallet tenant."""
+        tenant = Tenant.objects.create(
+            name="Left", products=["metering", "billing"], billing_mode="prepaid",
+            stripe_connected_account_id="acct_left")
+        customer = Customer.objects.create(
+            tenant=tenant, external_id="c1", stripe_customer_id="cus_left")
+        wallet = Wallet.objects.create(customer=customer, balance_micros=10_000_000)
+        attempt = TopUpAttempt.objects.create(
+            customer=customer, billing_owner_id=customer.id, amount_micros=5_000_000,
+            trigger="manual", status="succeeded", stripe_charge_id=charge_id)
+        tenant.billing_mode = "external"
+        tenant.save()
+        return tenant, customer, wallet, attempt
+
+    def _wallet_untouched(self, wallet):
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.balance_micros, 10_000_000)
+        self.assertFalse(WalletTransaction.objects.filter(wallet=wallet).exists())
+
+    def test_an_out_of_band_checkout_for_an_external_tenant_is_recorded_not_retried(self):
+        tenant = Tenant.objects.create(
+            name="X", products=["metering", "billing"], billing_mode="external",
+            stripe_connected_account_id="acct_x")
+        customer = Customer.objects.create(
+            tenant=tenant, external_id="c1", stripe_customer_id="cus_x")
+        event = MagicMock()
+        event.id = "evt_oob_checkout"
+        event.type = "checkout.session.completed"
+        event.account = "acct_x"
+        event.data.object.payment_status = "paid"
+        event.data.object.customer = "cus_x"
+        event.data.object.client_reference_id = ""
+        event.data.object.amount_total = 100
+        event.data.object.currency = "usd"
+        event.data.object.id = "cs_oob_1"
+        event.data.object.payment_intent = None
+
+        self._recorded_not_retried(event)
+        self.assertFalse(Wallet.all_objects.filter(customer=customer).exists())
+        self.assertFalse(TopUpAttempt.objects.filter(customer=customer).exists())
+
+    def test_a_lost_dispute_on_an_attempt_whose_tenant_left_prepaid_is_recorded_not_retried(self):
+        _tenant, customer, wallet, _attempt = self._a_tenant_that_left_prepaid(
+            charge_id="ch_left_dispute")
+        event = MagicMock()
+        event.id = "evt_left_dispute"
+        event.type = "charge.dispute.closed"
+        event.account = "acct_left"
+        event.data.object.id = "dp_left"
+        event.data.object.charge = "ch_left_dispute"
+        event.data.object.status = "lost"
+        event.data.object.amount = 500
+        event.data.object.currency = "usd"
+
+        self._recorded_not_retried(event)
+        self._wallet_untouched(wallet)
+        customer.refresh_from_db()
+        self.assertEqual(customer.status, "active")
+
+    def test_a_refund_on_an_attempt_whose_tenant_left_prepaid_is_recorded_not_retried(self):
+        _tenant, _customer, wallet, _attempt = self._a_tenant_that_left_prepaid(
+            charge_id="ch_left_refund")
+        event = MagicMock()
+        event.id = "evt_left_refund"
+        event.type = "charge.refunded"
+        event.account = "acct_left"
+        event.data.object.id = "ch_left_refund"
+        event.data.object.amount_refunded = 300
+        refund = MagicMock()
+        refund.id = "re_left"
+        refund.amount = 300
+        refund.currency = "usd"
+        event.data.object.refunds.data = [refund]
+
+        self._recorded_not_retried(event)
+        self._wallet_untouched(wallet)
+
+    def test_a_settled_payment_intent_on_an_attempt_whose_tenant_left_prepaid_is_recorded_not_retried(self):
+        _tenant, _customer, wallet, attempt = self._a_tenant_that_left_prepaid(
+            charge_id="ch_left_pi")
+        attempt.status = "pending"
+        attempt.trigger = "auto_top_up"
+        attempt.save(update_fields=["status", "trigger", "updated_at"])
+        event = MagicMock()
+        event.id = "evt_left_pi"
+        event.type = "payment_intent.succeeded"
+        event.account = "acct_left"
+        event.data.object = MagicMock(
+            id="pi_left", status="succeeded", latest_charge=MagicMock(id="ch_left_pi"),
+            metadata={"topup_attempt_id": str(attempt.id)})
+
+        self._recorded_not_retried(event)
+        self._wallet_untouched(wallet)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.status, "pending")

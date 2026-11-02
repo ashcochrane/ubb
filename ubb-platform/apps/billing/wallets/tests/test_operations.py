@@ -24,7 +24,13 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
-from core.vocabulary import TRIGGER_SOURCE_USAGE_INGEST
+from core.exceptions import NoWalletSubjectError
+from core.vocabulary import GRANT_SOURCE_CHECKOUT, TRIGGER_SOURCE_USAGE_INGEST
+
+#: The billing modes that hold no wallet (`apps/platform/tenants/flags.py ::
+#: holds_a_wallet` is false): a wallet operation for either is refused by
+#: name at the boundary (Stage A, 2026-11-02).
+NO_WALLET_MODES = ("external", "postpaid")
 
 
 def _tenant(**kw):
@@ -221,16 +227,26 @@ class TestRefusals:
         w.refresh_from_db()
         assert w.balance_micros == -1_000_000
 
-    def test_postpaid_debit_skips_the_floor(self):
-        t = _tenant(billing_mode="postpaid")
+    @pytest.mark.parametrize("mode", NO_WALLET_MODES)
+    def test_a_debit_where_no_wallet_is_held_is_refused_at_the_boundary(self, mode):
+        """The manual-debit matrix's two no-wallet rows (Stage A of the
+        pre-Ash billing readiness, 2026-11-02): `external` and `postpaid`
+        hold no wallet, so a hand-moved debit is refused by name at the
+        wallet boundary — before the floor, before any row — and
+        `allow_negative` buys nothing, because there is no balance to drive
+        negative. The floor itself is the wallet holder's, pinned on
+        `prepaid` by the two tests above. (This replaced a pin that let a
+        postpaid debit skip the floor onto a wallet the mode never held.)"""
+        t = _tenant(billing_mode=mode, name=mode)
         c = _customer(t)
-        w = _wallet(c, balance=0)
-        result = wallet_ops.debit(customer_id=c.id, tenant=t,
-                                  amount_micros=2_000_000,
-                                  idempotency_key=str(uuid.uuid4()))
-        assert result.outcome == "applied"
-        w.refresh_from_db()
-        assert w.balance_micros == -2_000_000
+        with pytest.raises(NoWalletSubjectError) as refused:
+            wallet_ops.debit(customer_id=c.id, tenant=t,
+                             amount_micros=2_000_000,
+                             idempotency_key=str(uuid.uuid4()),
+                             allow_negative=True)
+        assert refused.value.billing_mode == mode
+        assert not Wallet.all_objects.filter(customer=c).exists()
+        assert not WalletTransaction.objects.filter(wallet__customer=c).exists()
 
     def test_withdraw_refuses_promo_money(self):
         """Promo credit is not withdrawable: availability is balance minus
@@ -779,3 +795,82 @@ class TestExpireDueSweep:
         w.refresh_from_db()
         assert w.balance_micros == 0
         assert _txns(w, "grant_expiry").count() == 1
+
+
+@pytest.mark.usefixtures("rail_activated")
+@pytest.mark.django_db
+class TestEveryWalletOpIsRefusedWhereNoWalletIsHeld:
+    """Stage A of the pre-Ash billing readiness (2026-11-02): a wallet exists
+    only where `holds_a_wallet(tenant)` is true — `prepaid` in v1. Every op
+    on this module's spine takes the wallet boundary (`apps/billing/locking.py
+    :: lock_for_billing`), and the boundary refuses by name — before any
+    Wallet row is read or created — for a tenant whose billing mode holds
+    none: `external` and `postpaid`. One pin per op, so an op that bypassed
+    the spine would be the only name missing here. The HTTP shape of the
+    refusal is the api/v1 suites' to pin.
+    """
+
+    OPS = {
+        "credit": lambda c, t: wallet_ops.credit(
+            customer_id=c.id, tenant=t, amount_micros=1_000_000,
+            idempotency_key="k"),
+        "debit": lambda c, t: wallet_ops.debit(
+            customer_id=c.id, tenant=t, amount_micros=1_000_000,
+            idempotency_key="k"),
+        "withdraw": lambda c, t: wallet_ops.withdraw(
+            customer_id=c.id, tenant=t, amount_micros=1_000_000,
+            idempotency_key="k"),
+        "refund_usage": lambda c, t: wallet_ops.refund_usage(
+            customer_id=c.id, tenant=t, usage_event_id=uuid.uuid4(),
+            idempotency_key="k"),
+        "mint_grant": lambda c, t: wallet_ops.mint_grant(
+            customer_id=c.id, tenant=t, kind="promo", amount_micros=1_000_000,
+            expires_at=None, idempotency_key="k"),
+        "void_grant": lambda c, t: wallet_ops.void_grant(
+            customer_id=c.id, tenant=t, grant_id=uuid.uuid4()),
+        "draw_down_usage": lambda c, t: wallet_ops.draw_down_usage(
+            customer_id=c.id, tenant=t, usage_event_id=str(uuid.uuid4()),
+            billed_cost_micros=1_000_000,
+            trigger_source=TRIGGER_SOURCE_USAGE_INGEST),
+        "credit_top_up": lambda c, t: wallet_ops.credit_top_up(
+            customer_id=c.id, tenant=t, amount_micros=1_000_000,
+            idempotency_key="k", source=GRANT_SOURCE_CHECKOUT,
+            source_reference="cs_x", description="Stripe top-up"),
+        "claw_back_dispute": lambda c, t: wallet_ops.claw_back_dispute(
+            customer_id=c.id, tenant=t, amount_micros=1_000_000,
+            dispute_id="dp_x", charge_id="ch_x", attempt_id=uuid.uuid4()),
+        "claw_back_stripe_refund": lambda c, t: wallet_ops.claw_back_stripe_refund(
+            customer_id=c.id, tenant=t, amount_micros=1_000_000,
+            refund_id="re_x", attempt_id=uuid.uuid4()),
+        "expire_due_sweep": lambda c, t: wallet_ops.expire_due_sweep(c.id),
+    }
+
+    @pytest.mark.parametrize("mode", NO_WALLET_MODES)
+    @pytest.mark.parametrize("op", sorted(OPS))
+    def test_the_op_is_refused_by_name_and_writes_nothing(self, op, mode):
+        t = _tenant(billing_mode=mode, name=f"{mode}-{op}")
+        c = _customer(t)
+        with pytest.raises(NoWalletSubjectError) as refused:
+            self.OPS[op](c, t)
+        assert refused.value.billing_mode == mode
+        assert not Wallet.all_objects.filter(customer=c).exists()
+        assert not WalletTransaction.objects.filter(wallet__customer=c).exists()
+        assert not CreditGrant.objects.filter(wallet__customer=c).exists()
+        assert not OutboxEvent.objects.filter(tenant_id=t.id).exists()
+
+    def test_prepaid_is_the_mode_the_spine_still_serves(self):
+        """The wallet holder: the first op mints the wallet at the boundary,
+        in the tenant's currency, and the next finds it — the behaviour
+        every other class in this module pins in detail."""
+        t = _tenant()
+        c = _customer(t)
+        assert not Wallet.objects.filter(customer=c).exists()
+        first = wallet_ops.credit(customer_id=c.id, tenant=t,
+                                  amount_micros=1_000_000, idempotency_key="k1")
+        assert first.outcome == "applied"
+        wallet = Wallet.objects.get(customer=c)
+        assert (wallet.balance_micros, wallet.currency) == (1_000_000, t.default_currency)
+        second = wallet_ops.debit(customer_id=c.id, tenant=t,
+                                  amount_micros=400_000, idempotency_key="k2")
+        assert second.outcome == "applied"
+        assert Wallet.objects.get(customer=c).balance_micros == 600_000

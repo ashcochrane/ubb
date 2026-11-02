@@ -69,6 +69,10 @@ class ReservationTestBase:
     PRODUCTS = ["metering", "billing"]
     BILLING_MODE = "prepaid"
     ENFORCEMENT_MODE = None
+    #: Whether the posture holds a wallet to be born with one: `prepaid`
+    #: only (`holds_a_wallet`; Stage A, 2026-11-02). A posture that holds
+    #: none is built without the row the mode could never have.
+    HOLDS_A_WALLET = True
 
     def setup_method(self):
         # A money-mode tenant needs the payment rail activated first (G27);
@@ -77,7 +81,7 @@ class ReservationTestBase:
         self.fixture = a_tenant_selling_whole_work(
             products=self.PRODUCTS, billing_mode=self.BILLING_MODE,
             enforcement_mode=self.ENFORCEMENT_MODE,
-            balance_micros=AFFORDS_TWO if self.PRODUCTS != ["metering"] else None)
+            balance_micros=AFFORDS_TWO if self.HOLDS_A_WALLET else None)
         self.tenant = self.fixture.tenant
         self.customer = self.fixture.customer
         self.wallet = self.fixture.wallet
@@ -298,11 +302,42 @@ class TestAPostpaidStartReservesNothing(ReservationTestBase):
     the Charge, and nothing is reserved against anything."""
 
     BILLING_MODE = "postpaid"
+    HOLDS_A_WALLET = False
 
     def test_a_postpaid_start_of_a_fixed_price_kind_reserves_nothing(self):
         unit = self._started()
         assert Task.objects.get(id=unit).agreed_price_micros == THE_AGREED_PRICE
         assert not self._reservations().exists()
+        assert not Wallet.all_objects.filter(customer=self.customer).exists()
+
+
+@pytest.mark.django_db
+class TestAnExternalTenantWithBillingReservesNothing(ReservationTestBase):
+    """`external + billing` (Stage A of the pre-Ash billing readiness,
+    2026-11-02): the product brings the money-shaped half of the start, and
+    the mode holds no wallet — so the price is pinned for the Charge,
+    nothing is reserved, no wallet is minted by the start, and a floor above
+    zero refuses nothing, because there is no wallet to be past it. The
+    fixed-price start matrix's third money posture, beside `prepaid` (every
+    class above) and `postpaid` (the one before this)."""
+
+    PRODUCTS = ["metering", "billing"]
+    BILLING_MODE = "external"
+    HOLDS_A_WALLET = False
+
+    def test_a_fixed_price_start_is_admitted_with_no_wallet_and_no_reservation(self):
+        self._floors(hard=-2_000_000)  # the line at +2M, which a zero would be past
+        unit = self._started()
+        assert Task.objects.get(id=unit).agreed_price_micros == THE_AGREED_PRICE
+        assert not self._reservations().exists()
+        assert not Wallet.all_objects.filter(customer=self.customer).exists()
+
+    def test_a_plain_start_is_admitted_the_same_way(self):
+        self._floors(hard=-2_000_000)
+        unit = self._started(task_type=SOLD_PER_EVENT)
+        assert Task.objects.get(id=unit).agreed_price_micros is None
+        assert not self._reservations().exists()
+        assert not Wallet.all_objects.filter(customer=self.customer).exists()
 
 
 @pytest.mark.django_db
@@ -313,6 +348,7 @@ class TestATenantThatDoesNotBillThroughUbbReservesNothing(ReservationTestBase):
 
     PRODUCTS = ["metering"]
     BILLING_MODE = None
+    HOLDS_A_WALLET = False
 
     def test_a_start_on_a_tenant_that_does_not_bill_reserves_nothing(self):
         unit = self._started()

@@ -22,6 +22,7 @@ from django.test import Client, TestCase
 from api.v1.tests._helpers import a_tenant
 from apps.billing.wallets.models import CreditGrant, Wallet, WalletTransaction
 from apps.platform.customers.models import Customer
+from apps.platform.tenants.tests._rails import RailActivated
 from core.vocabulary import (
     GRANT_SOURCE_AUTO_TOP_UP, GRANT_SOURCE_VALUES,
     WALLET_TRANSACTION_TYPE_ADJUSTMENT, WALLET_TRANSACTION_TYPE_DEBIT,
@@ -35,11 +36,11 @@ UPPERCASE = {value.upper(): value for value in WALLET_TRANSACTION_TYPE_VALUES}
 OLD_AUTO_TOP_UP = GRANT_SOURCE_AUTO_TOP_UP.replace("top_up", "topup")
 
 
-class _AWalletTestCase(TestCase):
+class _AWalletTestCase(RailActivated, TestCase):
 
     def setUp(self):
         self.tenant, self.raw_key = a_tenant(
-            "Wallets", products=("metering", "billing"))
+            "Wallets", products=("metering", "billing"), billing_mode="prepaid")
         self.customer = Customer.objects.create(tenant=self.tenant,
                                                 external_id="c1")
         self.wallet = Wallet.objects.create(customer=self.customer,

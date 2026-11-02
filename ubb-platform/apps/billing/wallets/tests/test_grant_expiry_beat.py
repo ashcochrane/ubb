@@ -57,6 +57,49 @@ def _grant(w, t, *, kind="promo", amount=10_000_000, expires_at=None):
 @pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestExpiryBeat:
+    def test_a_customer_whose_tenant_left_prepaid_is_recorded_by_name_and_the_sweep_goes_on(self):
+        """Stage A (2026-11-02): a due lot on a customer whose tenant no
+        longer holds a wallet cannot be expired through a wallet the boundary
+        refuses to touch. The refusal is recorded under its own name — not as
+        an unexplained `expiry_sweep_failed` — the lot stays as it was, and
+        the sweep goes on: the wallet holder next to it is expired."""
+        left_t, left_c, left_w = _setup()
+        left_g = _grant(left_w, left_t, amount=10_000_000,
+                        expires_at=timezone.now() + timedelta(days=1))
+        still_t, still_c, still_w = _setup()
+        still_g = _grant(still_w, still_t, amount=4_000_000,
+                         expires_at=timezone.now() + timedelta(days=1))
+        CreditGrant.objects.filter(pk__in=[left_g.pk, still_g.pk]).update(
+            expires_at=timezone.now() - timedelta(minutes=1))
+        left_t.billing_mode = "external"
+        left_t.save()
+
+        capture = _Capture()
+        task_logger = logging.getLogger("apps.billing.wallets.tasks")
+        task_logger.addHandler(capture)
+        try:
+            expire_credit_grants()  # no raise
+        finally:
+            task_logger.removeHandler(capture)
+
+        left_g.refresh_from_db()
+        left_w.refresh_from_db()
+        assert (left_g.status, left_g.remaining_micros) == ("active", 10_000_000)
+        assert left_w.balance_micros == 10_000_000
+        assert not WalletTransaction.objects.filter(
+            wallet=left_w, idempotency_key=f"expiry:{left_g.pk}").exists()
+        recorded = [r for r in capture.records
+                    if r.getMessage() == "grants.expiry_sweep_refused_no_wallet_subject"]
+        assert len(recorded) == 1
+        assert recorded[0].levelno == logging.WARNING
+        assert recorded[0].data["billing_mode"] == "external"
+        assert not [r for r in capture.records
+                    if r.getMessage() == "grants.expiry_sweep_failed"]
+        # The sweep went on: the wallet holder's due lot expired.
+        still_g.refresh_from_db()
+        still_w.refresh_from_db()
+        assert (still_g.status, still_w.balance_micros) == ("expired", 0)
+
     def test_beat_twice_expires_exactly_once(self):
         t, c, w = _setup()
         g = _grant(w, t, amount=10_000_000,

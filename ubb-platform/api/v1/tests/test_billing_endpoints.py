@@ -1,4 +1,5 @@
 import json
+import uuid
 from unittest.mock import patch
 
 from django.test import TestCase, Client
@@ -93,7 +94,8 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Debit Tenant", products=["metering", "billing"]
+            name="Debit Tenant", products=["metering", "billing"],
+            billing_mode="prepaid",  # the wallet holder (Stage A, 2026-11-02)
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -249,14 +251,25 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -2_000_000)
 
-    def test_debit_postpaid_skips_floor(self):
+    def test_debit_where_no_wallet_is_held_is_refused_at_the_boundary(self):
+        """The manual-debit matrix's route-level no-wallet row (Stage A of
+        the pre-Ash billing readiness, 2026-11-02): a tenant that leaves
+        `prepaid` for `postpaid` holds no wallet, so a hand-moved debit —
+        even a forced one — is refused by name, and the wallet row it would
+        have driven negative is never made. (This replaced a pin that let a
+        postpaid debit skip the floor onto a wallet the mode never held.)"""
         self.tenant.billing_mode = "postpaid"
         self.tenant.save()
         c = Customer.objects.create(tenant=self.tenant, external_id="od_4")
-        Wallet.objects.create(customer=c, balance_micros=0)
-        resp = self._debit("od_4", 1_000_000, "od_k4")  # postpaid: negative is normal
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
+        resp = self._debit("od_4", 1_000_000, "od_k4", allow_negative=True)
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp["Content-Type"], "application/problem+json")
+        body = resp.json()
+        self.assertEqual(body["code"], "feature_not_enabled")
+        self.assertEqual(
+            body["detail"],
+            "wallet operations are not available in this tenant's billing mode (postpaid)")
+        self.assertFalse(Wallet.all_objects.filter(customer=c).exists())
 
     # --- attribution (Phase 1): movement_reason + actor stored on the ledger ---
 
@@ -283,11 +296,12 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         self.assertEqual(resp.status_code, 422)
 
 
-class BillingCreditEndpointTest(TestCase):
+class BillingCreditEndpointTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Credit Tenant", products=["metering", "billing"]
+            name="Credit Tenant", products=["metering", "billing"],
+            billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -422,13 +436,14 @@ class BillingCreditEndpointTest(TestCase):
         self.assertEqual(txn.actor, "ops@acme.co")
 
 
-class DebitCreditHardeningTest(TestCase):
+class DebitCreditHardeningTest(RailActivated, TestCase):
     """Phase 2 hardening: lazy wallet creation, locking, idempotency."""
 
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Hardening Tenant", products=["metering", "billing"]
+            name="Hardening Tenant", products=["metering", "billing"],
+            billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
@@ -580,14 +595,15 @@ class DebitCreditHardeningTest(TestCase):
         self.assertEqual(resp.status_code, 422)
 
 
-class WithdrawOutboxEventTest(TestCase):
+class WithdrawOutboxEventTest(RailActivated, TestCase):
     """Test that the withdraw endpoint emits a WithdrawalRequested outbox event."""
 
     def setUp(self):
         from apps.platform.events.models import OutboxEvent
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Withdraw Tenant", products=["metering", "billing"]
+            name="Withdraw Tenant", products=["metering", "billing"],
+            billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -656,13 +672,13 @@ class WithdrawOutboxEventTest(TestCase):
 # half — that it registers nothing at all any more — is now asserted.
 
 
-class TopUpWithoutConnectorTest(TestCase):
+class TopUpWithoutConnectorTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         # Tenant WITHOUT Stripe connector
         self.tenant = Tenant.objects.create(
             name="No Stripe", products=["metering", "billing"],
-            stripe_connected_account_id="",
+            stripe_connected_account_id="", billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
@@ -727,7 +743,7 @@ class TopUpWithoutConnectorTest(TestCase):
         self.assertEqual(response.json()["code"], "validation_error")
 
 
-class TopUpAttemptBillingOwnerPinTest(TestCase):
+class TopUpAttemptBillingOwnerPinTest(RailActivated, TestCase):
     """Task 7 — create_top_up must pin TopUpAttempt.billing_owner_id at
     creation, across all three topologies. `customer` on the row always
     stays the SEAT (who initiated); this test asserts what actually gets
@@ -738,7 +754,7 @@ class TopUpAttemptBillingOwnerPinTest(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="No Stripe Pin Tenant", products=["metering", "billing"],
-            stripe_connected_account_id="",
+            stripe_connected_account_id="", billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
@@ -790,14 +806,14 @@ class TopUpAttemptBillingOwnerPinTest(TestCase):
         self.assertEqual(attempt.billing_owner_id, seat.id)
 
 
-class TopUpWithConnectorTest(TestCase):
+class TopUpWithConnectorTest(RailActivated, TestCase):
     """Verify that top-up with Stripe connector still works (existing behavior)."""
 
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Has Stripe", products=["metering", "billing"],
-            stripe_connected_account_id="acct_test",
+            stripe_connected_account_id="acct_test", billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
@@ -896,7 +912,7 @@ class TenantUsageInvoicePeriodValidationTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
-class PooledSeatBillingSurfaceTest(TestCase):
+class PooledSeatBillingSurfaceTest(RailActivated, TestCase):
     """Task 3 — uniform billing-owner resolution.
 
     Covers all three topologies for every touched endpoint:
@@ -913,7 +929,8 @@ class PooledSeatBillingSurfaceTest(TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Pooled Tenant", products=["metering", "billing"]
+            name="Pooled Tenant", products=["metering", "billing"],
+            billing_mode="prepaid",
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
 
@@ -1276,3 +1293,110 @@ class PooledSeatBillingSurfaceTest(TestCase):
         self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
         self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
         self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
+
+
+class NoWalletSubjectRoutesTest(RailActivated, TestCase):
+    """Stage A of the pre-Ash billing readiness (owner/consultant rulings of
+    2026-11-02): a wallet exists only where `holds_a_wallet(tenant)` is true.
+    Every wallet-mutating route answers a tenant whose billing mode holds no
+    wallet — `external + billing` and `postpaid + billing`, both valid
+    postures — with the registered `feature_not_enabled` problem (403) and a
+    detail that names the MODE the wallet capability is absent in, never the
+    product the tenant holds; and it writes nothing: no Wallet,
+    WalletTransaction, CreditGrant, WalletReservation, TopUpAttempt or
+    AutoTopUpConfig row, and no outbox event. The non-wallet billing surface
+    the product brings stays: the customer spend pool, the postpaid
+    configuration, the affordability read. `prepaid` keeps every behaviour
+    the classes above pin. The rail is asked for by name (`RailActivated`)
+    because `postpaid` is a money mode.
+    """
+
+    DETAIL = "wallet operations are not available in this tenant's billing mode ({mode})"
+
+    def setUp(self):
+        self.http_client = Client()
+        self.postures = {}
+        for mode in ("external", "postpaid"):
+            tenant = Tenant.objects.create(
+                name=mode, products=["metering", "billing"], billing_mode=mode)
+            _key, raw = TenantApiKey.create_key(tenant, label="t")
+            customer = Customer.objects.create(tenant=tenant, external_id=f"c_{mode}")
+            self.postures[mode] = (tenant, raw, customer)
+
+    def _call(self, raw, method, path, body=None):
+        kwargs = {"HTTP_AUTHORIZATION": f"Bearer {raw}"}
+        if body is not None:
+            kwargs.update(data=json.dumps(body), content_type="application/json")
+        return getattr(self.http_client, method)(path, **kwargs)
+
+    def _refused(self, response, mode):
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        body = response.json()
+        self.assertEqual(body["code"], "feature_not_enabled")
+        self.assertEqual(body["detail"], self.DETAIL.format(mode=mode))
+        self.assertNotIn("product", body["detail"])
+
+    def _nothing_written(self, tenant, customer):
+        from apps.billing.topups.models import TopUpAttempt
+        from apps.billing.wallets.models import (
+            CreditGrant, WalletReservation, WalletTransaction)
+        from apps.platform.events.models import OutboxEvent
+        self.assertFalse(Wallet.all_objects.filter(customer=customer).exists())
+        self.assertFalse(WalletTransaction.objects.filter(wallet__customer=customer).exists())
+        self.assertFalse(CreditGrant.objects.filter(wallet__customer=customer).exists())
+        self.assertFalse(WalletReservation.objects.filter(tenant=tenant).exists())
+        self.assertFalse(TopUpAttempt.objects.filter(customer=customer).exists())
+        self.assertFalse(AutoTopUpConfig.objects.filter(customer=customer).exists())
+        self.assertFalse(OutboxEvent.objects.filter(tenant_id=tenant.id).exists())
+
+    def _wallet_mutations(self, customer):
+        cid = customer.id
+        return {
+            "POST /billing/credit": ("post", "/api/v1/billing/credit", {
+                "customer_id": customer.external_id, "amount_micros": 1_000_000,
+                "source": "manual", "reference": "r", "idempotency_key": "k_credit"}),
+            "POST /billing/debit": ("post", "/api/v1/billing/debit", {
+                "customer_id": customer.external_id, "amount_micros": 1_000_000,
+                "reference": "r", "idempotency_key": "k_debit", "allow_negative": True}),
+            "POST …/withdraw": ("post", f"/api/v1/billing/customers/{cid}/withdraw", {
+                "amount_micros": 1_000_000, "idempotency_key": "k_withdraw"}),
+            "POST …/refund": ("post", f"/api/v1/billing/customers/{cid}/refund", {
+                "usage_event_id": str(uuid.uuid4()), "idempotency_key": "k_refund"}),
+            "POST …/grants": ("post", f"/api/v1/billing/customers/{cid}/grants", {
+                "kind": "promo", "amount_micros": 1_000_000, "expires_in_days": 30,
+                "idempotency_key": "k_grant"}),
+            "POST …/grants/{id}/void": (
+                "post", f"/api/v1/billing/customers/{cid}/grants/{uuid.uuid4()}/void", {}),
+            "POST …/top-up": ("post", f"/api/v1/billing/customers/{cid}/top-up", {
+                "amount_micros": 1_000_000, "success_url": "https://x.test/s",
+                "cancel_url": "https://x.test/c", "idempotency_key": "k_topup"}),
+            "PUT …/auto-top-up": ("put", f"/api/v1/billing/customers/{cid}/auto-top-up", {
+                "is_enabled": True, "trigger_threshold_micros": 1_000_000,
+                "top_up_amount_micros": 5_000_000}),
+        }
+
+    def test_every_wallet_mutating_route_refuses_by_name_and_writes_nothing(self):
+        for mode, (tenant, raw, customer) in self.postures.items():
+            for route, (method, path, body) in self._wallet_mutations(customer).items():
+                with self.subTest(mode=mode, route=route):
+                    self._refused(self._call(raw, method, path, body), mode)
+                    self._nothing_written(tenant, customer)
+
+    def test_the_non_wallet_billing_surface_stays(self):
+        for mode, (tenant, raw, customer) in self.postures.items():
+            with self.subTest(mode=mode):
+                pool = self._call(
+                    raw, "put", f"/api/v1/billing/customers/{customer.id}/customer-spend-pool",
+                    {"cap_micros": 5_000_000})
+                self.assertEqual(pool.status_code, 200, pool.content)
+                self.assertEqual(pool.json()["cap_micros"], 5_000_000)
+                afford = self._call(
+                    raw, "get", f"/api/v1/billing/customers/{customer.id}/affordability")
+                self.assertEqual(afford.status_code, 200, afford.content)
+                self.assertTrue(afford.json()["allowed"])
+                self._nothing_written(tenant, customer)
+        _tenant, raw, _customer = self.postures["postpaid"]
+        config = self._call(raw, "put", "/api/v1/billing/postpaid-config",
+                            {"consolidate_with_subscription": False})
+        self.assertEqual(config.status_code, 200, config.content)

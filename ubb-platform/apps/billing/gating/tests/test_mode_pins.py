@@ -13,26 +13,43 @@ pinned below.
 import json
 import uuid
 from dataclasses import asdict
+from types import SimpleNamespace
 
 import pytest
 from django.core.cache import cache
+from django.db import transaction
 from django.test import Client
 
-from apps.billing.gating.models import StopSignalState
-from apps.billing.gating.services.live_counter import Door
+from apps.billing.gating.models import CustomerSpendPool, StopSignalState
+from apps.billing.gating.patrol import OUTCOME_REPAIRED
+from apps.billing.gating.repair import repair_live_balances
+from apps.billing.gating.services.live_counter import Door, LiveCounter
+from apps.billing.gating.services.risk_service import RiskService
+from apps.billing.gating.tasks import _per_owner_reconcile
 from apps.billing.handlers import handle_usage_recorded_billing
-from apps.billing.wallets.models import Wallet
+from apps.billing.locking import lock_for_billing
+from apps.billing.tenant_billing.models import TenantBillingPeriod
+from apps.billing.wallets.models import (
+    CustomerBillingProfile, Wallet, WalletReservation, WalletTransaction)
 from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
+from apps.metering.usage.tests._helpers import a_posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
     CustomerStopCleared, CustomerStopped, UsageRecorded,
     WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed)
+from apps.platform.tenants.flags import holds_a_wallet
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.platform.tenants.tests._rails import activate_the_rail
+from core.exceptions import NoWalletSubjectError
+from core.vocabulary import AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
+
+#: The billing modes that hold no wallet (`holds_a_wallet` is false). Both
+#: may carry the `billing` product; neither has a wallet subject.
+NO_WALLET_MODES = ("external", "postpaid")
 
 
 def _tenant(mode="prepaid", enf="off"):
@@ -162,8 +179,18 @@ class TestExternalHasNoWalletPolicySubject:
             CustomerStopped.EVENT_TYPE, "customer.suspended"]).exists()
 
     def test_a_priced_event_under_enforcing_opens_no_hard_floor(self):
+        self._priced_events_open_no_hard_floor(self._external())
+
+    def test_the_billing_product_on_an_external_tenant_changes_none_of_that(self):
+        """`external + billing` is a valid posture (Stage A, 2026-11-02): the
+        product brings the platform-fee period, the pools and the postpaid
+        reads, and still no wallet — the same priced events, the same
+        absence of every customer-wide trace."""
+        self._priced_events_open_no_hard_floor(
+            self._external(products=("metering", "billing")))
+
+    def _priced_events_open_no_hard_floor(self, t):
         client = Client()
-        t = self._external()
         _k, raw = TenantApiKey.create_key(t, label="t")
         c = Customer.objects.create(tenant=t, external_id="jim")
         a_rule_that_prices_what_it_measures(t)
@@ -234,3 +261,155 @@ class TestExternalHasNoWalletPolicySubject:
         assert g.json()["status"] == "killed"
         # The unit stopped; the customer did not.
         self._no_customer_wide_trace(c)
+
+
+@pytest.mark.django_db
+class TestAWalletExistsOnlyWhereOneIsHeld:
+    """Stage A of the pre-Ash billing readiness (owner/consultant rulings of
+    2026-11-02): a wallet exists only where `holds_a_wallet(tenant)` is true
+    — `prepaid` in v1. `external` and `postpaid` have no wallet subject, with
+    or without the `billing` product; an absent wallet is never a zero-balance
+    wallet and is never lazily invented by a wallet operation. No second
+    predicate is invented: every site below asks the kernel's one answer.
+
+    What is pinned here, at the service seam: the boundary every mutation
+    takes (`lock_for_billing`) refuses by name before any Wallet row is read
+    or created; the money-shaped verdict runs no wallet lane for a no-wallet
+    tenant while its standing, stop-flag and spend-pool checks still answer;
+    a fixed-price start reserves nothing and is not refused; and no outbox
+    handler, beat task or patrol leg that is gated upstream reaches the
+    boundary — proven by a boundary that fails the test if reached, not by
+    reading the gate. The route-level matrices live in the api/v1 suites,
+    and the lanes that CAN meet the boundary (a tenant that left `prepaid`
+    with rows behind) pin their recording in the Stripe connector's suites.
+    """
+
+    def setup_method(self):
+        cache.clear()
+        # `postpaid` is a money mode and needs its rail (G27); asked for by
+        # name here, before any tenant is built. `external` needs none.
+        activate_the_rail()
+
+    def _tenant(self, mode, *, enf="off"):
+        return Tenant.objects.create(name=mode, products=["metering", "billing"],
+                                     billing_mode=mode, enforcement_mode=enf)
+
+    def _no_wallet_rows(self, c):
+        assert not Wallet.all_objects.filter(customer=c).exists()
+        assert not WalletTransaction.objects.filter(wallet__customer=c).exists()
+        assert not WalletReservation.objects.filter(tenant=c.tenant).exists()
+
+    # --- the boundary ------------------------------------------------------
+
+    @pytest.mark.parametrize("mode", NO_WALLET_MODES)
+    def test_the_boundary_refuses_by_name_before_any_wallet_row(self, mode):
+        t = self._tenant(mode)
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        assert not holds_a_wallet(t)
+        with pytest.raises(NoWalletSubjectError) as refused:
+            with transaction.atomic():
+                lock_for_billing(c.id)
+        assert refused.value.billing_mode == mode
+        assert refused.value.tenant_id == t.id
+        # The detail names the MODE the wallet capability is absent in —
+        # never the product, which this tenant holds.
+        assert f"billing mode ({mode})" in str(refused.value)
+        assert "product" not in str(refused.value)
+        self._no_wallet_rows(c)
+
+    def test_prepaid_still_mints_the_wallet_at_the_boundary(self):
+        t = self._tenant("prepaid")
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        assert holds_a_wallet(t)
+        with transaction.atomic():
+            wallet, owner = lock_for_billing(c.id)
+        assert (wallet.customer_id, owner.id) == (c.id, c.id)
+        assert (wallet.balance_micros, wallet.currency) == (0, t.default_currency)
+        assert Wallet.objects.filter(customer=c).count() == 1
+
+    # --- the money-shaped verdict ------------------------------------------
+
+    @pytest.mark.parametrize("mode", NO_WALLET_MODES)
+    def test_the_verdict_runs_no_wallet_lane_so_a_floor_refuses_nothing(self, mode):
+        """A floor above zero — the one shape under which an absent wallet
+        read as a zero balance IS past the line (`api/v1/tests/
+        test_a_start_claims_its_key.py` pins that for `prepaid`) — refuses
+        nothing here: there is no wallet to be past it, the floors are
+        reported as not applying, and no episode or suspension follows."""
+        t = self._tenant(mode, enf="enforcing")
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        CustomerBillingProfile.objects.create(
+            customer=c, min_balance_micros=-2_000_000,
+            soft_min_balance_micros=-1_000_000)
+        verdict = RiskService.check(c)
+        assert (verdict["allowed"], verdict["reason"]) == (True, None)
+        assert (verdict["min_balance_micros"],
+                verdict["soft_min_balance_micros"]) == (None, None)
+        c.refresh_from_db()
+        assert c.status == "active"
+        assert not StopSignalState.objects.filter(owner=c).exists()
+        self._no_wallet_rows(c)
+
+    @pytest.mark.parametrize("mode", NO_WALLET_MODES)
+    def test_the_standing_and_the_spend_pool_still_answer_off_the_wallet_lane(self, mode):
+        t = self._tenant(mode)
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        CustomerSpendPool.objects.create(tenant=t, customer=c, cap_micros=1_000,
+                                         enforce_mode="blocking")
+        a_posting(tenant=t, customer=c, idempotency_key="i",
+                  provider_cost_micros=1_000, billed_cost_micros=1_000)
+        LiveCounter.spend_pool_incr(t.id, c.id, 1_000)
+        pooled = RiskService.check(c)
+        assert (pooled["allowed"], pooled["reason"]) == (
+            False, AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED)
+        suspended = Customer.objects.create(tenant=t, external_id="sue",
+                                            status="suspended")
+        assert RiskService.check(suspended)["allowed"] is False
+        self._no_wallet_rows(c)
+
+    @pytest.mark.parametrize("mode", NO_WALLET_MODES)
+    def test_a_fixed_price_start_reserves_nothing_and_is_not_refused(self, mode):
+        """The reservation half answers the EMPTY verdict — allowed, nothing
+        read — before the boundary: the start is legitimate, only the
+        reservation has no subject, so a refusal exception here would be
+        wrong and none is raised."""
+        t = self._tenant(mode)
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        unit = SimpleNamespace(agreed_price_micros=5_000_000, billing_owner_id=c.id)
+        with transaction.atomic():
+            verdict = RiskService.reserve_agreed_price(c, unit)
+        assert verdict == {"allowed": True, "reason": None,
+                           "balance_micros": None, "available_micros": None,
+                           "min_balance_micros": None,
+                           "soft_min_balance_micros": None}
+        self._no_wallet_rows(c)
+
+    # --- the lanes gated upstream never reach the boundary ------------------
+
+    @pytest.mark.parametrize("mode", NO_WALLET_MODES)
+    def test_no_gated_lane_reaches_the_boundary(self, mode, monkeypatch):
+        """The drawdown handler, the reconcile's wallet pass, the upward
+        repair and the beat's per-owner loop each ask `holds_a_wallet`
+        before the lock. Proven by a boundary that FAILS the test if any of
+        them reaches it, driven once each for a no-wallet tenant under
+        `enforcing` — and the platform-fee period still accrues the event,
+        because billing the tenant for its usage asks no wallet."""
+        t = self._tenant(mode, enf="enforcing")
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        posting = a_posting(tenant=t, customer=c, idempotency_key="i1",
+                            provider_cost_micros=1_000, billed_cost_micros=8_000_000)
+
+        def reached(customer_id):
+            raise AssertionError(f"the wallet boundary was reached for {customer_id}")
+        monkeypatch.setattr("apps.billing.locking.lock_for_billing", reached)
+
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None, tenant_id=t.id, customer_id=c.id,
+            event_id=str(posting.id), cost_micros=8_000_000)))
+        LiveCounter.reconcile(c.id, t)
+        assert repair_live_balances(t)[OUTCOME_REPAIRED] == 0
+        _per_owner_reconcile(t)
+
+        self._no_wallet_rows(c)
+        period = TenantBillingPeriod.objects.get(tenant=t)
+        assert (period.total_billed_cost_micros, period.recorded_events) == (8_000_000, 1)

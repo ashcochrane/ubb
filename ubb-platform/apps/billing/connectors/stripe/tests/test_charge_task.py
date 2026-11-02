@@ -8,10 +8,12 @@ from apps.billing.connectors.stripe.tasks import charge_auto_top_up_task
 from core.exceptions import StripePaymentError
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestChargeTask:
     def _attempt(self, balance=0):
-        t = Tenant.objects.create(name="T")
+        t = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                  billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=balance)
         AutoTopUpConfig.objects.create(customer=c, is_enabled=True,
@@ -38,6 +40,27 @@ class TestChargeTask:
         a.refresh_from_db()
         assert a.status == "superseded"
 
+    def test_an_attempt_whose_tenant_left_prepaid_fails_by_name_and_charges_nothing(self):
+        """Stage A (2026-11-02): the wallet boundary refuses before the charge
+        when the attempt's tenant no longer holds a wallet (it left `prepaid`
+        after the attempt was minted). Stripe is never asked, the refusal is
+        recorded on the attempt as its terminal failure — by name, the way
+        every non-retryable outcome of this task is — and the task raises
+        nothing, so nothing is retried."""
+        c, a = self._attempt(balance=0)
+        tenant = c.tenant
+        tenant.billing_mode = "external"
+        tenant.save()
+        with patch("apps.billing.connectors.stripe.tasks.charge_saved_payment_method") as m:
+            charge_auto_top_up_task(str(a.id))  # no raise
+            m.assert_not_called()
+        a.refresh_from_db()
+        assert a.status == "failed"
+        assert a.failure_reason["error_type"] == "NoWalletSubjectError"
+        assert "billing mode (external)" in a.failure_reason["message"]
+        assert Wallet.objects.get(customer=c).balance_micros == 0
+        assert not WalletTransaction.objects.filter(wallet__customer=c).exists()
+
     def test_sca_sets_requires_action_and_emits_event(self):
         c, a = self._attempt(balance=0)
         err = StripePaymentError("auth required"); err.code = "authentication_required"
@@ -50,6 +73,7 @@ class TestChargeTask:
         assert mw.called and type(mw.call_args.args[0]).__name__ == "AutoTopUpRequiresAction"
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestChargeTaskBillingOwnerRouting:
     """Task 8b sweep finding: the pre-charge lock/supersede check must route
@@ -64,7 +88,8 @@ class TestChargeTaskBillingOwnerRouting:
         """Same deliberate failure mode as every other credit/clawback call
         site pinned in this branch: raise rather than silently fall back to
         attempt.customer_id."""
-        t = Tenant.objects.create(name="T_null_owner")
+        t = Tenant.objects.create(name="T_null_owner", products=["metering", "billing"],
+                                  billing_mode="prepaid")
         c = Customer.objects.create(tenant=t, external_id="c_null_owner")
         Wallet.objects.create(customer=c, balance_micros=0)
         a = TopUpAttempt.objects.create(
@@ -92,7 +117,8 @@ class TestChargeTaskBillingOwnerRouting:
         owner's real config (threshold 10M) and real wallet (balance 0) say
         the attempt is NOT yet funded, so it charges through, and no wallet
         is ever created on the initiator."""
-        t = Tenant.objects.create(name="T_route_owner")
+        t = Tenant.objects.create(name="T_route_owner", products=["metering", "billing"],
+                                  billing_mode="prepaid")
         initiator = Customer.objects.create(tenant=t, external_id="initiator")
         owner = Customer.objects.create(tenant=t, external_id="owner")
         Wallet.objects.create(customer=owner, balance_micros=0)
