@@ -12,6 +12,7 @@ from apps.billing.locking import lock_for_billing
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("rail_activated")
 class TestF4SoftDeleteUniqueness:
     def test_reonboard_churned_external_id_returns_201(self):
         tenant = Tenant.objects.create(name="T", products=["metering", "billing"], stripe_connected_account_id="acct_test")
@@ -25,7 +26,10 @@ class TestF4SoftDeleteUniqueness:
         assert Customer.all_objects.filter(tenant=tenant, external_id="churn1").count() == 2
 
     def test_lock_for_billing_reuses_soft_deleted_wallet(self):
-        tenant = Tenant.objects.create(name="T2", products=["metering", "billing"])
+        # The wallet holder (Stage A, 2026-11-02): the boundary under test
+        # serves a wallet only where the mode holds one.
+        tenant = Tenant.objects.create(name="T2", products=["metering", "billing"],
+                                       billing_mode="prepaid")
         customer = Customer.objects.create(tenant=tenant, external_id="c2")
         w = Wallet.objects.create(customer=customer, balance_micros=7_000_000)
         handle_customer_deleted_billing(

@@ -398,12 +398,12 @@ class RefundLotAwareTest(RailActivated, TestCase):
         self.assertEqual(errors, [])
 
 
-class MeGrantsTest(TestCase):
+class MeGrantsTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="MeG", stripe_connected_account_id="acct_meg",
-            products=["metering", "billing"])
+            products=["metering", "billing"], billing_mode="prepaid")
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="t")
         self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=0)

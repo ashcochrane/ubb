@@ -23,19 +23,23 @@ from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
+from apps.platform.tenants.tests._rails import RailActivated
 from apps.subscriptions.stripe.items import MirroredAmount
 from apps.subscriptions.tests._helpers import a_mirrored_subscription
 
 ACCT = "acct_shared_1"
 
 
-class _SharedAccountFixture(TestCase):
+class _SharedAccountFixture(RailActivated, TestCase):
     """Live tenant + sandbox sibling, BOTH connected to the same acct_ id,
     with byte-identical customer/wallet rows on each side."""
 
     def setUp(self):
         self.live = Tenant.objects.create(
             name="Live Co", products=["metering", "billing"],
+            # The wallet holder (Stage A, 2026-11-02); the sandbox copies
+            # the mode, and the mixin activates the rail in both environments.
+            billing_mode="prepaid",
             stripe_connected_account_id=ACCT, charges_enabled=True)
         self.sandbox = get_or_create_sandbox(self.live)
         Tenant.objects.filter(id=self.sandbox.id).update(

@@ -16,18 +16,20 @@ from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.platform.audit.models import AuditRecord
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.tests._rails import RailActivated
 from core.vocabulary import MOVEMENT_REASON_VALUES, REASON_CODE_KNOWN_VALUES
 
 ROUTES = {"credit": {"source": "manual"}, "debit": {"allow_negative": True}}
 
 
-class _WalletRoutesTestCase(TestCase):
+class _WalletRoutesTestCase(RailActivated, TestCase):
     """A billing tenant, one customer's wallet, and the two routes."""
 
     def setUp(self):
         self.http = Client()
         self.tenant = Tenant.objects.create(name="Wallets",
-                                            products=["metering", "billing"])
+                                            products=["metering", "billing"],
+                                            billing_mode="prepaid")  # the wallet holder
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="k")
         customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         Wallet.objects.create(customer=customer, balance_micros=10_000_000)

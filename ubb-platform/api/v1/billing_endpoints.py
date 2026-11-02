@@ -33,6 +33,7 @@ from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import AutoTopUpConfig
+from apps.billing.locking import refuse_a_wallet_operation_without_a_wallet
 from apps.billing.gating.services.risk_service import RiskService
 from apps.billing.connectors.stripe.stripe_api import create_checkout_session
 from django.db import transaction
@@ -216,6 +217,11 @@ def credit(request, payload: CreditRequest):
 def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: ConfigureAutoTopUpRequest):
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
+    # An auto-top-up configuration is a wallet claim — the trigger a wallet's
+    # low balance fires — written before any wallet boundary is reached, so
+    # the wallet-subject rule is asked at this door: a tenant whose billing
+    # mode holds no wallet (`external`, `postpaid`) stores no config.
+    refuse_a_wallet_operation_without_a_wallet(request.auth.tenant)
     # Route through the billing owner (Task 3): the drawdown handler reads
     # AutoTopUpConfig off the OWNER's wallet-lock customer (see
     # apps/billing/wallets/operations.py's WalletBalanceLow emission and

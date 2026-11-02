@@ -47,10 +47,35 @@ def the_currency_a_top_up_credits(attempt):
             currency_a_wallet_is_born_in(owner))
 
 
+def refuse_a_wallet_operation_without_a_wallet(tenant):
+    """THE WALLET-SUBJECT RULE, ASKED ONCE: a wallet exists only where
+    ``holds_a_wallet(tenant)`` is true (``prepaid`` in v1). ``external`` and
+    ``postpaid`` have no wallet subject, so a wallet operation for one of
+    them is refused by name — ``NoWalletSubjectError`` — rather than lazily
+    inventing the wallet it would act on. No second predicate: this asks the
+    kernel's one answer and adds nothing to it.
+
+    ``lock_for_billing`` below asks it before any ``Wallet`` row is read or
+    created, which closes creation and mutation for every op that takes the
+    lock. The two doors that write wallet-adjacent state BEFORE reaching
+    the lock — a top-up (``api/v1/topups.py``) and an auto-top-up
+    configuration (``api/v1/billing_endpoints.py``) — ask it at their entry
+    for the same reason.
+    """
+    from apps.platform.tenants.flags import holds_a_wallet
+    from core.exceptions import NoWalletSubjectError
+
+    if not holds_a_wallet(tenant):
+        raise NoWalletSubjectError(tenant.billing_mode)
+
+
 def lock_for_billing(customer_id):
     """
     Acquire Wallet -> Customer locks in canonical order.
-    Creates the Wallet lazily if it doesn't exist yet.
+    Creates the Wallet lazily if it doesn't exist yet — for a tenant whose
+    billing mode holds a wallet, and ONLY for one: ``refuse_a_wallet_
+    operation_without_a_wallet`` above runs first, before any Wallet read or
+    create, so ``external`` and ``postpaid`` can neither mint nor touch one.
 
     Use for: usage recording, wallet credits/debits, suspension checks.
     MUST be called within @transaction.atomic.
@@ -84,6 +109,9 @@ def lock_for_billing(customer_id):
             f"(external_id={customer_for_check.external_id!r}) — its billing "
             f"owner is {owner.id} (external_id={owner.external_id!r}). "
             "Resolve customer.resolve_billing_owner() before calling in.")
+    # The wallet-subject rule, before any Wallet row is read or created. The
+    # tenant rode in on the select_related above, so this costs no query.
+    refuse_a_wallet_operation_without_a_wallet(customer_for_check.tenant)
 
     wallet = Wallet.all_objects.select_for_update().filter(customer_id=customer_id).first()
     if wallet is None:

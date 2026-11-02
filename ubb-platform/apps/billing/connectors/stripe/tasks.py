@@ -7,7 +7,8 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from core.exceptions import StripeTransientError, StripePaymentError, StripeFatalError
+from core.exceptions import (NoWalletSubjectError, StripeFatalError,
+                             StripePaymentError, StripeTransientError)
 from core.currency_policy import CurrencyDisagreement, the_rails_currency
 from core.money import from_minor
 from apps.billing.locking import lock_for_billing, lock_top_up_attempt
@@ -64,19 +65,41 @@ def charge_auto_top_up_task(attempt_id):
     owner_id = attempt.billing_owner_id
 
     # Pre-charge guard (under lock): skip if already processed OR already funded past the trigger.
-    with transaction.atomic():
-        wallet, customer = lock_for_billing(owner_id)
-        attempt = lock_top_up_attempt(attempt.id)
-        if attempt.status != "pending":
-            return
-        cfg = AutoTopUpConfig.objects.filter(customer_id=owner_id, is_enabled=True).first()
-        threshold = cfg.trigger_threshold_micros if cfg else 0
-        if wallet.balance_micros >= threshold:
-            attempt.status = "superseded"
-            attempt.save(update_fields=["status", "updated_at"])
-            logger.info("Auto top-up superseded (already funded)",
-                        extra={"data": {"attempt_id": str(attempt.id)}})
-            return
+    try:
+        with transaction.atomic():
+            wallet, customer = lock_for_billing(owner_id)
+            attempt = lock_top_up_attempt(attempt.id)
+            if attempt.status != "pending":
+                return
+            cfg = AutoTopUpConfig.objects.filter(customer_id=owner_id, is_enabled=True).first()
+            threshold = cfg.trigger_threshold_micros if cfg else 0
+            if wallet.balance_micros >= threshold:
+                attempt.status = "superseded"
+                attempt.save(update_fields=["status", "updated_at"])
+                logger.info("Auto top-up superseded (already funded)",
+                            extra={"data": {"attempt_id": str(attempt.id)}})
+                return
+    except NoWalletSubjectError as refused:
+        # The wallet boundary refused BEFORE any charge: the owner's tenant
+        # no longer holds a wallet (it left `prepaid` after this attempt was
+        # minted). Nothing is charged, and nothing a retry could change — the
+        # task's own retries are for Stripe's transient errors only — so the
+        # refusal is recorded on the attempt, by name, as its terminal
+        # failure, the way every other non-retryable outcome of this task is.
+        with transaction.atomic():
+            attempt = lock_top_up_attempt(attempt.id)
+            if attempt.status != "pending":
+                return
+            attempt.status = "failed"
+            attempt.failure_reason = {
+                "error_type": type(refused).__name__,
+                "code": None, "decline_code": None,
+                "message": str(refused)}
+            attempt.save(update_fields=["status", "failure_reason", "updated_at"])
+        logger.warning("auto_top_up.refused_no_wallet_subject", extra={"data": {
+            "attempt_id": str(attempt.id), "owner_id": str(owner_id),
+            "billing_mode": refused.billing_mode}})
+        return
 
     # Charge Stripe (no DB lock held)
     charge_result = charge_error = None
@@ -183,7 +206,19 @@ def reconcile_topups_with_stripe():
                     "attempt_id": str(attempt.id), "pi": pi.id,
                     "swept_is_sandbox": tenant.is_sandbox}})
                 continue
-            if AutoTopUpService.apply_topup_credit(attempt, pi):
+            try:
+                credited = AutoTopUpService.apply_topup_credit(attempt, pi)
+            except NoWalletSubjectError as refused:
+                # The wallet boundary refused: the attempt's tenant no longer
+                # holds a wallet, so a PaymentIntent Stripe did settle has no
+                # wallet to be credited to. Recorded by name, loudly — money
+                # was taken and cannot land — and the sweep goes on to the
+                # next attempt rather than dying here every hour.
+                logger.error("auto_top_up.reconcile_refused_no_wallet_subject",
+                             extra={"data": {"attempt_id": str(attempt.id), "pi": pi.id,
+                                             "billing_mode": refused.billing_mode}})
+                continue
+            if credited:
                 repaired += 1
                 logger.warning("Reconcile repaired uncredited auto top-up",
                                extra={"data": {"attempt_id": str(attempt.id), "pi": pi.id}})

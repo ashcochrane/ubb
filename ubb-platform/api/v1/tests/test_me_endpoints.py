@@ -8,7 +8,58 @@ from apps.billing.wallets.models import Wallet, WalletTransaction
 from apps.billing.invoicing.models import CustomerUsageInvoice
 from apps.subscriptions.models import SubscriptionInvoice
 from core.widget_auth import create_widget_token
+from apps.platform.tenants.tests._rails import RailActivated
 from apps.subscriptions.tests._helpers import a_mirrored_subscription
+
+
+class WidgetTopUpNoWalletSubjectTest(RailActivated, TestCase):
+    """Stage A of the pre-Ash billing readiness (2026-11-02): `/me/top-up` is
+    the widget twin of the tenant top-up and passes through the same door
+    (`api/v1/topups.py :: start_top_up`), so an end customer of a tenant
+    whose billing mode holds no wallet — `external + billing`, `postpaid +
+    billing` — is refused by name before any attempt row or outbox event
+    lands, and the detail names the mode, not the product. The rail is asked
+    for by name because `postpaid` is a money mode."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.postures = {}
+        for mode in ("external", "postpaid"):
+            tenant = Tenant.objects.create(
+                name=mode, stripe_connected_account_id="",
+                products=["metering", "billing"], billing_mode=mode)
+            customer = Customer.objects.create(tenant=tenant, external_id=f"c_{mode}")
+            token = create_widget_token(
+                tenant.widget_secret, str(customer.id), str(tenant.id))
+            self.postures[mode] = (tenant, customer, token)
+
+    def test_a_widget_top_up_where_no_wallet_is_held_is_refused_and_registers_nothing(self):
+        from apps.billing.topups.models import TopUpAttempt
+        from apps.platform.events.models import OutboxEvent
+        for mode, (tenant, customer, token) in self.postures.items():
+            with self.subTest(mode=mode):
+                response = self.http_client.post(
+                    "/api/v1/me/top-up",
+                    data=json.dumps({
+                        "amount_micros": 10_000_000,
+                        "success_url": "https://x.test/s",
+                        "cancel_url": "https://x.test/c",
+                        "idempotency_key": f"w_{mode}",
+                    }),
+                    content_type="application/json",
+                    HTTP_AUTHORIZATION=f"Bearer {token}",
+                )
+                self.assertEqual(response.status_code, 403, response.content)
+                self.assertEqual(response["Content-Type"], "application/problem+json")
+                body = response.json()
+                self.assertEqual(body["code"], "feature_not_enabled")
+                self.assertEqual(
+                    body["detail"],
+                    "wallet operations are not available in this tenant's "
+                    f"billing mode ({mode})")
+                self.assertFalse(TopUpAttempt.objects.filter(customer=customer).exists())
+                self.assertFalse(OutboxEvent.objects.filter(tenant_id=tenant.id).exists())
+                self.assertFalse(Wallet.all_objects.filter(customer=customer).exists())
 
 
 class WidgetBalanceTest(TestCase):
@@ -197,7 +248,7 @@ class WidgetTopUpTest(TestCase):
         self.assertEqual(response.json()["code"], "validation_error")
 
 
-class WidgetTopUpReplayTest(TestCase):
+class WidgetTopUpReplayTest(RailActivated, TestCase):
     """#78: widget top-up carries a required idempotency_key; a replay never
     mints a second attempt or re-emits the event (connector-less branch)."""
 
@@ -205,7 +256,7 @@ class WidgetTopUpReplayTest(TestCase):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="No Stripe", stripe_connected_account_id="",
-            products=["metering", "billing"],
+            products=["metering", "billing"], billing_mode="prepaid",
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c_replay",

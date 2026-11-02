@@ -101,3 +101,32 @@ class NotBillingOwnerError(UBBError):
     wallet instead of a loud failure. Callers must resolve the owner
     (``customer.resolve_billing_owner()``) before calling in."""
     pass
+
+
+class NoWalletSubjectError(UBBError):
+    """A wallet operation reached the wallet boundary for a tenant whose
+    billing mode holds no wallet — ``apps.platform.tenants.flags.
+    holds_a_wallet`` is false (``external`` and ``postpaid`` in v1).
+
+    The same ratchet shape as ``NotBillingOwnerError`` above, one rung out:
+    raised by ``apps.billing.locking.lock_for_billing`` BEFORE any ``Wallet``
+    row is read or created, which is the one place every wallet mutation
+    passes through — so the lazy ``Wallet.objects.create`` there can no
+    longer mint a wallet for a tenant nothing in that mode reads. A wallet
+    exists only where ``holds_a_wallet`` is true; an absent wallet is never a
+    zero-balance wallet and is never invented by a wallet operation. The two
+    entry points that write wallet-adjacent state before reaching the
+    boundary (a top-up attempt, an auto-top-up configuration) raise it at
+    their own door through the same rule.
+
+    The composition layer answers it as the registered ``feature_not_enabled``
+    problem (403) carrying ``detail`` below. It means "wallet capability is
+    not enabled in this billing mode" — NOT that the tenant lacks the
+    ``billing`` product, which an ``external + billing`` tenant has."""
+
+    def __init__(self, billing_mode):
+        self.billing_mode = billing_mode
+        self.detail = (
+            "wallet operations are not available in this tenant's billing "
+            f"mode ({billing_mode})")
+        super().__init__(self.detail)

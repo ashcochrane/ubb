@@ -9,7 +9,14 @@ Code anchors are relative to `ubb-platform/`.
 
 **Wallet**:
 A customer's single prepaid credit account holding a spendable balance in one currency; one per
-customer. (`apps/billing/wallets/models.py:Wallet`)
+customer. (`apps/billing/wallets/models.py:Wallet`) A wallet exists only where the tenant's
+billing mode holds one (`apps/platform/tenants/flags.py:holds_a_wallet`; `prepaid` in v1):
+`external` and `postpaid` have no wallet subject, with or without the `billing` product; an absent
+wallet is never a zero-balance wallet; and a wallet operation for such a tenant is refused by name
+(`core/exceptions.py:NoWalletSubjectError`) at the one boundary every mutation takes
+(`apps/billing/locking.py:lock_for_billing`), before any wallet row is read or created — never
+lazily invented. The API answers that refusal as `feature_not_enabled`, meaning the wallet
+capability is not enabled in this billing mode (pre-Ash billing readiness, Stage A, 2026-11-02).
 
 **Ledger entry**:
 An append-only row recording one balance movement (its signed amount and resulting balance), made

@@ -8,12 +8,16 @@ from apps.billing.locking import lock_for_billing
 from core.exceptions import NotBillingOwnerError
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestLazyWalletCreation:
     def _make_tenant(self, **kwargs):
         defaults = {
             "name": "Test Tenant",
             "products": ["metering", "billing"],
+            # A wallet exists only where one is held (Stage A, 2026-11-02):
+            # the lazy creation under test is the wallet holder's.
+            "billing_mode": "prepaid",
         }
         defaults.update(kwargs)
         return Tenant.objects.create(**defaults)
@@ -57,6 +61,7 @@ class TestLazyWalletCreation:
         assert locked_wallet.balance_micros == 5000000
 
 
+@pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestLockForBillingOwnerRatchet:
     """Task 8c — the ratchet against the seat/owner defect found seven times
@@ -91,7 +96,8 @@ class TestLockForBillingOwnerRatchet:
         return biz, seat
 
     def _make_tenant(self, **kwargs):
-        defaults = {"name": "Ratchet Tenant", "products": ["metering", "billing"]}
+        defaults = {"name": "Ratchet Tenant", "products": ["metering", "billing"],
+                    "billing_mode": "prepaid"}
         defaults.update(kwargs)
         return Tenant.objects.create(**defaults)
 
