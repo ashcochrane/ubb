@@ -51,7 +51,7 @@ class TheMirrorHoldsWhatStripeSentTest(TestCase):
 
     def _invoice(self, subscription, stripe_id, currency, source_minor, amount_micros):
         return SubscriptionInvoice.objects.create(
-            tenant=self.tenant, customer=self.customer,
+            tenant=self.tenant, customer=self.customer, billing_owner=self.customer,
             stripe_subscription=subscription, stripe_invoice_id=stripe_id,
             amount_paid_micros=amount_micros, source_amount_paid_minor=source_minor,
             currency=currency)

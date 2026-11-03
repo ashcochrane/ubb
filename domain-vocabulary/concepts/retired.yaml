@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,654 of 2,824 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,655 of 2,825 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -3082,6 +3082,12 @@ measurement_key:
     # scopes webhook deduplication per receiver (`stripe_integration/0002`;
     # migrations are swept since the cutover deleted their exclusion). Neither
     # names a quantity. Stage A and C1a before it added no tracked file.
+    #
+    # 2026-11-04, R10 pre-Ash billing readiness Stage C2 (the suspension and
+    # recovery slice; PLAN §7 item 27): 2,654 of 2,824 -> 2,655 of 2,825
+    # tracked files (`units` UNMOVED, 46 files / 137 occurrences). One file
+    # arrived, swept: the migration that gives every subscription invoice its
+    # historical billing owner (`subscriptions/0002`). It names no quantity.
 
     - term: units
       retired_as: >-

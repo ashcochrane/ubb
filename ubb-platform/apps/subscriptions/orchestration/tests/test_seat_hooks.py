@@ -115,7 +115,7 @@ class TestSeatRemoveHook(TestCase):
         t, biz, _plan, seats = _business_with_sub(seats=3)
         sub = biz.stripe_subscriptions.get(stripe_subscription_id="sub_1")
         SubscriptionInvoice.objects.create(
-            tenant=t, customer=biz, stripe_subscription=sub, stripe_invoice_id="in_biz_1",
+            tenant=t, customer=biz, billing_owner=biz, stripe_subscription=sub, stripe_invoice_id="in_biz_1",
             amount_paid_micros=0, currency="usd", status="open")
         spy = self._payment_failed(id="in_biz_1", subscription="sub_1", customer="cus_biz")
         biz.refresh_from_db()

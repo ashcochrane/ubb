@@ -88,7 +88,7 @@ class TestArPoller:
             current_period_end=now, last_synced_at=now,
         )
         si = SubscriptionInvoice.objects.create(
-            tenant=t, customer=c, stripe_subscription=sub,
+            tenant=t, customer=c, billing_owner=c, stripe_subscription=sub,
             stripe_invoice_id="in_s", status="open",
         )
         stripe_inv = _stripe_invoice("in_s", "paid", subscription="sub_1")
@@ -207,7 +207,7 @@ class RepairTransitionParityTest(RailActivated, TestCase):
             current_period_end=now, last_synced_at=now,
         )
         return SubscriptionInvoice.objects.create(
-            tenant=t, customer=c, stripe_subscription=sub,
+            tenant=t, customer=c, billing_owner=c, stripe_subscription=sub,
             stripe_invoice_id=stripe_invoice_id, status=status,
         )
 
@@ -360,7 +360,7 @@ class PollerClearsAPaymentFailedSuspensionTest(RailActivated, TestCase):
             interval="month", quantity=1, current_period_start=now,
             current_period_end=now, last_synced_at=now)
         si = SubscriptionInvoice.objects.create(
-            tenant=self.t, customer=self.c, stripe_subscription=sub,
+            tenant=self.t, customer=self.c, billing_owner=self.c, stripe_subscription=sub,
             stripe_invoice_id="in_s", status="open", payment_failed_at=now)
         self._poll(_stripe_invoice("in_s", "paid", subscription="sub_1"))
         si.refresh_from_db()
@@ -434,7 +434,7 @@ class PollerClearsAPaymentFailedSuspensionTest(RailActivated, TestCase):
             interval="month", quantity=1, current_period_start=now,
             current_period_end=now, last_synced_at=now)
         si = SubscriptionInvoice.objects.create(
-            tenant=self.t, customer=self.c, stripe_subscription=sub,
+            tenant=self.t, customer=self.c, billing_owner=self.c, stripe_subscription=sub,
             stripe_invoice_id="in_sv", status="open", payment_failed_at=now)
         self._poll(_stripe_invoice("in_sv", "void", subscription="sub_v"))
         si.refresh_from_db()

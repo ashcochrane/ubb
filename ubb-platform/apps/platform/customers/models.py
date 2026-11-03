@@ -31,20 +31,6 @@ ACCOUNT_TYPE_CHOICES = [("individual", "Individual"),
 BILLING_TOPOLOGY_CHOICES = [("pooled", "Pooled"), ("allocated", "Allocated")]
 
 
-def billed_to(owner_id, *, via="customer"):
-    """`Customer.resolve_billing_owner`'s one rule as a query filter: the rows
-    whose ``via`` customer is funded by the billing owner ``owner_id`` — the
-    owner itself, and every seat of a POOLED business it is. Spelled once here
-    so each product asking "whose rows are these?" over its own table (billing's
-    usage invoices, subscriptions' invoices) draws the owner's line the same
-    way (R10 Stage C2)."""
-    from django.db.models import Q
-    return (Q(**{f"{via}_id": owner_id})
-            | Q(**{f"{via}__account_type": ACCOUNT_TYPE_SEAT,
-                   f"{via}__parent_id": owner_id,
-                   f"{via}__parent__billing_topology": "pooled"}))
-
-
 class Customer(SoftDeleteMixin, BaseModel):
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="customers"

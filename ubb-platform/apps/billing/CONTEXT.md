@@ -699,7 +699,9 @@ Stage C2 `payment_failed` for a local usage/subscription invoice of the billing 
 payment and `dispute_lost` for a lost top-up dispute whose claw-back left the wallet past its floor),
 `customer.reactivated` (the real `suspended → active` transition, exactly once, carrying the reason
 left — `hard_floor`/`dispute_lost` clear only when the durable balance is back at the floor,
-`payment_failed` only when no qualifying failed/unpaid local invoice of the owner remains — a paid
+`payment_failed` only when no qualifying failed/unpaid local invoice of the owner remains — the
+owner being the invoice's HISTORICAL owner, fixed when it entered UBB (a usage invoice's own
+`customer`; a subscription invoice's `billing_owner`), never today's topology — a paid
 or a voided invoice settles its own failure, void being a resolved AR condition and not a payment,
 and the hourly AR pass re-asks the same decision for every `payment_failed` owner so one failed
 delivery never strands it — and a paid or voided invoice never clears any other reason), `credit_grant_expired`, `customer_spend_pool.threshold_reached`,

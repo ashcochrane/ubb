@@ -101,8 +101,25 @@ class SubscriptionInvoice(BaseModel):
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="subscription_invoices"
     )
+    #: The local customer the subscription / Stripe mirror names — for a mirror
+    #: built from Stripe, whichever local customer holds the charged Stripe
+    #: customer id, which can be a seat. NOT the economic owner: that is
+    #: `billing_owner` below, and the two are deliberately distinct.
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="subscription_invoices"
+    )
+    #: THE HISTORICAL BILLING OWNER (R10 Stage C2, PLAN §7 item 27): the owner
+    #: UBB's declared topology resolved for this invoice when it FIRST ENTERED
+    #: UBB — `customer.resolve_billing_owner()` at the one creation site — and
+    #: a fact from then on. A pooled seat holding its own Stripe customer id
+    #: has `customer` = the seat and `billing_owner` = its business. A later
+    #: topology change (pooled <-> allocated, a parent change) never moves it,
+    #: and the payment-failure suspension, its settlement and the
+    #: outstanding-failure question read it and nothing else. Required, and
+    #: never rewritten after creation (`save` refuses a change).
+    billing_owner = models.ForeignKey(
+        "customers.Customer", on_delete=models.PROTECT,
+        related_name="owned_subscription_invoices",
     )
     stripe_subscription = models.ForeignKey(
         StripeSubscription, on_delete=models.CASCADE, related_name="invoices"
@@ -135,6 +152,26 @@ class SubscriptionInvoice(BaseModel):
                 "amount_paid_micros",
                 "ck_subscription_invoice_economic_amount_only_in_usd"),
         ]
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # The historical owner as stored, so `save` can refuse a rewrite.
+        instance._stored_billing_owner_id = instance.__dict__.get("billing_owner_id")
+        return instance
+
+    def save(self, *args, **kwargs):
+        # THE HISTORICAL OWNER IS FIXED AT BIRTH (PLAN §7 item 27): a row read
+        # from the database keeps the owner it was created with. This door
+        # refuses a rewrite through save(); no production code writes the
+        # field after creation (`test_models.py` pins both).
+        stored = getattr(self, "_stored_billing_owner_id", None)
+        if stored is not None and self.billing_owner_id != stored:
+            raise ValueError(
+                f"SubscriptionInvoice {self.pk}: billing_owner is the historical "
+                "billing owner fixed when the invoice entered UBB and is never "
+                "rewritten (R10 Stage C2, PLAN §7 item 27).")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"

@@ -106,18 +106,19 @@ def _invoice_subscription_id(inv):
 SETTLED_PAYMENT_STATUSES = ("paid", "void")
 
 
-def settle_failure_stamp(row, payment_status):
+def settle_failure_stamp(row, payment_status) -> bool:
     """Clear ``row``'s `payment_failed_at` when ``payment_status`` (the row's
     applied status — `payment_status` on a usage invoice, `status` on a
     subscription invoice) is settled: paid, or void (§7 item 26). Call inside
-    the transaction that holds the row's lock, before its save. Returns the id
-    of the canonical billing owner the row represents when a stamp was cleared
-    — the owner whose `payment_failed` suspension the caller then asks billing
-    to clear — else None, so a replayed paid/void delivery clears nothing
-    twice. Shared by the webhook fast path and the hourly repair of both
-    invoice tables, so a settled invoice settles its stamp one way everywhere.
+    the transaction that holds the row's lock, before its save. Returns True
+    when a stamp was cleared — the caller then asks billing to clear the
+    invoice's HISTORICAL owner (`customer_id` on a usage invoice,
+    `billing_owner_id` on a subscription invoice; PLAN §7 item 27) — else
+    False, so a replayed paid/void delivery clears nothing twice. Row state
+    only: it resolves no owner, so no current topology can enter here. Shared
+    by the webhook fast path and the hourly repair of both invoice tables.
     Only the stamp moves: a void row gains no `paid_at` and no paid amount."""
     if payment_status not in SETTLED_PAYMENT_STATUSES or row.payment_failed_at is None:
-        return None
+        return False
     row.payment_failed_at = None
-    return row.customer.resolve_billing_owner().id
+    return True

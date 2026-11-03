@@ -295,8 +295,7 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
         return 0
     changed = 0
     with transaction.atomic():
-        row = (model.objects.select_for_update(of=("self",))
-               .select_related("customer", "customer__parent").get(id=existing.id))
+        row = model.objects.select_for_update().get(id=existing.id)
         old = row.payment_status
         if not ar_transition_allowed(old, new_status):
             if new_status != old:
@@ -314,12 +313,13 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
             if new_status == "paid" and not row.paid_at:
                 row.paid_at = timezone.now()
             refresh_urls(row, inv)
-        # R10 Stage C2 (F-6, §7 item 26): the poller observing `paid` or
+        # R10 Stage C2 (F-6, §7 items 26-27): the poller observing `paid` or
         # `void` clears THIS row's failure stamp — whether the transition
         # applied now or a missed webhook already applied it — and billing
-        # then decides, at its one reactivation site, whether the owner comes
-        # back.
-        settled_owner_id = settle_failure_stamp(row, row.payment_status)
+        # then decides, at its one reactivation site, whether the row's
+        # HISTORICAL owner (its own `customer`, I5) comes back.
+        settled_owner_id = (row.customer_id
+                            if settle_failure_stamp(row, row.payment_status) else None)
         row.save()
     if settled_owner_id is not None:
         LiveCounter.clear_payment_failed_suspension(settled_owner_id)

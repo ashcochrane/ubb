@@ -93,7 +93,11 @@ FRESH_INITIAL_SET = frozenset({
 #: One since the cutover: `stripe_integration/0002_stripewebhookevent_receiver`
 #: (R10 Stage C1b, F-17 — webhook deduplication scoped per receiver: a column
 #: with a default, a dropped single-column unique, a pair unique and a CHECK).
-MIGRATIONS_SINCE_THE_CUTOVER = 1
+#: Two: `subscriptions/0002_subscriptioninvoice_billing_owner` (R10 Stage C2,
+#: PLAN §7 item 27 — every subscription invoice records the historical billing
+#: owner UBB resolved for it at creation: one additive, required, PROTECT
+#: foreign key, no data step).
+MIGRATIONS_SINCE_THE_CUTOVER = 2
 
 NUMBERED = re.compile(r"^\d{4}_\w+\.py$")
 DROP_OPS = {"RemoveField", "DeleteModel"}

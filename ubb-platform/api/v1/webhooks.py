@@ -146,6 +146,12 @@ def _reconcile_customer_invoice(event, *, new_status):
                 defaults={
                     "tenant": sub.tenant,
                     "customer": sub.customer,
+                    # THE HISTORICAL BILLING OWNER (R10 Stage C2, PLAN §7 item
+                    # 27): resolved ONCE, here, as the invoice first enters UBB
+                    # — a callable, so only a row actually being created asks
+                    # — and never again: a replay, the sync, a settlement or a
+                    # topology change leaves an existing row's owner as it was.
+                    "billing_owner": lambda: sub.customer.resolve_billing_owner(),
                     "stripe_subscription": sub,
                     "amount_paid_micros": paid_micros,
                     "source_amount_paid_minor": paid_minor,
@@ -172,10 +178,11 @@ def _reconcile_customer_invoice(event, *, new_status):
                 row.currency = currency
                 row.amount_paid_micros = paid_micros
                 row.source_amount_paid_minor = paid_minor
-            # R10 Stage C2 (F-6, §7 item 26): a paid or voided subscription
-            # invoice clears ITS failure stamp; whether the owner comes back
-            # is billing's call.
-            settled_owner_id = settle_failure_stamp(row, row.status)
+            # R10 Stage C2 (F-6, §7 items 26-27): a paid or voided subscription
+            # invoice clears ITS failure stamp, and billing re-decides its
+            # HISTORICAL owner — never one re-derived from today's topology.
+            settled_owner_id = (row.billing_owner_id
+                                if settle_failure_stamp(row, row.status) else None)
             _refresh_urls(row, inv)
             row.save()
         if settled_owner_id is not None:
@@ -210,8 +217,7 @@ def _apply_usage_invoice_status(row_id, inv, new_status):
     from apps.billing.invoicing.models import CustomerUsageInvoice
 
     with transaction.atomic():
-        row = (CustomerUsageInvoice.objects.select_for_update(of=("self",))
-               .select_related("customer", "customer__parent").get(id=row_id))
+        row = CustomerUsageInvoice.objects.select_for_update().get(id=row_id)
         if ar_transition_allowed(row.payment_status, new_status):
             row.payment_status = new_status
         elif new_status != row.payment_status:
@@ -222,10 +228,11 @@ def _apply_usage_invoice_status(row_id, inv, new_status):
         # Money fields gate on the APPLIED state (see subscription branch).
         if row.payment_status == "paid" and not row.paid_at:
             row.paid_at = timezone.now()
-        # R10 Stage C2 (F-6, §7 item 26): a paid or voided invoice clears ITS
-        # failure stamp; whether the owner comes back is billing's call, at
-        # its reactivation site.
-        settled_owner_id = settle_failure_stamp(row, row.payment_status)
+        # R10 Stage C2 (F-6, §7 items 26-27): a paid or voided invoice clears
+        # ITS failure stamp, and billing re-decides its HISTORICAL owner — a
+        # usage invoice's own `customer`, the owner it was issued to (I5).
+        settled_owner_id = (row.customer_id
+                            if settle_failure_stamp(row, row.payment_status) else None)
         _refresh_urls(row, inv)
         row.save()
     if settled_owner_id is not None:

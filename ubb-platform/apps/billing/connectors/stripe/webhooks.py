@@ -232,13 +232,15 @@ def _mark_invoice_payment_failed(event):
     reconcile does; the subscription side is stamped by the subscriptions port
     (billing never touches subscriptions internals).
 
-    Returns the id of the canonical BILLING OWNER the matched local invoice
+    Returns the id of the HISTORICAL BILLING OWNER the matched local invoice
     represents when that invoice is a STANDING failure — the customer the
-    suspension below targets (R10 Stage C2, RULED Q4 a). None when no local
-    usage/subscription invoice matches the Stripe invoice (Q4 c: nobody is
-    suspended), and None for a matched invoice already paid or void: a late
-    failure event on a settled invoice is stamped as before but suspends
-    nobody.
+    suspension below targets (R10 Stage C2, RULED Q4 a, PLAN §7 item 27): a
+    usage invoice's own `customer`, a subscription invoice's `billing_owner`,
+    both fixed when the invoice entered UBB and never re-derived from today's
+    topology. None when no local usage/subscription invoice matches the
+    Stripe invoice (Q4 c: nobody is suspended), and None for a matched invoice
+    already paid or void: a late failure event on a settled invoice is stamped
+    as before but suspends nobody.
     """
     from apps.billing.connectors.stripe.invoice_routing import SETTLED_PAYMENT_STATUSES
     from apps.billing.invoicing.models import CustomerUsageInvoice
@@ -261,8 +263,7 @@ def _mark_invoice_payment_failed(event):
     if not existing:
         return None
     with transaction.atomic():
-        row = (CustomerUsageInvoice.objects.select_for_update(of=("self",))
-               .select_related("customer", "customer__parent").get(id=existing.id))
+        row = CustomerUsageInvoice.objects.select_for_update().get(id=existing.id)
         row.payment_failed_at = timezone.now()
         _refresh_urls(row, inv)
         row.save(update_fields=[
@@ -270,7 +271,10 @@ def _mark_invoice_payment_failed(event):
         ])
         if row.payment_status in SETTLED_PAYMENT_STATUSES:
             return None
-        return row.customer.resolve_billing_owner().id
+        # THE HISTORICAL OWNER (PLAN §7 item 27): a usage invoice's own
+        # `customer` IS the billing owner it was issued to (the claim keys the
+        # row on it, I5) — never re-derived from today's topology.
+        return row.customer_id
 
 
 def handle_invoice_payment_failed(event):

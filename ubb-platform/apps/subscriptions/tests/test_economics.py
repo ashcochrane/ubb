@@ -66,7 +66,7 @@ class MarginServiceTest(RailActivated, TestCase):
         # accrual must still report the nominal, or a customer who overpaid one
         # month shows a margin they did not earn.
         SubscriptionInvoice.objects.create(
-            tenant=tenant, customer=customer, stripe_subscription=sub,
+            tenant=tenant, customer=customer, billing_owner=customer, stripe_subscription=sub,
             stripe_invoice_id="in_1", amount_paid_micros=25_000_000,
             currency="usd", period_start=now, period_end=now, paid_at=now)
         CustomerCostAccumulator.objects.create(

@@ -64,20 +64,22 @@ def get_customer_floor_control_id(customer_id, tenant_id):
 
 def a_payment_failure_remains_for(owner_id) -> bool:
     """Does any qualifying failed/unpaid local invoice — usage or subscription
-    — of this billing owner still stand (R10 Stage C2, F-6, RULED Q4)? A row
-    qualifies while it carries `payment_failed_at` and is neither paid nor
-    void, whoever's row it is among the customers the owner funds (its own
-    and its pooled seats'). The subscriptions half is asked through its port.
-    Read by the reactivation site under the owner's row lock, so a failure
-    stamped concurrently is either seen here or meets an owner already
-    active and suspends it."""
+    — whose HISTORICAL billing owner is ``owner_id`` still stand (R10 Stage C2,
+    F-6, RULED Q4, PLAN §7 item 27)? A row qualifies while it carries
+    `payment_failed_at` and is neither paid nor void. Ownership is the fact
+    fixed when the invoice entered UBB — a usage invoice's own `customer` (the
+    owner it was issued to, I5), a subscription invoice's `billing_owner`
+    (asked through the subscriptions port) — never today's topology, so a
+    later pooled/allocated change can neither add an invoice to this owner nor
+    take one away. Read by the reactivation site under the owner's row lock,
+    so a failure stamped concurrently is either seen here or meets an owner
+    already active and suspends it."""
     from apps.billing.connectors.stripe.invoice_routing import SETTLED_PAYMENT_STATUSES
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.platform.customers.models import billed_to
     from apps.subscriptions.ports import has_unsettled_subscription_payment_failure
 
     usage = (CustomerUsageInvoice.objects
-             .filter(billed_to(owner_id), payment_failed_at__isnull=False)
+             .filter(customer_id=owner_id, payment_failed_at__isnull=False)
              .exclude(payment_status__in=SETTLED_PAYMENT_STATUSES)
              .exists())
     return usage or has_unsettled_subscription_payment_failure(owner_id)

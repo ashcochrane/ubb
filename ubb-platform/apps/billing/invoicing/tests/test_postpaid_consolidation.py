@@ -561,7 +561,7 @@ class TestConsolidatedAr:
         c = _customer(t)
         sub = _sub(t, c)
         si = SubscriptionInvoice.objects.create(
-            tenant=t, customer=c, stripe_subscription=sub,
+            tenant=t, customer=c, billing_owner=c, stripe_subscription=sub,
             stripe_invoice_id="in_renewal", status="open")
         rec = self._pushed_consolidated(t, c)
         inv = MagicMock()
