@@ -392,8 +392,9 @@ class TestSubscriptionPaymentFailed(TestCase):
 class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
     """R10 Stage C2, F-6 (BILLING BLOCKER), RULED Q4.
 
-    A payment-failure suspension targets the canonical billing OWNER of the
-    MATCHED LOCAL usage/subscription invoice, writes
+    A payment-failure suspension targets the HISTORICAL billing OWNER of the
+    MATCHED LOCAL usage/subscription invoice (fixed when it entered UBB, PLAN
+    §7 item 27), writes
     `suspension_reason = payment_failed` and emits `customer.suspended`; a
     Stripe invoice with no local row suspends nobody. `invoice.paid` — and,
     since PLAN §7 item 26, `invoice.voided` (a resolved AR condition, not a

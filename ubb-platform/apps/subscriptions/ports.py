@@ -95,7 +95,7 @@ def mark_invoice_payment_failed_for_subscription(account, subscription_id, strip
         ])
         if row.status in SETTLED_PAYMENT_STATUSES:
             return None
-        return row.billing_owner_id
+        return row.historical_billing_owner_id
 
 
 def has_unsettled_subscription_payment_failure(owner_id) -> bool:
@@ -133,10 +133,10 @@ def settle_subscription_invoice_payment_failure(tenant, stripe_invoice_id):
         return None
     with transaction.atomic():
         row = SubscriptionInvoice.objects.select_for_update().get(id=existing.id)
-        if not settle_failure_stamp(row, row.status):
-            return None
-        row.save(update_fields=["payment_failed_at", "updated_at"])
-    return row.billing_owner_id
+        owner_id = settle_failure_stamp(row, row.status)
+        if owner_id is not None:
+            row.save(update_fields=["payment_failed_at", "updated_at"])
+    return owner_id
 
 
 def repair_subscription_invoice(tenant, stripe_invoice_id, inv, new_status):

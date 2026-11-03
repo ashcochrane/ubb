@@ -154,6 +154,16 @@ class CustomerUsageInvoice(BaseModel):
                 name="ck_usage_invoice_skip_reason_known"),
         ]
 
+    @property
+    def historical_billing_owner_id(self):
+        """The billing owner this invoice was issued to — its own `customer`,
+        because the claim keys the row on the billing owner of that moment
+        (I5) — and so the owner its payment failure counts against, whatever
+        the topology says later (R10 Stage C2, PLAN §7 item 27). The same name
+        `SubscriptionInvoice` answers from its `billing_owner`, so no AR path
+        chooses a column per table."""
+        return self.customer_id
+
     def __str__(self):
         return f"UsageInvoice({self.customer_id}: {self.period_start} {self.status})"
 

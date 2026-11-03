@@ -1,6 +1,7 @@
 from django.db import models
 from core.currency_policy import ECONOMIC_CURRENCY
 from core.models import BaseModel
+from core.transitions import FROZEN
 
 
 SUBSCRIPTION_STATUS_CHOICES = [
@@ -115,10 +116,15 @@ class SubscriptionInvoice(BaseModel):
     #: has `customer` = the seat and `billing_owner` = its business. A later
     #: topology change (pooled <-> allocated, a parent change) never moves it,
     #: and the payment-failure suspension, its settlement and the
-    #: outstanding-failure question read it and nothing else. Required, and
-    #: never rewritten after creation (`save` refuses a change).
+    #: outstanding-failure question read it and nothing else. Required (NOT
+    #: NULL), and FROZEN after creation — declared below and defended by the
+    #: database (`trg_subscription_invoice_declared_transitions`), never by a
+    #: model-level guard (ADR-0007 §2). `RESTRICT`, not `PROTECT`: the owner
+    #: cannot be deleted from under its invoices, but a delete that removes the
+    #: invoices too — a tenant wipe, a sandbox reset — proceeds, where `PROTECT`
+    #: would refuse it (the precedent `apps/metering/pricing/models.py` records).
     billing_owner = models.ForeignKey(
-        "customers.Customer", on_delete=models.PROTECT,
+        "customers.Customer", on_delete=models.RESTRICT,
         related_name="owned_subscription_invoices",
     )
     stripe_subscription = models.ForeignKey(
@@ -144,6 +150,17 @@ class SubscriptionInvoice(BaseModel):
     invoice_pdf = models.CharField(max_length=1000, blank=True, default="")
     payment_failed_at = models.DateTimeField(null=True, blank=True)
 
+    #: ADR-0007 §2: what may happen to this invoice's economic facts. The
+    #: historical billing owner is FROZEN — set once, at the row's INSERT, and
+    #: refused on any UPDATE that would change it, through `save()`,
+    #: `QuerySet.update()` and raw SQL alike — by the database rule
+    #: `trg_subscription_invoice_declared_transitions`
+    #: (`subscriptions/migrations/0002_the_database_rules.py`; PLAN §7 item
+    #: 27). Declared by its COLUMN, as a trigger names it. G19 judges the
+    #: declaration on the day it is made; the other columns are AR status and
+    #: Stripe-mirror facts this slice does not freeze.
+    transition_classes = {"billing_owner_id": FROZEN}
+
     class Meta:
         db_table = "ubb_subscription_invoice"
         constraints = [
@@ -153,25 +170,15 @@ class SubscriptionInvoice(BaseModel):
                 "ck_subscription_invoice_economic_amount_only_in_usd"),
         ]
 
-    @classmethod
-    def from_db(cls, db, field_names, values):
-        instance = super().from_db(db, field_names, values)
-        # The historical owner as stored, so `save` can refuse a rewrite.
-        instance._stored_billing_owner_id = instance.__dict__.get("billing_owner_id")
-        return instance
-
-    def save(self, *args, **kwargs):
-        # THE HISTORICAL OWNER IS FIXED AT BIRTH (PLAN §7 item 27): a row read
-        # from the database keeps the owner it was created with. This door
-        # refuses a rewrite through save(); no production code writes the
-        # field after creation (`test_models.py` pins both).
-        stored = getattr(self, "_stored_billing_owner_id", None)
-        if stored is not None and self.billing_owner_id != stored:
-            raise ValueError(
-                f"SubscriptionInvoice {self.pk}: billing_owner is the historical "
-                "billing owner fixed when the invoice entered UBB and is never "
-                "rewritten (R10 Stage C2, PLAN §7 item 27).")
-        super().save(*args, **kwargs)
+    @property
+    def historical_billing_owner_id(self):
+        """The billing owner this invoice's payment failure counts against —
+        `billing_owner`, fixed when the invoice entered UBB (R10 Stage C2, PLAN
+        §7 item 27). The same name `CustomerUsageInvoice` answers from its own
+        `customer`, so no AR path chooses a column per table, and none reads
+        `customer` here, which is the Stripe mirror's customer and not the
+        owner."""
+        return self.billing_owner_id
 
     def __str__(self):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"

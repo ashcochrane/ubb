@@ -105,102 +105,118 @@ class TestSubscriptionInvoice:
 @pytest.mark.django_db
 class TestTheHistoricalBillingOwnerIsAFactFixedAtBirth:
     """R10 Stage C2, PLAN §7 item 27: `SubscriptionInvoice.billing_owner` is the
-    billing owner UBB resolved when the invoice entered UBB — required, and never
-    rewritten. Three doors, each pinned: the schema refuses a row without one,
-    `save` refuses a rewrite, and no production code writes the field anywhere but
-    the one creation site."""
+    billing owner UBB resolved when the invoice entered UBB — required, and
+    FROZEN after that. ADR-0007 §2's two layers, both pinned: the declaration
+    (`transition_classes`), and the database rule that keeps it
+    (`trg_subscription_invoice_declared_transitions`), driven through the three
+    doors — `QuerySet.update()`, `save()` and raw SQL — with the refusal's
+    MESSAGE asserted and the admitted moves beside it, because a rule that
+    refused every write would satisfy the refusals alone (django-patterns.md,
+    "Declared transition classes")."""
 
-    def _a_subscription(self):
+    TABLE = "ubb_subscription_invoice"
+    RULE = "trg_subscription_invoice_declared_transitions"
+    REFUSAL = "billing_owner_id is declared frozen"
+
+    def _an_invoice(self):
+        from apps.subscriptions.models import SubscriptionInvoice
         tenant = Tenant.objects.create(name="t", products=["metering", "billing"])
-        customer = Customer.objects.create(tenant=tenant, external_id="c")
+        holder = Customer.objects.create(tenant=tenant, external_id="holder")
+        owner = Customer.objects.create(tenant=tenant, external_id="owner")
+        other = Customer.objects.create(tenant=tenant, external_id="other")
         now = timezone.now()
         sub = a_mirrored_subscription(
-            tenant=tenant, customer=customer, stripe_subscription_id="sub_owner",
+            tenant=tenant, customer=holder, stripe_subscription_id="sub_owner",
             stripe_product_name="Plan", status="active", amount_micros=10_000_000,
             currency="usd", interval="month", current_period_start=now,
             current_period_end=now, last_synced_at=now)
-        return tenant, customer, sub
+        row = SubscriptionInvoice.objects.create(
+            tenant=tenant, customer=holder, billing_owner=owner, stripe_subscription=sub,
+            stripe_invoice_id="in_owned", amount_paid_micros=0, currency="usd")
+        return row, owner, other
+
+    def _stored_owner(self, row):
+        from apps.subscriptions.models import SubscriptionInvoice
+        return SubscriptionInvoice.objects.get(pk=row.pk).billing_owner_id
+
+    def test_the_declaration_is_frozen_and_the_rule_is_installed_by_its_name(self):
+        from apps.platform.work.tests._helpers import rule_names_on
+        from apps.subscriptions.models import SubscriptionInvoice
+        from core.transitions import FROZEN
+        assert SubscriptionInvoice.transition_classes == {"billing_owner_id": FROZEN}
+        assert rule_names_on(self.TABLE) == {self.RULE}
 
     def test_a_subscription_invoice_cannot_exist_without_a_billing_owner(self):
         from django.db import IntegrityError, transaction
         from apps.subscriptions.models import SubscriptionInvoice
-        tenant, customer, sub = self._a_subscription()
-        field = SubscriptionInvoice._meta.get_field("billing_owner")
-        assert field.null is False
+        row, _owner, _other = self._an_invoice()
+        assert SubscriptionInvoice._meta.get_field("billing_owner").null is False
         with pytest.raises(IntegrityError):
             with transaction.atomic():
                 SubscriptionInvoice.objects.create(
-                    tenant=tenant, customer=customer, stripe_subscription=sub,
+                    tenant=row.tenant, customer=row.customer,
+                    stripe_subscription=row.stripe_subscription,
                     stripe_invoice_id="in_no_owner", amount_paid_micros=0, currency="usd")
 
-    def test_the_owner_is_protected_and_never_rewritten_through_save(self):
-        from django.db.models import PROTECT
-        from apps.subscriptions.models import SubscriptionInvoice
-        tenant, customer, sub = self._a_subscription()
-        assert SubscriptionInvoice._meta.get_field("billing_owner").remote_field.on_delete is PROTECT
-        other = Customer.objects.create(tenant=tenant, external_id="other")
-        SubscriptionInvoice.objects.create(
-            tenant=tenant, customer=customer, billing_owner=customer, stripe_subscription=sub,
-            stripe_invoice_id="in_owned", amount_paid_micros=0, currency="usd")
-        row = SubscriptionInvoice.objects.get(stripe_invoice_id="in_owned")
-        row.status = "paid"
-        row.save()                                   # any other change saves as ever
-        row.billing_owner = other
-        with pytest.raises(ValueError, match="never rewritten"):
-            row.save()
-        assert SubscriptionInvoice.objects.get(
-            stripe_invoice_id="in_owned").billing_owner_id == customer.id
+    def test_the_owner_cannot_be_rewritten_through_any_door(self):
+        from apps.platform.work.tests._helpers import DOORS, refusal_from
+        row, owner, other = self._an_invoice()
+        for name, door in DOORS:
+            refused = refusal_from(door, row, billing_owner_id=other.id)
+            assert refused is not None, f"{name} rewrote the historical owner"
+            assert self.REFUSAL in refused, (name, refused)
+            assert self._stored_owner(row) == owner.id, name
 
-    def test_no_production_code_writes_billing_owner_but_the_creation_site(self):
-        """A static scan of every non-test, non-migration module that touches
-        `SubscriptionInvoice` (other models carry a `billing_owner_id` of their
-        own — a top-up attempt, a posting — and are not this fact): the only
-        place `billing_owner` is WRITTEN is the creation site's `defaults`
-        (`api/v1/webhooks.py`). No attribute assignment, no `update(...)` /
-        `update_or_create(...)` keyword, no other dict key — so a replay, the
-        sync, a settlement or any reconcile cannot move it. Reads are free."""
-        import ast
-        from pathlib import Path
-        root = Path(__file__).resolve().parents[3]          # ubb-platform/
-        writes, scanned = [], []
-        for path in sorted(root.rglob("*.py")):
-            rel = path.relative_to(root).as_posix()
-            if "/tests/" in f"/{rel}" or "/migrations/" in rel or rel.startswith(".venv"):
-                continue
-            source = path.read_text(encoding="utf-8")
-            if "SubscriptionInvoice" not in source:
-                continue
-            scanned.append(rel)
-            tree = ast.parse(source)
-            for node in ast.walk(tree):
-                targets = []
-                if isinstance(node, (ast.Assign, ast.AugAssign, ast.AnnAssign)):
-                    targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-                for target in targets:
-                    if (isinstance(target, ast.Attribute)
-                            and target.attr in ("billing_owner", "billing_owner_id")):
-                        writes.append(f"{rel}:{node.lineno} assigns .{target.attr}")
-                if isinstance(node, ast.Call):
-                    # A keyword is a WRITE only on a writing call — a filter,
-                    # exclude or get keyword reads.
-                    name = (node.func.attr if isinstance(node.func, ast.Attribute)
-                            else getattr(node.func, "id", ""))
-                    writing = name in {"create", "get_or_create", "update",
-                                       "update_or_create", "bulk_create",
-                                       "bulk_update", "SubscriptionInvoice"}
-                    for kw in node.keywords:
-                        if writing and kw.arg in ("billing_owner", "billing_owner_id"):
-                            writes.append(f"{rel}:{node.lineno} passes {kw.arg}=")
-                if isinstance(node, ast.Dict):
-                    for key in node.keys:
-                        if isinstance(key, ast.Constant) and key.value in (
-                                "billing_owner", "billing_owner_id"):
-                            writes.append(f"{rel}:{node.lineno} dict key {key.value!r}")
-        # The scan reached every module that reads or writes these rows.
-        assert {"apps/subscriptions/models.py", "apps/subscriptions/ports.py",
-                "api/v1/webhooks.py", "apps/billing/invoicing/tasks.py"} <= set(scanned), scanned
-        assert len(writes) == 1 and writes[0].startswith("api/v1/webhooks.py:"), writes
-        assert "dict key 'billing_owner'" in writes[0], writes
+    def test_everything_else_about_the_invoice_still_moves_and_the_owner_rides_along(self):
+        from apps.platform.work.tests._helpers import DOORS, refusal_from
+        row, owner, _other = self._an_invoice()
+        for name, door in DOORS:
+            # The admitted moves: an AR status change, a failure stamp, and
+            # re-stating the SAME owner — none is a change to the owner.
+            for columns in ({"status": "paid"}, {"payment_failed_at": timezone.now()},
+                            {"billing_owner_id": owner.id}):
+                assert refusal_from(door, row, **columns) is None, (name, columns)
+                assert self._stored_owner(row) == owner.id, (name, columns)
+
+    def test_the_owner_cannot_be_deleted_from_under_its_invoices(self):
+        from django.db.models import RESTRICT
+        from django.db.models.deletion import RestrictedError
+        from apps.subscriptions.models import SubscriptionInvoice
+        row, owner, _other = self._an_invoice()
+        field = SubscriptionInvoice._meta.get_field("billing_owner")
+        assert field.remote_field.on_delete is RESTRICT
+        with pytest.raises(RestrictedError):
+            Customer.all_objects.filter(pk=owner.pk).delete()
+        assert self._stored_owner(row) == owner.id
+
+    def test_a_sandbox_reset_still_wipes_a_tenant_holding_subscription_invoices(self):
+        """Why `RESTRICT` and not `PROTECT`: the reset deletes the tenant's
+        customers, cascading their invoices, and `PROTECT` refused that and left
+        the sandbox inactive. `RESTRICT` admits a delete that removes the
+        invoices in the same operation, and only that."""
+        from apps.platform.tenants.services.sandbox_service import get_or_create_sandbox
+        from apps.platform.tenants.tasks import reset_sandbox_tenant_sync
+        from apps.subscriptions.models import SubscriptionInvoice
+        live = Tenant.objects.create(name="Live", products=["metering", "billing"])
+        sandbox = get_or_create_sandbox(live)
+        holder = Customer.objects.create(tenant=sandbox, external_id="holder")
+        owner = Customer.objects.create(tenant=sandbox, external_id="owner")
+        now = timezone.now()
+        sub = a_mirrored_subscription(
+            tenant=sandbox, customer=holder, stripe_subscription_id="sub_sandbox",
+            stripe_product_name="Plan", status="active", amount_micros=1_000_000,
+            currency="usd", interval="month", current_period_start=now,
+            current_period_end=now, last_synced_at=now)
+        for customer in (holder, owner):
+            SubscriptionInvoice.objects.create(
+                tenant=sandbox, customer=customer, billing_owner=owner,
+                stripe_subscription=sub, stripe_invoice_id=f"in_{customer.external_id}",
+                amount_paid_micros=0, currency="usd")
+        result = reset_sandbox_tenant_sync(sandbox.id, keep_config=True)
+        assert result["status"] == "completed"
+        sandbox.refresh_from_db()
+        assert sandbox.is_active
+        assert not SubscriptionInvoice.objects.filter(tenant=sandbox).exists()
 
 
 @pytest.mark.django_db

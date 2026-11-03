@@ -318,8 +318,7 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
         # applied now or a missed webhook already applied it — and billing
         # then decides, at its one reactivation site, whether the row's
         # HISTORICAL owner (its own `customer`, I5) comes back.
-        settled_owner_id = (row.customer_id
-                            if settle_failure_stamp(row, row.payment_status) else None)
+        settled_owner_id = settle_failure_stamp(row, row.payment_status)
         row.save()
     if settled_owner_id is not None:
         LiveCounter.clear_payment_failed_suspension(settled_owner_id)

@@ -274,15 +274,17 @@ def _mark_invoice_payment_failed(event):
         # THE HISTORICAL OWNER (PLAN §7 item 27): a usage invoice's own
         # `customer` IS the billing owner it was issued to (the claim keys the
         # row on it, I5) — never re-derived from today's topology.
-        return row.customer_id
+        return row.historical_billing_owner_id
 
 
 def handle_invoice_payment_failed(event):
     """Handle invoice.payment_failed — stamp the local invoice + suspend the
     billing owner it represents (R10 Stage C2, F-6, RULED Q4).
 
-    The suspension targets the canonical billing owner of the MATCHED LOCAL
-    usage/subscription invoice — never whichever local customer happens to
+    The suspension targets the HISTORICAL billing owner of the MATCHED LOCAL
+    usage/subscription invoice — the owner fixed when that invoice entered UBB
+    (PLAN §7 item 27), never one re-derived from today's topology, and never
+    whichever local customer happens to
     carry the Stripe customer id — writes `suspension_reason = payment_failed`
     and emits `customer.suspended`, so the suspension says why and the AR
     clear (`LiveCounter.clear_payment_failed_suspension`) can tell it apart

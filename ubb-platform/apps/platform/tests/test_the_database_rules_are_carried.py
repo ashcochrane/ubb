@@ -1,4 +1,5 @@
-"""THE TWENTY-ONE DATABASE RULES ARE CARRIED, WHOLE, BY THE FRESH INITIAL SET (#190).
+"""THE DATABASE RULES ARE CARRIED, WHOLE: THE FRESH INITIAL SET'S TWENTY-ONE (#190),
+AND THE ONE WRITTEN SINCE (R10 Stage C2).
 
 The cutover squashed 287 migrations into one generated `0001_initial` per app plus
 a hand-written `0002_the_database_rules` in each of the six apps that own a
@@ -11,7 +12,11 @@ ruled (2026-10-29, points 1 and 5):
   by migrating an EMPTY database (pytest-django creates it afresh every run; there
   is no `--reuse-db`), so the exact set asserted here is proof, on every run, that
   the fresh set installs all twenty-one without relying on a database that
-  already held them;
+  already held them — and, since R10 Stage C2, the twenty-second: the first rule
+  written after the cutover, `trg_subscription_invoice_declared_transitions`
+  (PLAN §7 item 27), carried in the same shape by a
+  `subscriptions/0002_the_database_rules` that depends on that app's schema leaf
+  (`0002_subscriptioninvoice_billing_owner`) like every other;
 - **each body is the carried text**, byte for byte, as installed;
 - **each rules migration depends on the schema leaf of every app owning a table
   its SQL reads** — never an assumed `0001` — and every table and column a rule
@@ -38,7 +43,8 @@ from django.test import SimpleTestCase, TestCase
 
 RULES_MIGRATION = "0002_the_database_rules"
 
-#: The six apps that own a database rule, and the package each lives in.
+#: The seven apps that own a database rule, and the package each lives in —
+#: the cutover's six and, since R10 Stage C2, `subscriptions`.
 RULE_OWNERS = {
     "pricing": "apps.metering.pricing",
     "usage": "apps.metering.usage",
@@ -46,6 +52,7 @@ RULE_OWNERS = {
     "event_types": "apps.platform.event_types",
     "tenants": "apps.platform.tenants",
     "code_builder": "apps.platform.code_builder",
+    "subscriptions": "apps.subscriptions",
 }
 
 #: THE STATED MAPPING (§0.3 point 1): each rule, the app whose rules migration
@@ -148,6 +155,12 @@ READS = {
             "ubb_blueprint_snapshot": ["configuration_fingerprint", "content",
                                        "tenant_id"],
         }),
+    # R10 Stage C2 (PLAN §7 item 27): a subscription invoice's historical
+    # billing owner is FROZEN.
+    "trg_subscription_invoice_declared_transitions": (
+        "subscriptions", "ubb_subscription_invoice", {
+            "ubb_subscription_invoice": ["billing_owner_id"],
+        }),
 }
 
 #: The one deferred constraint trigger (#473 row 3): its semantics are part of
@@ -165,7 +178,7 @@ def rules_migration(app):
 
 
 def carried_rules():
-    """`{trigger: (app, function, table, sql)}` out of the six rules migrations."""
+    """`{trigger: (app, function, table, sql)}` out of the seven rules migrations (the cutover's six and subscriptions', R10 Stage C2)."""
     rules = {}
     for app in RULE_OWNERS:
         for operation in rules_migration(app).Migration.operations:
@@ -237,14 +250,14 @@ def wrong_dependencies(app, declared, reads, owners, graph):
 
 
 # ---------------------------------------------------------------------------
-# Installed: exactly the twenty-one, each the carried text
+# Installed: exactly the twenty-two, each the carried text
 # ---------------------------------------------------------------------------
 
 class TheFreshSetInstallsEveryRuleTest(TestCase):
 
     def test_the_rules_migrations_carry_exactly_the_stated_rules(self):
         carried = carried_rules()
-        self.assertEqual(len(carried), 21)
+        self.assertEqual(len(carried), 22)
         self.assertEqual(set(carried), set(READS))
         for trigger, (app, function, table, _sql) in carried.items():
             with self.subTest(rule=trigger):

@@ -79,8 +79,9 @@ class TestSeatRemoveHook(TestCase):
         spy.assert_called_once()
         assert spy.call_args.args[2] == 2 or spy.call_args.kwargs.get("new_seats") == 2
 
-    # R10 Stage C2 (F-6, RULED Q4): a payment-failed suspension targets the
-    # canonical billing owner of the MATCHED LOCAL invoice, never whichever
+    # R10 Stage C2 (F-6, RULED Q4, PLAN §7 item 27): a payment-failed
+    # suspension targets the HISTORICAL billing owner of the MATCHED LOCAL
+    # invoice (fixed when the invoice entered UBB), never whichever
     # customer carries the Stripe customer id, and an unmatched Stripe invoice
     # suspends nobody. The pin this replaces drove the handler with an invoice
     # that matched no local row and expected the seat suspended — the defect.
