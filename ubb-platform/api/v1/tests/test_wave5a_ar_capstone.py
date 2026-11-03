@@ -976,9 +976,9 @@ class TestAnInvoiceKeepsItsHistoricalBillingOwner(TestCase):
                 self._hourly_pass()
                 row = SubscriptionInvoice.objects.get(stripe_invoice_id=inv_id)
                 self.assertIsNotNone(row.payment_failed_at)           # still unresolved
-                self.assertEqual(row.billing_owner_id, biz.id)        # still the business's
                 self.assertEqual(self._standing(biz), ("suspended", reasons.PAYMENT_FAILED))
                 self.assertFalse(self._reactivated(biz).exists())
+                self.assertEqual(row.billing_owner_id, biz.id)        # still the business's
 
                 self._deliver(handler, inv_id, sub_id)
                 row.refresh_from_db()
