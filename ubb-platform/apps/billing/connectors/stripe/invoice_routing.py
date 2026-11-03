@@ -86,3 +86,62 @@ def _invoice_subscription_id(inv):
     details = getattr(parent, "subscription_details", None) if parent else None
     s = getattr(details, "subscription", None) if details else None
     return s if isinstance(s, str) else getattr(s, "id", None)
+
+
+# --- AR recovery: the clear of a payment-failed suspension (R10 Stage C2,
+# F-6, RULED Q4) ------------------------------------------------------------
+#
+# An `invoice.payment_failed` for a LOCAL usage or subscription invoice
+# suspends the canonical billing OWNER that invoice represents, with
+# `suspension_reason = payment_failed`. The suspension clears from durable
+# truth and nothing else: a paid invoice clears ITS `payment_failed_at`, and
+# the owner is reactivated only when it is suspended for `payment_failed` and
+# NO qualifying failed/unpaid local invoice of that owner remains — usage or
+# subscription — so paying one invoice while another failure stands never
+# reactivates too early. Both the webhook fast path (`api/v1/webhooks.py`)
+# and the hourly AR poller (`invoicing/tasks.py`, `subscriptions/ports.py`)
+# end in `reactivate_owner_if_no_payment_failure_remains`, so the two lanes
+# cannot disagree about when an owner comes back. Lives in the connector kit
+# because the subscriptions repair must reach it (ADR-001 decision 5), and
+# asks subscriptions through its port, never its ORM.
+
+#: The payment statuses under which a stamped invoice no longer QUALIFIES as
+#: a standing failure: paid (resolved) and void (never collectible). An open
+#: or uncollectible invoice with `payment_failed_at` set still stands.
+SETTLED_PAYMENT_STATUSES = ("paid", "void")
+
+
+def billing_owner_rows(owner_id):
+    """The local invoice rows that belong to the billing OWNER ``owner_id``:
+    its own, and those of the pooled seats it funds (`resolve_billing_owner`'s
+    one rule as a predicate). Shared by the usage table here and the
+    subscription table behind the port, so both lanes draw the owner's line
+    the same way."""
+    from django.db.models import Q
+    return (Q(customer_id=owner_id)
+            | Q(customer__account_type="seat", customer__parent_id=owner_id,
+                customer__parent__billing_topology="pooled"))
+
+
+def a_payment_failure_remains_for(owner_id) -> bool:
+    """Does any qualifying failed/unpaid local invoice — usage or subscription
+    — of this billing owner still stand?"""
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    from apps.subscriptions.ports import has_unsettled_subscription_payment_failure
+    usage = (CustomerUsageInvoice.objects
+             .filter(billing_owner_rows(owner_id), payment_failed_at__isnull=False)
+             .exclude(payment_status__in=SETTLED_PAYMENT_STATUSES)
+             .exists())
+    return usage or has_unsettled_subscription_payment_failure(owner_id)
+
+
+def reactivate_owner_if_no_payment_failure_remains(owner_id) -> bool:
+    """After a local invoice of ``owner_id`` became paid: reactivate the owner
+    ONLY when it is suspended for `payment_failed` and no qualifying failed/
+    unpaid local invoice remains. Every other suspension reason — `hard_floor`,
+    `customer_spend_pool`, `dispute_lost`, manual/unknown — is left standing: a
+    paid invoice resolves none of those. Returns True when the owner moved."""
+    from apps.billing.gating.services.live_counter import LiveCounter
+    if a_payment_failure_remains_for(owner_id):
+        return False
+    return LiveCounter.clear_payment_failed_suspension(owner_id)

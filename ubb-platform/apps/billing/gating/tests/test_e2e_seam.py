@@ -15,6 +15,9 @@ the same flag/owner/counter (the divergent-flag class of bug would fail here):
 task-limit fan-out in test_p6_fanout. This seam covers the synchronous spine.)
 """
 import json
+import uuid
+from dataclasses import asdict
+from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
@@ -23,10 +26,15 @@ from django.test import Client
 from apps.metering.pricing.tests._helpers import (
     a_rule_that_prices_what_it_measures, priced_at)
 from apps.metering.usage.models import Posting
+from apps.billing.gating.models import StopSignalState
+from apps.billing.gating.services.live_counter import Door
+from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
+from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant, TenantApiKey
-from apps.platform.events.schemas import CustomerStopCleared
+from apps.platform.events.schemas import (
+    CustomerReactivated, CustomerStopCleared, CustomerStopped, UsageRecorded)
 from apps.platform.work import reasons
 
 
@@ -114,9 +122,14 @@ class TestEnforcementSeam:
         # 6. Start-gate ALLOWS again (recovery — the seam closes the loop).
         assert start().status_code == 200
 
-    def test_off_tenant_pipeline_never_stops(self):
+    def test_off_tenant_pipeline_never_stops(self, django_capture_on_commit_callbacks):
         # Control: the identical flow with enforcement_mode=off never stops or
         # blocks — proving the entire pipeline is gated by the single flag.
+        # R10 Stage C2 (F-1) then closes the `off` loop too: the silent
+        # level-based suspension the drawdown lands is lifted by a credit
+        # through the on-commit credit hook, from the durable balance, with
+        # none of the enforcing artefacts and exactly one
+        # `customer.reactivated`.
         client = Client()
         t = Tenant.objects.create(name="Off", products=["metering", "billing"],
                                   billing_mode="prepaid", enforcement_mode="off")
@@ -135,3 +148,44 @@ class TestEnforcementSeam:
         p2 = client.post("/api/v1/tasks", data=json.dumps(
             {"customer_id": str(c.id), "idempotency_key": "attempt-2"}), **hdr)
         assert p2.status_code == 200  # off => never blocks on the flag
+
+        # The drawdown lands asynchronously (the outbox handler) and applies
+        # the silent Tier-1 level test: 10M - 50M = -40M, past the floor.
+        posting = Posting.objects.get(tenant=t, idempotency_key="k1")
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None, tenant_id=t.id, customer_id=c.id,
+            event_id=str(posting.id), cost_micros=50_000_000)))
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", reasons.HARD_FLOOR)
+        assert not StopSignalState.objects.filter(owner=c).exists()
+        p3 = client.post("/api/v1/tasks", data=json.dumps(
+            {"customer_id": str(c.id), "idempotency_key": "attempt-3"}), **hdr)
+        assert p3.status_code == 409  # suspended: the standing refuses a start
+
+        # A top-up restores the balance (-40M + 45M = 5M). The credit hook is
+        # ON-COMMIT: captured here as it fires in life, with the outbox's
+        # Celery hand-off patched away — and under `off` it runs the DURABLE
+        # balance gate only.
+        with patch("apps.platform.events.tasks.process_single_event"):
+            with django_capture_on_commit_callbacks(execute=True):
+                cr = client.post("/api/v1/billing/credit", data=json.dumps({
+                    "customer_id": "jim", "amount_micros": 45_000_000,
+                    "source": "topup", "reference": "tp1",
+                    "idempotency_key": "idem_tp1"}), **hdr)
+        assert cr.status_code == 200, cr.content
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("active", "")
+        reactivated = OutboxEvent.objects.filter(event_type=CustomerReactivated.EVENT_TYPE)
+        assert reactivated.count() == 1
+        assert reactivated.get().payload["reason_code"] == reasons.HARD_FLOOR
+        assert reactivated.get().payload["balance_micros"] == 5_000_000
+        # None of the enforcing-only artefacts: no episode, no flag, no
+        # counter, no stop pair — the control layer stayed off.
+        assert not StopSignalState.objects.filter(owner=c).exists()
+        assert Door.stop_reason(c.id) is None
+        assert Door.balance(c.id) is None
+        assert not OutboxEvent.objects.filter(event_type__in=[
+            CustomerStopped.EVENT_TYPE, CustomerStopCleared.EVENT_TYPE]).exists()
+        p4 = client.post("/api/v1/tasks", data=json.dumps(
+            {"customer_id": str(c.id), "idempotency_key": "attempt-4"}), **hdr)
+        assert p4.status_code == 200  # recovered: a start is admitted again

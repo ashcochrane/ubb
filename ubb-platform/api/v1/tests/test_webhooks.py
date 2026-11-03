@@ -665,6 +665,89 @@ class ChargeDisputeClosedTest(RailActivated, TestCase):
 
         self.customer.refresh_from_db()
         self.assertEqual(self.customer.status, "suspended")
+        # R10 Stage C2 (F-6): the suspension says why, and announces itself.
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.work import reasons
+        self.assertEqual(self.customer.suspension_reason, reasons.DISPUTE_LOST)
+        suspended = OutboxEvent.objects.filter(
+            event_type="customer.suspended", payload__customer_id=str(self.customer.id))
+        self.assertEqual(suspended.count(), 1)
+        self.assertEqual(suspended.get().payload["reason"], reasons.DISPUTE_LOST)
+        self.assertEqual(suspended.get().payload["balance_micros"], -1_000_000)
+
+    def _lost_dispute_past_the_floor(self):
+        event = MagicMock()
+        event.data.object.id = "dp_c2_lost"
+        event.data.object.charge = "ch_dispute_2"
+        event.data.object.status = "lost"
+        event.data.object.amount = 1100  # 11M micros: 10M -> -1M, past the 0 floor
+        event.data.object.currency = "usd"
+        event.account = "acct_test"
+        handle_charge_dispute_closed(event)
+        self.customer.refresh_from_db()
+        from apps.platform.work import reasons
+        self.assertEqual((self.customer.status, self.customer.suspension_reason),
+                         ("suspended", reasons.DISPUTE_LOST))
+
+    def _reactivated(self):
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.schemas import CustomerReactivated
+        return OutboxEvent.objects.filter(
+            event_type=CustomerReactivated.EVENT_TYPE,
+            payload__customer_id=str(self.customer.id))
+
+    def test_a_lost_dispute_suspension_clears_only_when_the_durable_balance_recovers(self):
+        """RULED Q4 b: `dispute_lost` clears through the durable balance-
+        recovery rule — the balance back at or above the floor, the very
+        condition the suspend tested — and by nothing else. This tenant is
+        `off`: no enforcing artefact is involved."""
+        from apps.billing.wallets import operations as wallet_ops
+        from apps.platform.work import reasons
+        self._lost_dispute_past_the_floor()                      # balance -1M
+        with self.captureOnCommitCallbacks(execute=True):
+            wallet_ops.credit(customer_id=self.customer.id, tenant=self.tenant,
+                              amount_micros=500_000, idempotency_key="c2_cr_1")  # -0.5M: still past
+        self.customer.refresh_from_db()
+        self.assertEqual(self.customer.status, "suspended")
+        self.assertFalse(self._reactivated().exists())
+        with patch("apps.platform.events.tasks.process_single_event"), \
+                self.captureOnCommitCallbacks(execute=True):
+            wallet_ops.credit(customer_id=self.customer.id, tenant=self.tenant,
+                              amount_micros=1_500_000, idempotency_key="c2_cr_2")  # 1M: recovered
+        self.customer.refresh_from_db()
+        self.assertEqual((self.customer.status, self.customer.suspension_reason), ("active", ""))
+        self.assertEqual(self._reactivated().count(), 1)
+        payload = self._reactivated().get().payload
+        self.assertEqual(payload["reason_code"], reasons.DISPUTE_LOST)
+        self.assertEqual(payload["balance_micros"], 1_000_000)
+
+    def test_a_paid_invoice_never_clears_a_lost_dispute_suspension(self):
+        """RULED Q4 b/the additions: payment resolution clears `payment_failed`
+        and nothing else — a lost dispute is a wallet fact, not an AR one."""
+        from datetime import date
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from api.v1.webhooks import handle_invoice_paid
+        from apps.platform.work import reasons
+        self._lost_dispute_past_the_floor()
+        CustomerUsageInvoice.objects.create(
+            tenant=self.tenant, customer=self.customer, period_start=date(2026, 1, 1),
+            period_end=date(2026, 2, 1), status="pushed", stripe_invoice_id="in_c2_disp",
+            payment_status="open", payment_failed_at=timezone.now())
+        inv = MagicMock()
+        inv.id = "in_c2_disp"
+        inv.subscription = None
+        inv.parent = None
+        inv.hosted_invoice_url = ""
+        inv.invoice_pdf = ""
+        event = MagicMock(account="acct_test", livemode=True)
+        event.data.object = inv
+        handle_invoice_paid(event)
+        row = CustomerUsageInvoice.objects.get(stripe_invoice_id="in_c2_disp")
+        self.assertEqual((row.payment_status, row.payment_failed_at), ("paid", None))
+        self.customer.refresh_from_db()
+        self.assertEqual((self.customer.status, self.customer.suspension_reason),
+                         ("suspended", reasons.DISPUTE_LOST))
+        self.assertFalse(self._reactivated().exists())
 
     def test_dispute_no_suspend_when_above_min(self):
         """Dispute deduction that keeps balance above min_balance does not suspend."""

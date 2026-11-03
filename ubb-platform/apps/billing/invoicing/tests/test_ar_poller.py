@@ -237,3 +237,116 @@ class RepairTransitionParityTest(RailActivated, TestCase):
         self.assertTrue(any("ar.reconcile_unexpected_regression" in m for m in logs.output))
         si.refresh_from_db()
         self.assertEqual(si.status, "paid")
+
+
+class PollerClearsAPaymentFailedSuspensionTest(RailActivated, TestCase):
+    """R10 Stage C2, F-6: the hourly AR poller observing `paid` is the second
+    lane of the clear — it clears THAT row's `payment_failed_at` and
+    reactivates the owner only when no qualifying failed/unpaid local invoice
+    (usage or subscription) remains, through the same kit function the
+    webhook fast path ends in, so the two lanes cannot disagree."""
+
+    PS = datetime.date(2026, 6, 1)
+    PE = datetime.date(2026, 7, 1)
+
+    def setUp(self):
+        from apps.platform.work import reasons
+        self.t = Tenant.objects.create(
+            name="PP", products=["metering", "billing"], billing_mode="postpaid",
+            stripe_connected_account_id="acct_x", charges_enabled=True)
+        self.c = Customer.objects.create(
+            tenant=self.t, external_id="c1", stripe_customer_id="cus_1",
+            status="suspended", suspension_reason=reasons.PAYMENT_FAILED)
+
+    def _poll(self, *invoices):
+        from apps.billing.invoicing.tasks import reconcile_invoice_payment_status
+        with patch("apps.billing.invoicing.tasks.stripe.Invoice.list",
+                   return_value=_invoice_list(*invoices)):
+            reconcile_invoice_payment_status()
+
+    def _standing(self):
+        self.c.refresh_from_db()
+        return self.c.status, self.c.suspension_reason
+
+    def _reactivated(self):
+        from apps.platform.events.models import OutboxEvent
+        from apps.platform.events.schemas import CustomerReactivated
+        return OutboxEvent.objects.filter(event_type=CustomerReactivated.EVENT_TYPE)
+
+    def test_a_paid_usage_invoice_observed_by_the_poller_clears(self):
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from apps.platform.work import reasons
+        rec = CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_x", payment_status="open",
+            payment_failed_at=timezone.now())
+        self._poll(_stripe_invoice("in_x", "paid"))
+        rec.refresh_from_db()
+        self.assertEqual((rec.payment_status, rec.payment_failed_at), ("paid", None))
+        self.assertEqual(self._standing(), ("active", ""))
+        self.assertEqual(self._reactivated().count(), 1)
+        self.assertEqual(self._reactivated().get().payload["reason_code"], reasons.PAYMENT_FAILED)
+        self._poll(_stripe_invoice("in_x", "paid"))      # the next hour: nothing twice
+        self.assertEqual(self._reactivated().count(), 1)
+
+    def test_a_missed_paid_webhook_whose_stamp_lingers_is_settled_by_the_poller(self):
+        # The row is already paid (the webhook applied it before C2 shipped,
+        # or a race), but its failure stamp lingers: the equal-status pass
+        # still settles it.
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        rec = CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_x", payment_status="paid",
+            paid_at=timezone.now(), payment_failed_at=timezone.now())
+        self._poll(_stripe_invoice("in_x", "paid"))
+        rec.refresh_from_db()
+        self.assertIsNone(rec.payment_failed_at)
+        self.assertEqual(self._standing(), ("active", ""))
+
+    def test_a_paid_subscription_invoice_observed_by_the_poller_clears(self):
+        from apps.subscriptions.models import SubscriptionInvoice
+        now = timezone.now()
+        sub = a_mirrored_subscription(
+            tenant=self.t, customer=self.c, stripe_subscription_id="sub_1",
+            stripe_product_name="P", status="active", amount_micros=1_000_000,
+            interval="month", quantity=1, current_period_start=now,
+            current_period_end=now, last_synced_at=now)
+        si = SubscriptionInvoice.objects.create(
+            tenant=self.t, customer=self.c, stripe_subscription=sub,
+            stripe_invoice_id="in_s", status="open", payment_failed_at=now)
+        self._poll(_stripe_invoice("in_s", "paid", subscription="sub_1"))
+        si.refresh_from_db()
+        self.assertEqual((si.status, si.payment_failed_at), ("paid", None))
+        self.assertEqual(self._standing(), ("active", ""))
+        self.assertEqual(self._reactivated().count(), 1)
+
+    def test_the_poller_never_reactivates_while_another_failure_remains(self):
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from apps.platform.work import reasons
+        paid_now = CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_a", payment_status="open",
+            payment_failed_at=timezone.now())
+        still_failed = CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=self.c, period_start=datetime.date(2026, 7, 1),
+            period_end=datetime.date(2026, 8, 1), status="pushed",
+            stripe_invoice_id="in_b", payment_status="open", payment_failed_at=timezone.now())
+        self._poll(_stripe_invoice("in_a", "paid"), _stripe_invoice("in_b", "open"))
+        paid_now.refresh_from_db()
+        still_failed.refresh_from_db()
+        self.assertIsNone(paid_now.payment_failed_at)
+        self.assertIsNotNone(still_failed.payment_failed_at)
+        self.assertEqual(self._standing(), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertFalse(self._reactivated().exists())
+
+    def test_the_poller_never_clears_a_money_suspension(self):
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from apps.platform.work import reasons
+        Customer.objects.filter(id=self.c.id).update(suspension_reason=reasons.HARD_FLOOR)
+        CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_x", payment_status="open",
+            payment_failed_at=timezone.now())
+        self._poll(_stripe_invoice("in_x", "paid"))
+        self.assertEqual(self._standing(), ("suspended", reasons.HARD_FLOOR))
+        self.assertFalse(self._reactivated().exists())

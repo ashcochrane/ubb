@@ -43,7 +43,9 @@ def _per_owner_reconcile(tenant):
     """One tenant's per-owner reconcile loop — the shared body of the hourly
     beat and the live-counter-maintenance toggle choreography (#46, §E).
     Drives the MIN/MAX counter merges (maintenance on) and the durable-basis
-    signal catch-up + flag re-alignment (never off) for every billing owner.
+    signal catch-up + flag re-alignment (never off) for every billing owner
+    of an ENFORCING tenant; for an ``off`` tenant it runs only the durable
+    balance check over the floor-suspended owners (R10 Stage C2, F-1).
     Never raises; returns the flag-realignment count (#44 §C.2)."""
     from apps.platform.customers.models import ACCOUNT_TYPE_SEAT, Customer
     from apps.billing.wallets.models import Wallet
@@ -56,10 +58,30 @@ def _per_owner_reconcile(tenant):
     def _count(outcome):
         return 1 if outcome and outcome.get("flag_realigned") else 0
 
+    from apps.platform.tenants.flags import enforcing, holds_a_wallet
+    if not enforcing(tenant):
+        # R10 Stage C2 (F-1): under `off` the hourly pass visits ONLY the
+        # owners the silent level test suspended on the wallet's floor (or
+        # a lost dispute left past it), for the durable balance check and
+        # nothing else — no counter merge, no signal catch-up, no flag. A
+        # suspended owner is refused every start, so the credit hook is its
+        # only other way back; this pass is the backstop for a credit whose
+        # hook was lost. No wallet, no floor, nothing to visit.
+        if holds_a_wallet(tenant):
+            for owner_id in Customer.all_objects.filter(
+                    tenant=tenant, status="suspended",
+                    suspension_reason__in=(reasons.HARD_FLOOR, reasons.DISPUTE_LOST),
+            ).values_list("id", flat=True):
+                try:
+                    LiveCounter.recover_from_durable_balance(owner_id, tenant)
+                except Exception:
+                    logger.exception("live_counter.off_recovery_failed",
+                                     extra={"data": {"owner_id": str(owner_id)}})
+        return 0
+
     try:
         # Owners to visit: where there is no wallet (`postpaid`, `external`)
         # the period's recorded customers; where there is one, its holders.
-        from apps.platform.tenants.flags import holds_a_wallet
         if not holds_a_wallet(tenant):
             _label, start, end = _period()
             cust_ids = list(get_customer_ids_with_postings(tenant.id, start, end))
@@ -124,15 +146,16 @@ def reconcile_live_ledgers():
     unit's dead-lettered announcement — is NOT: declaring a ceiling is
     itself the opt-in (#150 §11.2), the recording lane stops on it whatever
     the switch says, so a crashed stop is repaired for every tenant. This
-    loop gates the per-owner reconcile on the switch and hands every tenant
-    to ``run_patrol``, which makes the split between its legs."""
-    from apps.platform.tenants.flags import enforcing
+    loop hands every tenant to ``_per_owner_reconcile``, which makes the
+    switch's split itself (R10 Stage C2: under ``off`` it runs the durable
+    balance check for the floor-suspended owners of a wallet-holding tenant
+    and nothing else), and to ``run_patrol``, which makes the split between
+    its legs."""
     from apps.platform.tenants.models import Tenant
     from apps.billing.gating import patrol
 
     for tenant in Tenant.objects.iterator():
-        flag_realigned = (_per_owner_reconcile(tenant)
-                          if enforcing(tenant) else 0)
+        flag_realigned = _per_owner_reconcile(tenant)
         try:
             patrol.run_patrol(tenant, flag_realigned=flag_realigned)
         except Exception:

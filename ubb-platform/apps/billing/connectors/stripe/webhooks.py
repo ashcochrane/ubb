@@ -210,6 +210,11 @@ def _mark_invoice_payment_failed(event):
     terminal status. Routes by subscription presence the same way the billing AR
     reconcile does; the subscription side is stamped by the subscriptions port
     (billing never touches subscriptions internals).
+
+    Returns the canonical BILLING OWNER (a Customer) the matched local invoice
+    represents — the customer the suspension below targets (R10 Stage C2,
+    RULED Q4 a) — or None when no local usage/subscription invoice matches
+    the Stripe invoice, in which case nobody is suspended (Q4 c).
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.subscriptions.ports import mark_invoice_payment_failed_for_subscription
@@ -218,55 +223,72 @@ def _mark_invoice_payment_failed(event):
     acct = event.account
     invoice_id = getattr(inv, "id", None)
     if not acct or not invoice_id:
-        return
+        return None
     sub_id = _invoice_subscription_id(inv)
     if sub_id:
-        mark_invoice_payment_failed_for_subscription(
+        owner_id = mark_invoice_payment_failed_for_subscription(
             acct, sub_id, invoice_id, inv, livemode=event_livemode(event))
-    else:
-        existing = CustomerUsageInvoice.objects.filter(
-            stripe_invoice_id=invoice_id,
-            tenant__stripe_connected_account_id=acct,
-            **livemode_filter(event),
-        ).first()
-        if not existing:
-            return
-        with transaction.atomic():
-            row = CustomerUsageInvoice.objects.select_for_update().get(id=existing.id)
-            row.payment_failed_at = timezone.now()
-            _refresh_urls(row, inv)
-            row.save(update_fields=[
-                "payment_failed_at", "hosted_invoice_url", "invoice_pdf", "updated_at",
-            ])
+        if owner_id is None:
+            return None
+        return Customer.objects.select_related("tenant").get(id=owner_id)
+    existing = CustomerUsageInvoice.objects.filter(
+        stripe_invoice_id=invoice_id,
+        tenant__stripe_connected_account_id=acct,
+        **livemode_filter(event),
+    ).first()
+    if not existing:
+        return None
+    with transaction.atomic():
+        row = CustomerUsageInvoice.objects.select_for_update().get(id=existing.id)
+        row.payment_failed_at = timezone.now()
+        _refresh_urls(row, inv)
+        row.save(update_fields=[
+            "payment_failed_at", "hosted_invoice_url", "invoice_pdf", "updated_at",
+        ])
+    return (Customer.objects.select_related("tenant", "parent")
+            .get(id=row.customer_id).resolve_billing_owner())
 
 
 def handle_invoice_payment_failed(event):
-    """Handle invoice.payment_failed — stamp the invoice + suspend customer."""
-    inv = event.data.object
-    connected_account = event.account
+    """Handle invoice.payment_failed — stamp the local invoice + suspend the
+    billing owner it represents (R10 Stage C2, F-6, RULED Q4).
+
+    The suspension targets the canonical billing owner of the MATCHED LOCAL
+    usage/subscription invoice — never whichever local customer happens to
+    carry the Stripe customer id — writes `suspension_reason = payment_failed`
+    and emits `customer.suspended`, so the suspension says why and the AR
+    clear (`invoice_routing.reactivate_owner_if_no_payment_failure_remains`)
+    can tell it apart from a money suspension. A Stripe payment-failure event
+    with no matching local invoice suspends nobody. Applies in every mode: a
+    payment failure is not a spend control.
+    """
+    from apps.billing.gating.services.stop_signal_service import announced_balance
+    from apps.platform.events.outbox import write_event
+    from apps.platform.events.schemas import CustomerSuspended
+    from apps.platform.work import reasons
 
     # AR: stamp payment_failed_at + refresh hosted url on the customer invoice
-    # (status-only). Runs first and independently of the suspend below.
-    _mark_invoice_payment_failed(event)
-
-    customer = Customer.objects.filter(
-        stripe_customer_id=inv.customer,
-        tenant__stripe_connected_account_id=connected_account,
-        **livemode_filter(event),
-    ).first()
-    if not customer:
+    # (status-only), and learn whose invoice it is.
+    owner = _mark_invoice_payment_failed(event)
+    if owner is None:
         return
 
-    # Handler-level idempotency: already suspended = skip
-    if customer.status == "suspended":
+    # Handler-level idempotency: already suspended (for any reason) = skip —
+    # a standing suspension keeps its own reason.
+    if owner.status == "suspended":
         return
 
     with transaction.atomic():
-        customer = lock_customer(customer.id)
+        customer = lock_customer(owner.id)
         if customer.status == "suspended":
             return
         customer.status = "suspended"
-        customer.save(update_fields=["status", "updated_at"])
+        customer.suspension_reason = reasons.PAYMENT_FAILED
+        customer.save(update_fields=["status", "suspension_reason", "updated_at"])
+        write_event(CustomerSuspended(
+            tenant_id=str(customer.tenant_id), customer_id=str(customer.id),
+            reason=reasons.PAYMENT_FAILED,
+            balance_micros=announced_balance(customer.id, customer.tenant)))
         # A suspended seat leaves the active roster: push the decremented seat
         # count to the business's subscription on commit.
         if customer.account_type == "seat" and customer.parent_id:
@@ -369,11 +391,26 @@ def handle_charge_dispute_closed(event):
         # actually reads for every seat funded by this wallet.
         from apps.billing.queries import get_customer_min_balance
         from core.crossing import past_floor
+        from apps.billing.gating.services.stop_signal_service import announced_balance
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.schemas import CustomerSuspended
+        from apps.platform.work import reasons
         owner = Customer.objects.select_for_update().get(id=owner_id)
         threshold = get_customer_min_balance(owner.id, owner.tenant_id)
         if past_floor(result.balance_micros, threshold) and owner.status == "active":
+            # R10 Stage C2 (F-6): the suspension says why — `dispute_lost`,
+            # a registry reason — and announces itself. It clears ONLY by the
+            # durable balance-recovery rule (the balance back at or above the
+            # floor — the very condition tested here), never because an
+            # invoice became paid (`LiveCounter._MONEY_SUSPEND_REASONS`).
             owner.status = "suspended"
-            owner.save(update_fields=["status", "updated_at"])
+            owner.suspension_reason = reasons.DISPUTE_LOST
+            owner.save(update_fields=["status", "suspension_reason", "updated_at"])
+            write_event(CustomerSuspended(
+                tenant_id=str(tenant.id), customer_id=str(owner.id),
+                reason=reasons.DISPUTE_LOST,
+                balance_micros=announced_balance(
+                    owner.id, tenant, measured=result.balance_micros)))
             logger.warning(
                 "Customer suspended after dispute deduction",
                 extra={"data": {

@@ -288,9 +288,13 @@ class PaymentRailActivation(BaseModel):
 # Tier-2 real-time spend control (D1): the SINGLE program kill switch — two
 # positions (#42, spec §G; `advisory` retired, mapped to `off` by
 # `tenants/0019` before the cutover squash, #190).
-#   off       — byte-for-byte pre-enforcement behavior: no counters, no
-#               signals, no tagging — the live ledger / stop flag / per-task
-#               cap are never touched.
+#   off       — no customer-wide enforcement: no counters, no signals, no
+#               tagging — the live ledger / stop flag / per-task cap are
+#               never touched. NOT "byte-for-byte pre-enforcement" (R10
+#               Stage C2): a floor suspension the silent level test applies
+#               is lifted from the durable wallet balance, and that real
+#               suspended -> active transition emits customer.reactivated
+#               (`apps/platform/tenants/flags.py` states the invariant).
 #   enforcing — the full signal suite + state changes (task flips, start-gate
 #               refusals, soft-floor gate, suspension, reapers).
 # Read ONLY via apps.platform.tenants.flags (enforcement_mode/enforcing); no

@@ -410,7 +410,12 @@ Two positions — `off` / `enforcing` — and since #452 it governs the CUSTOMER
 the live counters and their crossing checks, the hard floor's signal, the signal ledger and its
 re-mint, the stop flag and the suspension fold, the start-gate's stop-flag and soft-floor refusals,
 the customer-scope entries of a stop context, and the ANNOUNCEMENT of an expiry. When `off`, all of
-that is byte-for-byte a no-op. The Ceiling is NOT governed — declaring a ceiling is itself the
+that is a no-op — but NOT "byte-for-byte pre-enforcement" (R10 Stage C2, ruled 2026-11-03): a
+prepaid customer the silent level test suspended on the wallet's floor is reactivated from the
+DURABLE wallet balance (the credit hook, the hourly pass), with none of the enforcing-only
+stop/control artefacts, and that real `suspended → active` transition emits `customer.reactivated`.
+Under `enforcing` the existing stop/control semantics and artefacts are unchanged, and the only
+additive behaviour is that same event, exactly once. The Ceiling is NOT governed — declaring a ceiling is itself the
 opt-in (#150 §11.2): the COGS compare and kill, the ack's stop verdict, the unit-scope stop
 context and the patrol's ceiling legs run for every tenant; both expiry ladders are climbed for
 every tenant too, but the announcing reaper is enforcing-only, so under `off` an expiry lands
@@ -689,7 +694,13 @@ _Avoid_: importing billing models from another product; go through `queries.py`/
 
 **Key events**:
 Consumes `usage.recorded` (drawdown); emits `balance_low` (→ auto-top-up), `balance_overage`,
-`customer_suspended`, `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
+`customer.suspended` (its `reason` says why — `hard_floor`, `customer_spend_pool`, and since R10
+Stage C2 `payment_failed` for a local usage/subscription invoice of the billing owner that failed
+payment and `dispute_lost` for a lost top-up dispute whose claw-back left the wallet past its floor),
+`customer.reactivated` (the real `suspended → active` transition, exactly once, carrying the reason
+left — `hard_floor`/`dispute_lost` clear only when the durable balance is back at the floor,
+`payment_failed` only when no qualifying failed/unpaid local invoice of the owner remains, and a
+paid invoice never clears any other reason), `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
 `wallet_policy.soft_floor_crossed` / `wallet_policy.soft_floor_cleared`, `customer.stopped` /
 `customer.stop_cleared` (each carrying `control_family` and `control_id`, #458). (The platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
 either sweeper — the name carries the state entered, so a subscriber alerting on spend incidents

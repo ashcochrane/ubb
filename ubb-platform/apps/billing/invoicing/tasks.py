@@ -235,30 +235,45 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
     ).exclude(stripe_invoice_id="")
     if invoice_kind is not None:
         qs = qs.filter(invoice_kind=invoice_kind)
+    from apps.billing.connectors.stripe.invoice_routing import (
+        reactivate_owner_if_no_payment_failure_remains)
+
     existing = qs.first()
     if not existing:
         return 0
+    settled_owner_id = None
+    changed = 0
     with transaction.atomic():
-        row = model.objects.select_for_update().get(id=existing.id)
+        row = (model.objects.select_for_update(of=("self",))
+               .select_related("customer", "customer__parent").get(id=existing.id))
         old = row.payment_status
         if not ar_transition_allowed(old, new_status):
             if new_status != old:
                 logger.error("ar.reconcile_unexpected_regression", extra={"data": {
                     "usage_invoice_id": str(row.id), "stripe_invoice_id": stripe_invoice_id,
                     "local_status": old, "stripe_status": new_status}})
-            else:
-                # Equal-status no-op still refreshes the hosted URLs: the token
-                # rotates on payment_failed, and if that webhook was missed the
-                # hourly pass is the only repair for a lingering open invoice.
-                refresh_urls(row, inv)
-                row.save()
-            return 0
-        row.payment_status = new_status
-        if new_status == "paid" and not row.paid_at:
-            row.paid_at = timezone.now()
-        refresh_urls(row, inv)
+                return 0
+            # Equal-status no-op still refreshes the hosted URLs: the token
+            # rotates on payment_failed, and if that webhook was missed the
+            # hourly pass is the only repair for a lingering open invoice.
+            refresh_urls(row, inv)
+        else:
+            row.payment_status = new_status
+            changed = 1
+            if new_status == "paid" and not row.paid_at:
+                row.paid_at = timezone.now()
+            refresh_urls(row, inv)
+        # R10 Stage C2 (F-6): the poller observing `paid` clears THIS row's
+        # failure stamp — whether the transition applied now or a missed
+        # webhook already applied it — and the owner's clear is decided
+        # afterwards from every local invoice, by the kit.
+        if row.payment_status == "paid" and row.payment_failed_at is not None:
+            row.payment_failed_at = None
+            settled_owner_id = row.customer.resolve_billing_owner().id
         row.save()
-    return 1
+    if settled_owner_id is not None:
+        reactivate_owner_if_no_payment_failure_remains(settled_owner_id)
+    return changed
 
 
 # Subscription-invoice repair lives in apps.subscriptions.ports

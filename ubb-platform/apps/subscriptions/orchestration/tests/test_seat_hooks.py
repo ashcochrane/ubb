@@ -79,21 +79,74 @@ class TestSeatRemoveHook(TestCase):
         spy.assert_called_once()
         assert spy.call_args.args[2] == 2 or spy.call_args.kwargs.get("new_seats") == 2
 
-    def test_suspend_seat_via_webhook_pushes_decremented_count(self):
+    # R10 Stage C2 (F-6, RULED Q4): a payment-failed suspension targets the
+    # canonical billing owner of the MATCHED LOCAL invoice, never whichever
+    # customer carries the Stripe customer id, and an unmatched Stripe invoice
+    # suspends nobody. The pin this replaces drove the handler with an invoice
+    # that matched no local row and expected the seat suspended — the defect.
+
+    class _Obj:
+        def __init__(self, **kw): self.__dict__.update(kw)
+
+    def _payment_failed(self, **inv):
         from apps.billing.connectors.stripe.webhooks import handle_invoice_payment_failed
+        fields = {"id": None, "subscription": None, "parent": None,
+                  "hosted_invoice_url": "", "invoice_pdf": "", **inv}
+        event = self._Obj(account="acct_x", data=self._Obj(object=self._Obj(**fields)))
+        with patch("apps.subscriptions.orchestration.service.SubscriptionOrchestrator.set_seats") as spy, \
+             self.captureOnCommitCallbacks(execute=True):
+            handle_invoice_payment_failed(event)
+        return spy
+
+    def test_an_unmatched_payment_failure_suspends_nobody_and_pushes_nothing(self):
         t, biz, _plan, seats = _business_with_sub(seats=3)
         seat = seats[0]
         seat.stripe_customer_id = "cus_seat0"
         seat.save(update_fields=["stripe_customer_id"])
-
-        class _Obj:
-            def __init__(self, **kw): self.__dict__.update(kw)
-        event = _Obj(account="acct_x", data=_Obj(object=_Obj(customer="cus_seat0")))
-        with patch("apps.subscriptions.orchestration.service.SubscriptionOrchestrator.set_seats") as spy, \
-             self.captureOnCommitCallbacks(execute=True):
-            handle_invoice_payment_failed(event)
+        spy = self._payment_failed(id="in_nobody_holds_this", customer="cus_seat0")
         seat.refresh_from_db()
-        assert seat.status == "suspended"
+        biz.refresh_from_db()
+        assert (seat.status, biz.status) == ("active", "active")
+        spy.assert_not_called()
+
+    def test_a_failed_subscription_invoice_suspends_the_business_and_leaves_the_roster(self):
+        from apps.platform.work import reasons
+        from apps.subscriptions.models import SubscriptionInvoice
+        t, biz, _plan, seats = _business_with_sub(seats=3)
+        sub = biz.stripe_subscriptions.get(stripe_subscription_id="sub_1")
+        SubscriptionInvoice.objects.create(
+            tenant=t, customer=biz, stripe_subscription=sub, stripe_invoice_id="in_biz_1",
+            amount_paid_micros=0, currency="usd", status="open")
+        spy = self._payment_failed(id="in_biz_1", subscription="sub_1", customer="cus_biz")
+        biz.refresh_from_db()
+        assert (biz.status, biz.suspension_reason) == ("suspended", reasons.PAYMENT_FAILED)
+        for seat in seats:
+            seat.refresh_from_db()
+            assert seat.status == "active"
+        # The roster did not change — the owner's standing did — so nothing
+        # is pushed to the seat quantity.
+        assert seat_count(biz) == 3
+        spy.assert_not_called()
+
+    def test_a_failed_invoice_owned_by_an_allocated_seat_suspends_it_and_pushes_decremented_count(self):
+        import datetime
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from apps.platform.work import reasons
+        t, biz, _plan, seats = _business_with_sub(seats=3)
+        # An ALLOCATED topology: each seat is its own billing owner, so a
+        # seat's own usage invoice names the seat.
+        biz.billing_topology = "allocated"
+        biz.save(update_fields=["billing_topology"])
+        seat = seats[0]
+        CustomerUsageInvoice.objects.create(
+            tenant=t, customer=seat, period_start=datetime.date(2026, 1, 1),
+            period_end=datetime.date(2026, 2, 1), total_billed_micros=1_000_000,
+            status="pushed", stripe_invoice_id="in_seat0_usage")
+        spy = self._payment_failed(id="in_seat0_usage", customer="cus_seat0")
+        seat.refresh_from_db()
+        biz.refresh_from_db()
+        assert (seat.status, seat.suspension_reason) == ("suspended", reasons.PAYMENT_FAILED)
+        assert biz.status == "active"
         spy.assert_called_once()
         assert spy.call_args.args[2] == 2 or spy.call_args.kwargs.get("new_seats") == 2
 

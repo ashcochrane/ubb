@@ -93,10 +93,17 @@ class RegistryDocumentTest(TestCase):
         from a fresh database — so a reader compares by constant identity and
         never by a legacy map. Mutate either side and this goes red.
         """
+        # R10 Stage C2: the registry also knows the two causes a SUSPENSION
+        # carries (`payment_failed`, `dispute_lost`); they open no stop line,
+        # so an acknowledgement never says them and the published verdicts
+        # list does not advertise them.
         self.assertEqual(set(VERDICTS["reason_codes"]),
-                         set(REASON_CODE_KNOWN_VALUES) | {reasons.TASK_NOT_ACTIVE})
+                         (set(REASON_CODE_KNOWN_VALUES) - reasons.SUSPENSION_ONLY_REASONS)
+                         | {reasons.TASK_NOT_ACTIVE})
         self.assertEqual(set(VERDICTS["reason_codes"]), reasons.ALL_REASONS)
         self.assertNotIn(reasons.SUSPENDED, VERDICTS["reason_codes"])
+        for suspension_cause in reasons.SUSPENSION_ONLY_REASONS:
+            self.assertNotIn(suspension_cause, VERDICTS["reason_codes"])
 
     def test_the_affordability_reasons_are_the_registrys_nine(self):
         """The published refusal list is a MIRROR of the registry's

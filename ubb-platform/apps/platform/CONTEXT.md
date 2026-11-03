@@ -68,8 +68,10 @@ database holds the writes that skip it.
 `trg_tenant_money_mode_needs_its_rail`)
 
 **enforcement_mode**:
-The single Tier-2 spend-control switch on a tenant — two positions: `off` (byte-for-byte
-pre-enforcement behavior) or `enforcing` (the full signal suite + state changes).
+The single Tier-2 spend-control switch on a tenant — two positions: `off` (no customer-wide
+enforcement: none of the stop/control artefacts, though a floor suspension still lifts from the
+durable wallet balance and emits `customer.reactivated` — R10 Stage C2) or `enforcing` (the full
+signal suite + state changes).
 (`apps/platform/tenants/flags.py`)
 _Avoid_: adding a second flag or reading `metadata` — this is the one switch; a middle
 "compute but never act" mode — the one honest question is whether the signal suite is on.
@@ -107,8 +109,13 @@ The live set of seats under a business; adding/removing a seat is a roster chang
 synchronously to registered listeners. (`apps/platform/customers/hooks.py`)
 
 **Customer status**:
-`active`, `suspended`, or `closed`. Only a monetary suspension auto-clears on recovery — a top-up
-never silently un-suspends an admin/fraud suspension.
+`active`, `suspended`, or `closed`. `suspension_reason` says why (a `reason_code` word: `hard_floor`,
+`customer_spend_pool`, `payment_failed`, `dispute_lost`, or "" for a manual/unknown suspension).
+Only a suspension whose condition has resolved auto-clears — the durable balance back at the floor,
+the pool's line lifted, every failed invoice paid — through the one reactivation site
+(`LiveCounter._maybe_unsuspend`), which emits `customer.reactivated` exactly once on the real
+`suspended → active` transition; a top-up never silently un-suspends an admin/fraud suspension, and
+a paid invoice never clears a money suspension (R10 Stage C2).
 
 ## Membership & identity
 

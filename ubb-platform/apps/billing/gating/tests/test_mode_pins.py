@@ -1,19 +1,31 @@
 """Pin 8 (#42, spec §G/§L): enforcement mode is two-position.
 
 The choices are two-position on every surface — `advisory` is retired, and the
-config route refuses it; `off` is byte-for-byte pre-enforcement (Tier-1)
-behavior — no counters, no signals, no tagging — while the Tier-1 baseline
-(drawdown, zero-crossing early warning, level-based suspend) is untouched.
+config route refuses it; `off` creates none of the enforcing-only stop/control
+artefacts — no counters, no `StopSignalState`, no Redis flag, no
+`customer.stopped`/`customer.stop_cleared`, no tagging — while the Tier-1
+baseline (drawdown, zero-crossing early warning, level-based suspend) is
+untouched. NOT "byte-for-byte pre-enforcement" (R10 Stage C2, ruled
+2026-11-03, §7 item 25): the level-based suspension is lifted from the
+DURABLE wallet balance under `off` too — the credit hook and the hourly pass,
+through the one reactivation site — and that real `suspended -> active`
+transition emits `customer.reactivated`, under `off` as under `enforcing`,
+where the existing stop/control semantics and artefacts stay unchanged and
+that event is the only additive behaviour. The pins that once said
+"byte-for-byte" pinned BILLING BLOCKER F-1: a floor suspension no credit
+could ever clear.
 
 Before the cutover (#190) this module also drove `tenants/0019`'s data step,
 which moved every stored `advisory` row to `off`; that step left with the
 squashed chain, and what it left behind — the two-position choice set — is
 pinned below.
 """
+import contextlib
 import json
 import uuid
 from dataclasses import asdict
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from django.core.cache import cache
@@ -25,10 +37,11 @@ from apps.billing.gating.patrol import OUTCOME_REPAIRED
 from apps.billing.gating.repair import repair_live_balances
 from apps.billing.gating.services.live_counter import Door, LiveCounter
 from apps.billing.gating.services.risk_service import RiskService
-from apps.billing.gating.tasks import _per_owner_reconcile
+from apps.billing.gating.tasks import _per_owner_reconcile, reconcile_live_ledgers
 from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.locking import lock_for_billing
 from apps.billing.tenant_billing.models import TenantBillingPeriod
+from apps.billing.wallets import operations as wallet_ops
 from apps.billing.wallets.models import (
     CustomerBillingProfile, Wallet, WalletReservation, WalletTransaction)
 from apps.metering.pricing.tests._helpers import (
@@ -38,14 +51,16 @@ from apps.metering.usage.tests._helpers import a_posting
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.events.schemas import (
-    CustomerStopCleared, CustomerStopped, UsageRecorded,
+    CustomerReactivated, CustomerStopCleared, CustomerStopped, UsageRecorded,
     WalletPolicySoftFloorCleared, WalletPolicySoftFloorCrossed)
 from apps.platform.tenants.flags import holds_a_wallet
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.platform.work import reasons
 from apps.platform.tenants.tests._rails import activate_the_rail
 from core.exceptions import NoWalletSubjectError
-from core.vocabulary import AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED
+from core.vocabulary import (
+    AFFORDABILITY_REASON_CUSTOMER_SPEND_POOL_EXCEEDED, GRANT_KIND_PROMO,
+    GRANT_SOURCE_CHECKOUT)
 
 #: The billing modes that hold no wallet (`holds_a_wallet` is false). Both
 #: may carry the `billing` product; neither has a wallet subject.
@@ -77,7 +92,7 @@ class TestAdvisoryRetired:
 
 
 @pytest.mark.django_db
-class TestOffIsByteForBytePreEnforcement:
+class TestOffCreatesNoEnforcementArtefacts:
     def setup_method(self):
         # A money-mode tenant needs the payment rail activated first (G27);
         # asked for here, by name, before the tenant is built.
@@ -136,6 +151,237 @@ class TestOffIsByteForBytePreEnforcement:
             event_type="customer.suspended").count() == 1
         assert not OutboxEvent.objects.filter(event_type=CustomerStopped.EVENT_TYPE).exists()
         assert not StopSignalState.objects.filter(owner=c).exists()
+
+
+@contextlib.contextmanager
+def _committing(capture):
+    """Run a block as it commits in life: the on-commit callbacks fire (the
+    credit hook, the outbox dispatch) with the Celery hand-off patched away."""
+    with patch("apps.platform.events.tasks.process_single_event"):
+        with capture(execute=True):
+            yield
+
+
+def _reactivated(c):
+    return OutboxEvent.objects.filter(event_type=CustomerReactivated.EVENT_TYPE,
+                                      payload__customer_id=str(c.id))
+
+
+def _stop_pair(c):
+    return OutboxEvent.objects.filter(
+        event_type__in=[CustomerStopped.EVENT_TYPE, CustomerStopCleared.EVENT_TYPE],
+        payload__owner_id=str(c.id))
+
+
+@pytest.mark.django_db
+class TestOffRecoversAMoneySuspensionFromDurableTruth:
+    """R10 Stage C2, F-1 (BILLING BLOCKER): under `off`, on a prepaid tenant, a
+    customer the silent level test suspended on the wallet's hard floor is
+    reactivated from the DURABLE wallet balance — after any positive durable
+    wallet move (the credit hook) and on the hourly pass — through the one
+    reactivation site and nothing else: no live counter, no stop flag, no
+    `StopSignalState`, no `customer.stopped`/`customer.stop_cleared`. The real
+    `suspended -> active` transition emits `customer.reactivated` exactly
+    once, under `off` as under `enforcing` (RULED Q3; §7 item 25).
+
+    Before C2 every one of these clearing acts left the customer suspended
+    for good (`R10-BILLING-READINESS/evidence/04-prepaid-off.txt` step 9).
+    """
+
+    def setup_method(self):
+        activate_the_rail()
+        cache.clear()
+
+    def _suspended_on_the_floor(self, enf="off", balance=5_000_000, usage=8_000_000):
+        t = _tenant(enf=enf)
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        Wallet.objects.create(customer=c, balance_micros=balance)
+        posting = a_posting(tenant=t, customer=c, idempotency_key="u1",
+                            provider_cost_micros=usage, billed_cost_micros=usage)
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None, tenant_id=t.id, customer_id=c.id,
+            event_id=str(posting.id), cost_micros=usage)))
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", reasons.HARD_FLOOR)
+        return t, c, posting
+
+    def _no_enforcement_artefacts(self, c):
+        assert Door.balance(c.id) is None                         # no counter
+        assert Door.stop_reason(c.id) is None                     # no flag
+        assert not StopSignalState.objects.filter(owner=c).exists()  # no ledger
+        assert not _stop_pair(c).exists()                         # no signals
+
+    def _is_active_again(self, c, *, balance_micros):
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("active", "")
+        assert _reactivated(c).count() == 1
+        payload = _reactivated(c).get().payload
+        assert payload["tenant_id"] == str(c.tenant_id)
+        assert payload["customer_id"] == str(c.id)
+        assert payload["reason_code"] == reasons.HARD_FLOOR     # the reason LEFT
+        assert payload["balance_micros"] == balance_micros
+        self._no_enforcement_artefacts(c)
+
+    def test_a_credit_lifts_the_floor_suspension(self, django_capture_on_commit_callbacks):
+        t, c, _ = self._suspended_on_the_floor()                 # balance -3M
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+        self._is_active_again(c, balance_micros=7_000_000)
+
+    def test_a_grant_lifts_it(self, django_capture_on_commit_callbacks):
+        t, c, _ = self._suspended_on_the_floor()
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.mint_grant(customer_id=c.id, tenant=t, kind=GRANT_KIND_PROMO,
+                                  amount_micros=4_000_000, expires_at=None,
+                                  idempotency_key="g1")
+        self._is_active_again(c, balance_micros=1_000_000)
+
+    def test_a_top_up_lifts_it(self, django_capture_on_commit_callbacks):
+        t, c, _ = self._suspended_on_the_floor()
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit_top_up(customer_id=c.id, tenant=t, amount_micros=3_000_000,
+                                     idempotency_key="topup:cs_1",
+                                     source=GRANT_SOURCE_CHECKOUT,
+                                     source_reference="cs_1", description="Stripe top-up")
+        self._is_active_again(c, balance_micros=0)              # AT the floor is recovered
+
+    def test_a_refund_lifts_it(self, django_capture_on_commit_callbacks):
+        t, c, posting = self._suspended_on_the_floor()
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.refund_usage(customer_id=c.id, tenant=t, usage_event_id=posting.id,
+                                    idempotency_key="rf1")
+        self._is_active_again(c, balance_micros=5_000_000)
+
+    def test_the_hourly_pass_lifts_it(self):
+        # The credit hook was lost (a crashed worker between commit and hook):
+        # only the durable wallet shows the recovery. The hourly pass visits
+        # the floor-suspended owners of an `off` tenant for this check alone.
+        t, c, _ = self._suspended_on_the_floor()
+        Wallet.objects.filter(customer=c).update(balance_micros=2_000_000)
+        reconcile_live_ledgers()
+        self._is_active_again(c, balance_micros=2_000_000)
+        reconcile_live_ledgers()                                  # idempotent
+        assert _reactivated(c).count() == 1
+
+    def test_a_credit_that_stays_below_the_floor_leaves_it(self, django_capture_on_commit_callbacks):
+        t, c, _ = self._suspended_on_the_floor()                 # -3M
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=1_000_000,
+                              idempotency_key="cr1")             # -2M, still past 0
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", reasons.HARD_FLOOR)
+        assert not _reactivated(c).exists()
+        self._no_enforcement_artefacts(c)
+
+    def test_a_fraud_suspension_is_never_lifted(self, django_capture_on_commit_callbacks):
+        t, c, _ = self._suspended_on_the_floor()
+        Customer.objects.filter(id=c.id).update(suspension_reason="fraud_review")
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", "fraud_review")
+        assert not _reactivated(c).exists()
+
+    def test_customer_reactivated_fires_exactly_once(self, django_capture_on_commit_callbacks):
+        t, c, _ = self._suspended_on_the_floor()
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+        self._is_active_again(c, balance_micros=7_000_000)
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=1_000_000,
+                              idempotency_key="cr2")             # already active
+        reconcile_live_ledgers()                                  # the hourly pass finds it active
+        assert _reactivated(c).count() == 1
+
+    def test_no_event_when_the_status_does_not_change(self, django_capture_on_commit_callbacks):
+        t = _tenant(enf="off")
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=1_000_000,
+                              idempotency_key="cr1")             # never suspended
+        reconcile_live_ledgers()
+        c.refresh_from_db()
+        assert c.status == "active"
+        assert not _reactivated(c).exists()
+
+    def test_a_mode_flip_no_longer_strands_a_money_suspension(self, django_capture_on_commit_callbacks):
+        # Suspended under ENFORCING (episode, flag, suspended), then the tenant
+        # is switched off: before C2 nothing could ever clear it. The credit
+        # now lifts it from durable truth — the stale enforcing artefacts are
+        # the config route's cleanup to tidy (D17), not this lane's.
+        t, c, _ = self._suspended_on_the_floor(enf="enforcing")
+        assert StopSignalState.objects.filter(owner=c, state="stopped").exists()
+        Tenant.objects.filter(id=t.id).update(enforcement_mode="off")
+        t.refresh_from_db()
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("active", "")
+        assert _reactivated(c).count() == 1
+        assert not OutboxEvent.objects.filter(
+            event_type=CustomerStopCleared.EVENT_TYPE).exists()   # no control clear under off
+
+    def test_the_reverse_flip_clears_too(self, django_capture_on_commit_callbacks):
+        # Suspended under OFF, then enforcing switched on: the enforcing credit
+        # hook finds no open line to clear (none was ever opened) and still
+        # lifts the suspension from the durable balance — once, announced.
+        t, c, _ = self._suspended_on_the_floor(enf="off")
+        Tenant.objects.filter(id=t.id).update(enforcement_mode="enforcing")
+        t.refresh_from_db()
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("active", "")
+        assert _reactivated(c).count() == 1
+        assert not _stop_pair(c).exists()
+
+
+@pytest.mark.django_db
+class TestEnforcingEmitsReactivatedBesideStopCleared:
+    """§7 item 25: under `enforcing` the stop/control artefacts are what they
+    always were — the same episode opened and cleared, the same flag, the
+    same `customer.stopped` / `customer.stop_cleared` — and the ONLY additive
+    behaviour is `customer.reactivated`, exactly once, on the real
+    `suspended -> active` transition beside the control clear."""
+
+    def setup_method(self):
+        activate_the_rail()
+        cache.clear()
+
+    def test_both_events_fire_each_once_on_a_recovery(self, django_capture_on_commit_callbacks):
+        t = _tenant(enf="enforcing")
+        c = Customer.objects.create(tenant=t, external_id="jim")
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None, tenant_id=t.id, customer_id=c.id,
+            event_id=str(uuid.uuid4()), cost_micros=8_000_000)))
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", reasons.HARD_FLOOR)
+        episode = StopSignalState.objects.get(owner=c, state="stopped")
+        assert Door.stop_reason(c.id) == reasons.HARD_FLOOR
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=1_000_000,
+                              idempotency_key="cr2")
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("active", "")
+        episode.refresh_from_db()
+        assert episode.state == "cleared"                         # the same artefacts, as before
+        assert Door.stop_reason(c.id) is None
+        cleared = OutboxEvent.objects.filter(event_type=CustomerStopCleared.EVENT_TYPE)
+        assert cleared.count() == 1
+        assert cleared.get().payload["episode_seq"] == episode.episode_seq
+        assert _reactivated(c).count() == 1
+        payload = _reactivated(c).get().payload
+        assert payload["reason_code"] == reasons.HARD_FLOOR
+        assert payload["balance_micros"] == 8_000_000
 
 
 @pytest.mark.django_db

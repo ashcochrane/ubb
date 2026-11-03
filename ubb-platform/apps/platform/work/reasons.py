@@ -11,12 +11,14 @@ Two registry concepts have their declared backend consumer HERE, and both are
 now PAID IN FULL:
 
   `trigger_source`  — all six known mechanisms, in `KNOWN_TRIGGER_SOURCES`.
-  `reason_code`     — all seven known values, each bound to a constant below.
+  `reason_code`     — all nine known values, each bound to a constant below.
                       A stop says WHICH BOUND was reached — the unit's own
                       ceiling, the customer's pool, the wallet's floor, a
                       silence window, the absolute deadline, or a parent's
                       end — so an integrator branches on a constant and never
-                      parses a string (slice 6 §7).
+                      parses a string (slice 6 §7). Two of the nine name no
+                      bound at all: they are the causes a customer SUSPENSION
+                      carries that no stop line opens (R10 Stage C2, below).
 
 ⚠ TWO VALUES HERE ARE NOT REGISTRY VALUES, AND THAT IS THE PRODUCER/CONSUMER
 RECONCILIATION THIS DOCSTRING EXISTS FOR. `task_not_active` is a VERDICT and
@@ -64,9 +66,11 @@ from uuid import UUID
 from core.vocabulary import (
     REASON_CODE_ABSOLUTE_DEADLINE,
     REASON_CODE_CUSTOMER_SPEND_POOL,
+    REASON_CODE_DISPUTE_LOST,
     REASON_CODE_HARD_FLOOR,
     REASON_CODE_PARENT_EXPIRED,
     REASON_CODE_PARENT_KILLED,
+    REASON_CODE_PAYMENT_FAILED,
     REASON_CODE_SILENCE_WINDOW,
     REASON_CODE_TASK_COGS_CEILING,
     STOP_SCOPE_SUBTASK,
@@ -130,11 +134,25 @@ PARENT_EXPIRED = REASON_CODE_PARENT_EXPIRED
 # unit-scoped, never customer-scoped), and the retired report has nothing to
 # itemize for a bare suspension.
 SUSPENDED = "suspended"
+# A customer SUSPENSION'S cause that no stop line opens (R10 Stage C2, RULED
+# Q4): a Stripe invoice for the billing owner — a usage invoice or a
+# subscription invoice UBB holds locally — failed payment. Written on
+# `Customer.suspension_reason` by the invoice.payment_failed handler, carried
+# by `customer.suspended`, and left — carried by `customer.reactivated` — only
+# when every qualifying failed/unpaid local invoice of that owner has been
+# paid. Never an episode reason, never an ack's `stop_reason`: it names no
+# bound a unit of work reached.
+PAYMENT_FAILED = REASON_CODE_PAYMENT_FAILED
+# The other suspension-only cause: a top-up's dispute was lost and the
+# claw-back left the wallet past its hard floor. Cleared by the durable
+# balance-recovery rule alone (the balance back at or above the floor) —
+# never because an invoice became paid.
+DISPUTE_LOST = REASON_CODE_DISPUTE_LOST
 
-#: THE SEVEN KNOWN VALUES, held whole — what a stop's cause may say when the
-#: registry has a word for it. `REASON_CODE_KNOWN_VALUES` is the same set from
-#: the generator's side; this spelling exists so a reader here sees which
-#: constant is which.
+#: THE NINE KNOWN VALUES, held whole — what a stop's cause, or a suspension's,
+#: may say when the registry has a word for it. `REASON_CODE_KNOWN_VALUES` is
+#: the same set from the generator's side; this spelling exists so a reader
+#: here sees which constant is which.
 KNOWN_REASONS = frozenset({
     TASK_COGS_CEILING,
     CUSTOMER_SPEND_POOL,
@@ -143,12 +161,21 @@ KNOWN_REASONS = frozenset({
     ABSOLUTE_DEADLINE,
     PARENT_KILLED,
     PARENT_EXPIRED,
+    PAYMENT_FAILED,
+    DISPUTE_LOST,
 })
 
-#: EVERYTHING A UBB PRODUCER MAY WRITE AS A REASON: the seven known values and
-#: the one non-registry verdict an acknowledgement can carry. `SUSPENDED` is a
-#: tag and not a reason, so it is not here.
-ALL_REASONS = KNOWN_REASONS | {TASK_NOT_ACTIVE}
+#: THE TWO KNOWN VALUES THAT ARE A SUSPENSION'S CAUSE AND NEVER A STOP'S (R10
+#: Stage C2). They ride `customer.suspended` / `customer.reactivated` only: no
+#: stop line opens on them, so no episode, no terminal stop event and no
+#: acknowledgement verdict ever carries one.
+SUSPENSION_ONLY_REASONS = frozenset({PAYMENT_FAILED, DISPUTE_LOST})
+
+#: EVERYTHING A UBB PRODUCER MAY WRITE AS A STOP'S REASON: the seven bounds the
+#: registry knows and the one non-registry verdict an acknowledgement can
+#: carry. `SUSPENDED` is a tag and not a reason, and the two suspension-only
+#: causes name no bound, so neither is here.
+ALL_REASONS = (KNOWN_REASONS - SUSPENSION_ONLY_REASONS) | {TASK_NOT_ACTIVE}
 
 # The reasons whose verdict drives the idempotent kill flow (a fresh
 # crossing); TASK_NOT_ACTIVE signals but never re-kills.

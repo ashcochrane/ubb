@@ -53,6 +53,23 @@ NOT governed — always on where declared:
 
 See docs/plans/2026-07-15-one-rule-enforcement-spec.md §G.
 
+⚠ `off` IS NOT "BYTE-FOR-BYTE PRE-ENFORCEMENT" EITHER (R10 Stage C2, ruled
+2026-11-03, §7 item 25). The invariant is this: under `off`, recovery
+creates none of the enforcing-only stop/control artefacts — no
+`StopSignalState`, no Redis stop/control write, no `customer.stopped` /
+`customer.stop_cleared`, no stop acknowledgement — but a prepaid customer the
+silent level test suspended on the wallet's floor IS reactivated from the
+DURABLE wallet balance (the credit hook, the hourly pass), and that real
+`suspended -> active` transition emits `customer.reactivated`. Under
+`enforcing`, the existing stop/control semantics and artefacts are
+unchanged — the same `StopSignalState` created and cleared, the same Redis
+behaviour, the same `customer.stopped` / `customer.stop_cleared` and
+acknowledgement semantics, the same floor/recovery calculations — and the
+ONLY additive behaviour is that same `customer.reactivated`, exactly once,
+on the real transition. Before C2, `off` stranded a floor suspension for
+good (BILLING BLOCKER F-1): the pins that said `off` was "byte-for-byte"
+pinned the defect.
+
 ⚠ THE WALLET POLICY HAS A SUBJECT ONLY WHERE A WALLET IS (W7 preparation
 finding F3, ruled 2026-10-30). `holds_a_wallet` below is the one answer to
 "does this tenant's mode keep a customer wallet?", and every wallet leg —

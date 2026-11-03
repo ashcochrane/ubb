@@ -10,8 +10,14 @@ test_live_counter_perimeter.py`` (ADR-001 walker style) and frozen once in
 this module's own pin test, never by scattered private imports.
 
 Gated by ``enforcing(tenant)`` — when the tenant's ``enforcement_mode`` is
-``off`` every operation is a cheap no-op and behavior is byte-for-byte
-unchanged. The live-counter-maintenance switch (#46) turns the real-time
+``off`` every COUNTER, FLAG and LEDGER operation is a cheap no-op: no
+``StopSignalState``, no Redis write, no ``customer.stopped`` /
+``customer.stop_cleared``, no stop acknowledgement. What is NOT switched off
+(R10 Stage C2, F-1) is the durable truth about a money suspension: the credit
+hook and the hourly pass still lift a hard-floor suspension from the DURABLE
+wallet balance through ``_maybe_unsuspend``, which emits
+``customer.reactivated`` on the real ``suspended -> active`` transition under
+either switch position. The live-counter-maintenance switch (#46) turns the real-time
 counter WRITES off as one unit; the durable-lane legs (verdict reads, signal
 catch-up, flag re-alignment) never switch off.
 
@@ -673,29 +679,92 @@ class LiveCounter:
 
     # Monetary suspension reasons that may be auto-cleared on recovery (D15).
     # The thing that suspended the owner is the stop that opened the episode,
-    # and it is one word (slice 6 §9): the wallet floor's or the pool's.
-    _MONEY_SUSPEND_REASONS = (reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL)
+    # and it is one word (slice 6 §9): the wallet floor's or the pool's — and,
+    # since R10 Stage C2 (RULED Q4), the lost dispute whose claw-back left the
+    # wallet past its floor: it is cleared by the SAME durable balance-recovery
+    # rule as the floor's own word, and by nothing else. `payment_failed` is
+    # NOT here: it clears only through `clear_payment_failed_suspension`, when
+    # every qualifying failed local invoice has been paid.
+    _MONEY_SUSPEND_REASONS = (reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL,
+                              reasons.DISPUTE_LOST)
 
     @staticmethod
-    def _maybe_unsuspend(owner_id):
-        """Durably reactivate an owner that was suspended for a MONETARY reason,
-        once the balance/spend has recovered (D15). Serializes on the owner
-        Customer row (the same row the suspend paths lock), and the winning
-        suspended->active transition guard prevents flip-flop. NEVER un-suspends
-        an admin/fraud suspension (suspension_reason not monetary)."""
+    def _maybe_unsuspend(owner_id, *, clearable=None) -> bool:
+        """THE ONE SITE THAT MOVES A CUSTOMER ``suspended -> active`` (R10
+        Stage C2, RULED Q3). Durably reactivate an owner that was suspended for
+        one of the ``clearable`` reasons (the monetary set by default), once
+        the condition behind it has resolved: the caller decides WHEN (the D15
+        durable balance gate, the pool's line lifted, every failed invoice
+        paid); this decides WHETHER the row actually moves. Serializes on the
+        owner Customer row (the same row the suspend paths lock), and the
+        winning suspended->active transition guard prevents flip-flop. NEVER
+        un-suspends an admin/fraud suspension (suspension_reason not in the
+        clearable set) and never one suspended for a reason the caller's
+        condition does not resolve.
+
+        Emits ``customer.reactivated`` EXACTLY ONCE, in the same transaction
+        as the status write, only when the status actually changes — carrying
+        the reason being left and the wallet's balance where one applies.
+        Under ``off`` as under ``enforcing``: this is the status transition,
+        not a control-layer artefact (``customer.stop_cleared`` is the
+        ledger's and stays enforcing-only). Returns True when the row moved."""
         from django.db import transaction
         from apps.platform.customers.models import Customer
+        from apps.platform.events.outbox import write_event
+        from apps.platform.events.schemas import CustomerReactivated
+        from apps.billing.gating.services.stop_signal_service import announced_balance
+        allowed = (LiveCounter._MONEY_SUSPEND_REASONS if clearable is None
+                   else tuple(clearable))
         try:
             with transaction.atomic():
-                owner = Customer.objects.select_for_update().get(id=owner_id)
-                if (owner.status == "suspended"
-                        and owner.suspension_reason in LiveCounter._MONEY_SUSPEND_REASONS):
-                    owner.status = "active"
-                    owner.suspension_reason = ""
-                    owner.save(update_fields=["status", "suspension_reason", "updated_at"])
+                owner = (Customer.objects.select_for_update(of=("self",))
+                         .select_related("tenant").get(id=owner_id))
+                if not (owner.status == "suspended"
+                        and owner.suspension_reason in allowed):
+                    return False
+                left = owner.suspension_reason
+                owner.status = "active"
+                owner.suspension_reason = ""
+                owner.save(update_fields=["status", "suspension_reason", "updated_at"])
+                write_event(CustomerReactivated(
+                    tenant_id=str(owner.tenant_id), customer_id=str(owner.id),
+                    reason_code=left,
+                    balance_micros=announced_balance(owner.id, owner.tenant)))
+                return True
         except Exception:
             logger.warning("live_counter.unsuspend_failed",
                            extra={"data": {"owner_id": str(owner_id)}})
+            return False
+
+    @staticmethod
+    def recover_from_durable_balance(owner_id, tenant) -> bool:
+        """The D15 durable gate on its own (R10 Stage C2, F-1): un-suspend a
+        money-suspended owner when the DURABLE wallet balance sits at or above
+        the hard floor — ``recovered_floor``, the exact negation of the level
+        test that suspends. The one calculation the enforcing ``resume`` has
+        always made, spelled once so the ``off`` lanes (the credit hook below,
+        the hourly pass) make the same one: no live counter, no ledger, no
+        flag, no Redis — the durable truth and the status row. A tenant that
+        holds no wallet has no floor to recover; nothing to do here. Returns
+        True when the owner was actually reactivated."""
+        if not holds_a_wallet(tenant):
+            return False
+        from apps.billing.queries import get_customer_balance, get_customer_min_balance
+        floor = get_customer_min_balance(owner_id, tenant.id)
+        if recovered_floor(int(get_customer_balance(owner_id)), floor):
+            return LiveCounter._maybe_unsuspend(owner_id)
+        return False
+
+    @staticmethod
+    def clear_payment_failed_suspension(owner_id) -> bool:
+        """The AR clear (R10 Stage C2, F-6, RULED Q4): reactivate an owner
+        suspended for ``payment_failed`` and nothing else — the caller
+        (``invoice_routing.reactivate_owner_if_no_payment_failure_remains``)
+        has already established that no qualifying failed/unpaid local
+        invoice of the owner remains. A ``hard_floor``, ``customer_spend_pool``,
+        ``dispute_lost``, manual or unknown suspension is left standing: a
+        paid invoice resolves none of those. Returns True when the row moved."""
+        return LiveCounter._maybe_unsuspend(owner_id, clearable=(reasons.PAYMENT_FAILED,))
 
     @staticmethod
     def resume(owner_id, tenant, *, line, clear_reason, balance_micros=None) -> bool:
@@ -743,11 +812,9 @@ class LiveCounter:
             # is the wallet's rule): `postpaid` and `external` alike.
             LiveCounter._maybe_unsuspend(owner_id)
         else:
-            from apps.billing.queries import (get_customer_balance,
-                                              get_customer_min_balance)
-            floor = get_customer_min_balance(owner_id, tenant.id)
-            if recovered_floor(int(get_customer_balance(owner_id)), floor):
-                LiveCounter._maybe_unsuspend(owner_id)
+            # The same durable gate the `off` lanes use (R10 Stage C2): the
+            # calculation is unchanged, spelled once.
+            LiveCounter.recover_from_durable_balance(owner_id, tenant)
         return realigned
 
     @staticmethod
@@ -832,8 +899,25 @@ class LiveCounter:
         key, the DURABLE balance decides instead — every durable credit site
         calls this hook, so a top-up that re-crosses the floor during a Redis
         blind window still resumes now, not an hour later at reconcile. (A
-        negative credit / grant-expiry never clears.)"""
-        if not enforcing(tenant) or not holds_a_wallet(tenant) or amount_micros == 0:
+        negative credit / grant-expiry never clears.)
+
+        UNDER ``off`` (R10 Stage C2, F-1): no counter, no flag, no ledger, no
+        ``resume`` — but the DURABLE balance gate still runs on a positive
+        credit, so a hard-floor (or dispute-lost) suspension the silent
+        level test applied is lifted by the same durable truth that applied
+        it, through ``_maybe_unsuspend`` and nothing else. Before C2 this
+        hook returned at the switch, and a prepaid customer suspended under
+        ``off`` could never be reactivated by any credit (BILLING BLOCKER
+        F-1); a mode flip no longer strands a money suspension either way."""
+        if not holds_a_wallet(tenant) or amount_micros == 0:
+            return
+        if not enforcing(tenant):
+            if amount_micros > 0:
+                try:
+                    LiveCounter.recover_from_durable_balance(owner_id, tenant)
+                except Exception:
+                    logger.warning("live_counter.credit_recovery_failed",
+                                   extra={"data": {"owner_id": str(owner_id)}})
             return
         v = None
         try:

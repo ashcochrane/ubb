@@ -292,8 +292,13 @@ TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES - {TASK_STATUS_ACTIVE})
 #: (the registry names bounds), so it is spelled here as the server spells it.
 TASK_NOT_ACTIVE = "task_not_active"
 
-#: EVERYTHING A `stop_reason` CAN SAY THAT UBB PRODUCES — the seven bounds the
-#: registry knows, reached by module, plus the one verdict above. The bounds:
+#: EVERYTHING A `stop_reason` CAN SAY THAT UBB PRODUCES — the bounds the
+#: registry knows, reached by module, plus the one verdict above. (The
+#: registry's `reason_code` set also carries the two causes a customer
+#: SUSPENSION names — `REASON_CODE_PAYMENT_FAILED`, `REASON_CODE_DISPUTE_LOST`
+#: — which travel on `customer.suspended` / `customer.reactivated` and never
+#: on an acknowledgement; this set stays the whole generated set rather than
+#: a client-side subtraction, because the client validates nothing.) The bounds:
 #: the unit's own COGS ceiling at either altitude
 #: (`vocabulary.REASON_CODE_TASK_COGS_CEILING`; `stop_scope` says which
 #: altitude), the customer's spend pool (`REASON_CODE_CUSTOMER_SPEND_POOL`),

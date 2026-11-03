@@ -57,12 +57,31 @@ class TestTheFamilyAStopCameFrom:
             controls.control_family("")
 
     def test_every_known_reason_is_either_mapped_or_inherited(self):
-        """The map is complete over the registry's known stop reasons, so a
+        """The map is complete over the registry's known reasons, so a
         coinage that arrives without a family here is a red test and not a
-        blank on the wire."""
+        blank on the wire. A suspension-only cause (R10 Stage C2) is the third
+        kind: it opens no stop line, so it is classified rather than mapped."""
         assert (set(controls.FAMILY_BY_REASON) | controls.INHERITED_FROM_THE_PARENT
+                | controls.SUSPENSION_ONLY
                 == set(REASON_CODE_KNOWN_VALUES))
         assert not set(controls.FAMILY_BY_REASON) & controls.INHERITED_FROM_THE_PARENT
+        assert not set(controls.FAMILY_BY_REASON) & controls.SUSPENSION_ONLY
+        assert not controls.INHERITED_FROM_THE_PARENT & controls.SUSPENSION_ONLY
+
+    def test_a_suspension_only_cause_names_no_family_and_opens_no_stop(self):
+        """R10 Stage C2: `payment_failed` and `dispute_lost` suspend the
+        customer without a stop line, so no control family is derived for
+        them — asking is refused, never answered with a blank — and the
+        work module keeps them out of every stop reason a producer may write."""
+        from apps.platform.work import reasons
+        assert controls.SUSPENSION_ONLY == {reasons.PAYMENT_FAILED, reasons.DISPUTE_LOST}
+        assert controls.SUSPENSION_ONLY == reasons.SUSPENSION_ONLY_REASONS
+        for reason in controls.SUSPENSION_ONLY:
+            assert reason in REASON_CODE_KNOWN_VALUES
+            assert reason not in reasons.ALL_REASONS
+            with pytest.raises(controls.NoFamilyOfItsOwn):
+                controls.control_family(reason)
+            assert controls.ceiling_basis(reason) is None
 
     def test_admission_control_stops_nothing_and_so_no_reason_maps_to_it(self):
         assert CONTROL_FAMILY_ADMISSION_CONTROL not in set(

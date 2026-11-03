@@ -24,7 +24,8 @@ from apps.billing.handlers import handle_usage_recorded_billing
 from apps.billing.wallets.models import CustomerBillingProfile, Wallet
 from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
-from apps.platform.events.schemas import CustomerStopCleared, CustomerStopped, UsageRecorded
+from apps.platform.events.schemas import (
+    CustomerReactivated, CustomerStopCleared, CustomerStopped, UsageRecorded)
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
 from apps.billing.gating.tests._helpers import stop_line
@@ -65,6 +66,12 @@ def _cleared():
 
 def _suspended_events():
     return OutboxEvent.objects.filter(event_type="customer.suspended")
+
+
+def _reactivated():
+    # R10 Stage C2: the status transition's own event, beside the control
+    # clear — the one additive behaviour under enforcing (§7 item 25).
+    return OutboxEvent.objects.filter(event_type=CustomerReactivated.EVENT_TYPE)
 
 
 def _overage_events():
@@ -187,8 +194,10 @@ class TestPin6ResumeOncePerEpisode:
         assert LiveCounter.read(c.id, t)["stop"] is False
         c.refresh_from_db()
         assert c.status == "active"  # durable balance recovered -> un-suspended
+        assert _reactivated().count() == 1  # C2: the real transition, announced once
         LiveCounter.credit(c.id, t, 1_000_000)  # already cleared -> loses
         assert _cleared().count() == 1
+        assert _reactivated().count() == 1
 
     def test_a_credit_that_does_not_recross_does_not_clear(self):
         t = _tenant()
@@ -211,8 +220,10 @@ class TestPin6ResumeOncePerEpisode:
         assert _cleared().get().payload["episode_seq"] == 1
         c.refresh_from_db()
         assert c.status == "active"
+        assert _reactivated().count() == 1  # C2: the real transition, announced once
         LiveCounter.reconcile(c.id, t)  # already cleared -> loses
         assert _cleared().count() == 1
+        assert _reactivated().count() == 1
 
     def test_durable_path_clears_when_redis_is_blind(self, monkeypatch):
         t = _tenant()
@@ -228,6 +239,7 @@ class TestPin6ResumeOncePerEpisode:
         assert _cleared().get().payload["balance_micros"] == 10_000_000
         c.refresh_from_db()
         assert c.status == "active"
+        assert _reactivated().count() == 1  # C2: the real transition, announced once
 
     def test_episodes_pair_up_across_a_full_cycle(self):
         t = _tenant()
@@ -258,7 +270,11 @@ class TestPin11EarlyWarningUnaffected:
         assert _fired().count() == 0
         assert not StopSignalState.objects.filter(owner=c).exists()
 
-    def test_enforcement_off_is_tier1_byte_for_byte(self):
+    def test_enforcement_off_is_a_silent_tier1_level_test(self):
+        # `off` creates none of the signal suite's artefacts; the Tier-1
+        # level-based suspension still lands, silently. (Not "byte-for-byte
+        # pre-enforcement": the suspension is lifted from the durable balance
+        # too — `test_mode_pins.py`, R10 Stage C2.)
         t = _tenant(enf="off")
         c = _customer(t)
         _drain(t, c, 6_000_000)  # crosses zero AND the floor
