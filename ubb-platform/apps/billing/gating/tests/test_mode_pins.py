@@ -284,6 +284,71 @@ class TestOffRecoversAMoneySuspensionFromDurableTruth:
         assert (c.status, c.suspension_reason) == ("suspended", "fraud_review")
         assert not _reactivated(c).exists()
 
+    def test_a_credit_never_lifts_a_pool_suspension_under_off(self, django_capture_on_commit_callbacks):
+        # A balance says nothing about spend: a pool suspension left behind
+        # (here, by a switch from enforcing) is not the durable balance's to
+        # lift, however healthy the wallet. Only the balance suspensions are.
+        t = _tenant(enf="off")
+        c = Customer.objects.create(tenant=t, external_id="jim", status="suspended",
+                                    suspension_reason=reasons.CUSTOMER_SPEND_POOL)
+        Wallet.objects.create(customer=c, balance_micros=5_000_000)
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+        reconcile_live_ledgers()
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", reasons.CUSTOMER_SPEND_POOL)
+        assert not _reactivated(c).exists()
+        self._no_enforcement_artefacts(c)
+
+    def test_a_standing_payment_failure_holds_the_owner_and_takes_over_the_reason(
+            self, django_capture_on_commit_callbacks):
+        # RULED Q4's multi-invoice rule at the one reactivation site: the
+        # floor recovered, but a local invoice of the owner still stands
+        # failed — so the owner stays suspended, now for the cause that
+        # stands, and the paid invoice is what brings it back.
+        import datetime
+        from types import SimpleNamespace as NS
+        from django.utils import timezone
+        from api.v1.webhooks import handle_invoice_paid
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        t, c, _ = self._suspended_on_the_floor()
+        Tenant.objects.filter(id=t.id).update(stripe_connected_account_id="acct_c2")
+        t.refresh_from_db()
+        CustomerUsageInvoice.objects.create(
+            tenant=t, customer=c, period_start=datetime.date(2026, 1, 1),
+            period_end=datetime.date(2026, 2, 1), status="pushed",
+            stripe_invoice_id="in_c2_held", payment_status="open",
+            payment_failed_at=timezone.now())
+        with _committing(django_capture_on_commit_callbacks):
+            wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
+                              idempotency_key="cr1")
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", reasons.PAYMENT_FAILED)
+        assert not _reactivated(c).exists()
+        handle_invoice_paid(NS(account="acct_c2", livemode=True, data=NS(object=NS(
+            id="in_c2_held", subscription=None, parent=None,
+            hosted_invoice_url="", invoice_pdf=""))))
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("active", "")
+        assert _reactivated(c).count() == 1
+        assert _reactivated(c).get().payload["reason_code"] == reasons.PAYMENT_FAILED
+        self._no_enforcement_artefacts(c)
+
+    def test_the_off_pass_never_raises_and_every_tenant_is_still_visited(self, monkeypatch):
+        # The hourly beat visits every tenant; a failure in one `off`
+        # tenant's recovery pass must not cost the rest their patrol.
+        from apps.billing.gating import patrol
+        first = _tenant(enf="off")
+        second = _tenant(enf="off")
+        monkeypatch.setattr(LiveCounter, "BALANCE_SUSPEND_REASONS", object(), raising=False)
+        visited = []
+        monkeypatch.setattr(patrol, "run_patrol",
+                            lambda tenant, **kw: visited.append(tenant.id))
+        assert _per_owner_reconcile(first) == 0
+        reconcile_live_ledgers()
+        assert {first.id, second.id} <= set(visited)
+
     def test_customer_reactivated_fires_exactly_once(self, django_capture_on_commit_callbacks):
         t, c, _ = self._suspended_on_the_floor()
         with _committing(django_capture_on_commit_callbacks):
@@ -382,6 +447,21 @@ class TestEnforcingEmitsReactivatedBesideStopCleared:
         payload = _reactivated(c).get().payload
         assert payload["reason_code"] == reasons.HARD_FLOOR
         assert payload["balance_micros"] == 8_000_000
+
+    def test_a_tenant_without_a_wallet_never_clears_dispute_lost_without_a_balance(self):
+        # RULED Q4 b: `dispute_lost` clears ONLY by the durable balance rule.
+        # Where no wallet is held there is no balance to recover, so the
+        # enforcing resume's no-wallet branch clears the money pair as before
+        # and never a lost dispute.
+        from apps.billing.gating.services.stop_signal_service import CLEAR_RECONCILED
+        t = _tenant(mode="postpaid", enf="enforcing")
+        c = Customer.objects.create(tenant=t, external_id="jim", status="suspended",
+                                    suspension_reason=reasons.DISPUTE_LOST)
+        LiveCounter.resume(c.id, t, line=reasons.CUSTOMER_SPEND_POOL,
+                           clear_reason=CLEAR_RECONCILED)
+        c.refresh_from_db()
+        assert (c.status, c.suspension_reason) == ("suspended", reasons.DISPUTE_LOST)
+        assert not _reactivated(c).exists()
 
 
 @pytest.mark.django_db

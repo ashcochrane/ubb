@@ -67,16 +67,23 @@ def _per_owner_reconcile(tenant):
         # suspended owner is refused every start, so the credit hook is its
         # only other way back; this pass is the backstop for a credit whose
         # hook was lost. No wallet, no floor, nothing to visit.
-        if holds_a_wallet(tenant):
-            for owner_id in Customer.all_objects.filter(
-                    tenant=tenant, status="suspended",
-                    suspension_reason__in=(reasons.HARD_FLOOR, reasons.DISPUTE_LOST),
-            ).values_list("id", flat=True):
-                try:
-                    LiveCounter.recover_from_durable_balance(owner_id, tenant)
-                except Exception:
-                    logger.exception("live_counter.off_recovery_failed",
-                                     extra={"data": {"owner_id": str(owner_id)}})
+        if not holds_a_wallet(tenant):
+            return 0
+        try:
+            suspended = list(Customer.all_objects.filter(
+                tenant=tenant, status="suspended",
+                suspension_reason__in=LiveCounter.BALANCE_SUSPEND_REASONS,
+            ).values_list("id", flat=True))
+        except Exception:
+            logger.exception("live_counter.off_recovery_failed",
+                             extra={"data": {"tenant_id": str(tenant.id)}})
+            return 0
+        for owner_id in suspended:
+            try:
+                LiveCounter.recover_from_durable_balance(owner_id, tenant)
+            except Exception:
+                logger.exception("live_counter.off_recovery_failed",
+                                 extra={"data": {"owner_id": str(owner_id)}})
         return 0
 
     try:

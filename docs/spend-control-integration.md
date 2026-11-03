@@ -209,7 +209,10 @@ Minimum viable enforcement = (1)+(2)+(3). The webhook (4) tightens the bound for
   status).
 - **Webhooks →** `customer.stopped` and its paired `customer.stop_cleared` (a
   customer-wide stop began, and ended), `customer.suspended` (cancel all that
-  customer's work), `task.killed` (cancel `task_id`; carries both totals and
+  customer's work; `reason` says why), `customer.reactivated` (the customer's
+  status is back to `active` — new work is admitted again; `reason_code` names
+  the suspension it left, and it fires once per real transition whatever the
+  enforcement switch says), `task.killed` (cancel `task_id`; carries both totals and
   the control), `task.expired` (the same, for a unit UBB stopped hearing from),
   `customer_spend_pool.threshold_reached` (a level announced, which is not
   itself a stop), and the wallet's wind-down pair

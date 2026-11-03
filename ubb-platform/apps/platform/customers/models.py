@@ -31,6 +31,20 @@ ACCOUNT_TYPE_CHOICES = [("individual", "Individual"),
 BILLING_TOPOLOGY_CHOICES = [("pooled", "Pooled"), ("allocated", "Allocated")]
 
 
+def billed_to(owner_id, *, via="customer"):
+    """`Customer.resolve_billing_owner`'s one rule as a query filter: the rows
+    whose ``via`` customer is funded by the billing owner ``owner_id`` — the
+    owner itself, and every seat of a POOLED business it is. Spelled once here
+    so each product asking "whose rows are these?" over its own table (billing's
+    usage invoices, subscriptions' invoices) draws the owner's line the same
+    way (R10 Stage C2)."""
+    from django.db.models import Q
+    return (Q(**{f"{via}_id": owner_id})
+            | Q(**{f"{via}__account_type": ACCOUNT_TYPE_SEAT,
+                   f"{via}__parent_id": owner_id,
+                   f"{via}__parent__billing_topology": "pooled"}))
+
+
 class Customer(SoftDeleteMixin, BaseModel):
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="customers"
@@ -62,8 +76,13 @@ class Customer(SoftDeleteMixin, BaseModel):
     # silently un-suspends an admin/fraud suspension. A monetary reason is the
     # stop that opened the episode, in that stop's own word (slice 6 §9,
     # `reasons.HARD_FLOOR` / `reasons.CUSTOMER_SPEND_POOL`; the pair is
-    # `LiveCounter._MONEY_SUSPEND_REASONS`). "" when active / suspended for an
-    # unrecorded reason.
+    # `LiveCounter._MONEY_SUSPEND_REASONS`). Since R10 Stage C2 two causes no
+    # stop line opens are written too: `reasons.PAYMENT_FAILED` (a local
+    # invoice of the billing owner failed payment — cleared when no such
+    # failure remains) and `reasons.DISPUTE_LOST` (cleared when the durable
+    # balance is back at the floor). Every clear goes through
+    # `LiveCounter._maybe_unsuspend`, which announces `customer.reactivated`.
+    # "" when active / suspended for an unrecorded reason.
     suspension_reason = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:

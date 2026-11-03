@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.models import WEBHOOK_RECEIVER_BILLING
 from apps.billing.stripe.receiver import receive_stripe_event
@@ -32,6 +33,7 @@ from apps.billing.connectors.stripe.invoice_routing import (  # noqa: F401
     event_livemode,
     livemode_filter,
     reject_for_mode,
+    settle_failure_stamp,
 )
 from core.vocabulary import (
     TENANT_INVOICE_STATUS_PAID,
@@ -171,17 +173,12 @@ def _reconcile_customer_invoice(event, *, new_status):
                 row.amount_paid_micros = paid_micros
                 row.source_amount_paid_minor = paid_minor
             # R10 Stage C2 (F-6): a paid subscription invoice clears ITS
-            # failure stamp; the owner's clear is decided below by the kit.
-            settled_owner_id = None
-            if row.status == "paid" and row.payment_failed_at is not None:
-                row.payment_failed_at = None
-                settled_owner_id = sub.customer.resolve_billing_owner().id
+            # failure stamp; whether the owner comes back is billing's call.
+            settled_owner_id = settle_failure_stamp(row, row.status)
             _refresh_urls(row, inv)
             row.save()
         if settled_owner_id is not None:
-            from apps.billing.connectors.stripe.invoice_routing import (
-                reactivate_owner_if_no_payment_failure_remains)
-            reactivate_owner_if_no_payment_failure_remains(settled_owner_id)
+            LiveCounter.clear_payment_failed_suspension(settled_owner_id)
         # F5.5: a CONSOLIDATED usage rec rides this subscription invoice — its
         # payment status follows the same event along the same table. Only a
         # recorded ('pushed') row is repaired: a mid-split push may still
@@ -210,10 +207,7 @@ def _apply_usage_invoice_status(row_id, inv, new_status):
     the Stripe-legal transition table. Shared by the standalone usage branch and
     the F5.5 consolidated extension so the two can never diverge."""
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.billing.connectors.stripe.invoice_routing import (
-        reactivate_owner_if_no_payment_failure_remains)
 
-    settled_owner_id = None
     with transaction.atomic():
         row = (CustomerUsageInvoice.objects.select_for_update(of=("self",))
                .select_related("customer", "customer__parent").get(id=row_id))
@@ -228,15 +222,12 @@ def _apply_usage_invoice_status(row_id, inv, new_status):
         if row.payment_status == "paid" and not row.paid_at:
             row.paid_at = timezone.now()
         # R10 Stage C2 (F-6): a paid invoice clears ITS failure stamp; whether
-        # the owner comes back is decided afterwards, from every local
-        # invoice it holds, by the kit.
-        if row.payment_status == "paid" and row.payment_failed_at is not None:
-            row.payment_failed_at = None
-            settled_owner_id = row.customer.resolve_billing_owner().id
+        # the owner comes back is billing's call, at its reactivation site.
+        settled_owner_id = settle_failure_stamp(row, row.payment_status)
         _refresh_urls(row, inv)
         row.save()
     if settled_owner_id is not None:
-        reactivate_owner_if_no_payment_failure_remains(settled_owner_id)
+        LiveCounter.clear_payment_failed_suspension(settled_owner_id)
 
 
 def handle_invoice_finalized(event):

@@ -292,13 +292,16 @@ TERMINAL_TASK_STATUSES = frozenset(TASK_STATUS_VALUES - {TASK_STATUS_ACTIVE})
 #: (the registry names bounds), so it is spelled here as the server spells it.
 TASK_NOT_ACTIVE = "task_not_active"
 
+#: THE TWO KNOWN `reason_code` VALUES THAT ARE A SUSPENSION'S CAUSE AND NEVER
+#: A STOP'S (R10 Stage C2): a failed invoice payment and a lost dispute. They
+#: travel on the `customer.suspended` / `customer.reactivated` webhooks, so
+#: `vocabulary.REASON_CODE_KNOWN_VALUES` names them; no stop line opens on
+#: them, so no acknowledgement says them.
+SUSPENSION_ONLY_REASON_CODES = frozenset({
+    vocabulary.REASON_CODE_PAYMENT_FAILED, vocabulary.REASON_CODE_DISPUTE_LOST})
+
 #: EVERYTHING A `stop_reason` CAN SAY THAT UBB PRODUCES — the bounds the
-#: registry knows, reached by module, plus the one verdict above. (The
-#: registry's `reason_code` set also carries the two causes a customer
-#: SUSPENSION names — `REASON_CODE_PAYMENT_FAILED`, `REASON_CODE_DISPUTE_LOST`
-#: — which travel on `customer.suspended` / `customer.reactivated` and never
-#: on an acknowledgement; this set stays the whole generated set rather than
-#: a client-side subtraction, because the client validates nothing.) The bounds:
+#: registry knows, reached by module, plus the one verdict above. The bounds:
 #: the unit's own COGS ceiling at either altitude
 #: (`vocabulary.REASON_CODE_TASK_COGS_CEILING`; `stop_scope` says which
 #: altitude), the customer's spend pool (`REASON_CODE_CUSTOMER_SPEND_POOL`),
@@ -312,7 +315,8 @@ TASK_NOT_ACTIVE = "task_not_active"
 #: still travels as a plain string, a switch over it needs a default branch,
 #: and the value is never validated client-side.
 STOP_REASON_CODES = frozenset(
-    vocabulary.REASON_CODE_KNOWN_VALUES | {TASK_NOT_ACTIVE})
+    (vocabulary.REASON_CODE_KNOWN_VALUES - SUSPENSION_ONLY_REASON_CODES)
+    | {TASK_NOT_ACTIVE})
 
 
 def _attach(exc: BaseException, note: str) -> None:

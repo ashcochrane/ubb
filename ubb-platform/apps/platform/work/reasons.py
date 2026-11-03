@@ -63,6 +63,7 @@ one) have left the published verdicts list with nothing to name them.
 from typing import NamedTuple
 from uuid import UUID
 
+from core.controls import SUSPENSION_ONLY
 from core.vocabulary import (
     REASON_CODE_ABSOLUTE_DEADLINE,
     REASON_CODE_CUSTOMER_SPEND_POOL,
@@ -168,8 +169,10 @@ KNOWN_REASONS = frozenset({
 #: THE TWO KNOWN VALUES THAT ARE A SUSPENSION'S CAUSE AND NEVER A STOP'S (R10
 #: Stage C2). They ride `customer.suspended` / `customer.reactivated` only: no
 #: stop line opens on them, so no episode, no terminal stop event and no
-#: acknowledgement verdict ever carries one.
-SUSPENSION_ONLY_REASONS = frozenset({PAYMENT_FAILED, DISPUTE_LOST})
+#: acknowledgement verdict ever carries one. Declared once, in `core/controls`
+#: (which classifies every known reason by the control it names, and these
+#: name none); held here by reference.
+SUSPENSION_ONLY_REASONS = SUSPENSION_ONLY
 
 #: EVERYTHING A UBB PRODUCER MAY WRITE AS A STOP'S REASON: the seven bounds the
 #: registry knows and the one non-registry verdict an acknowledgement can

@@ -177,7 +177,9 @@ def reconcile_invoice_payment_status():
     paid -> open) is loud-logged, never applied.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.subscriptions.ports import repair_subscription_invoice
+    from apps.billing.gating.services.live_counter import LiveCounter
+    from apps.subscriptions.ports import (
+        repair_subscription_invoice, settle_subscription_invoice_payment_failure)
     from apps.platform.tenants.models import Tenant
 
     cutoff = int((timezone.now() - timedelta(days=4)).timestamp())
@@ -206,6 +208,14 @@ def reconcile_invoice_payment_status():
                 if _invoice_subscription_id(inv):
                     repaired += repair_subscription_invoice(
                         tenant, stripe_invoice_id, inv, new_status)
+                    if new_status == "paid":
+                        # R10 Stage C2 (F-6): observing `paid` settles the
+                        # subscription invoice's failure stamp (the port's
+                        # row), and billing decides the owner's clear.
+                        settled = settle_subscription_invoice_payment_failure(
+                            tenant, stripe_invoice_id)
+                        if settled is not None:
+                            LiveCounter.clear_payment_failed_suspension(settled)
                     # F5.5: a CONSOLIDATED usage rec rides this subscription
                     # invoice — repair it along the same transition table.
                     repaired += _repair_usage_invoice(
@@ -235,13 +245,12 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
     ).exclude(stripe_invoice_id="")
     if invoice_kind is not None:
         qs = qs.filter(invoice_kind=invoice_kind)
-    from apps.billing.connectors.stripe.invoice_routing import (
-        reactivate_owner_if_no_payment_failure_remains)
+    from apps.billing.connectors.stripe.invoice_routing import settle_failure_stamp
+    from apps.billing.gating.services.live_counter import LiveCounter
 
     existing = qs.first()
     if not existing:
         return 0
-    settled_owner_id = None
     changed = 0
     with transaction.atomic():
         row = (model.objects.select_for_update(of=("self",))
@@ -265,14 +274,12 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
             refresh_urls(row, inv)
         # R10 Stage C2 (F-6): the poller observing `paid` clears THIS row's
         # failure stamp — whether the transition applied now or a missed
-        # webhook already applied it — and the owner's clear is decided
-        # afterwards from every local invoice, by the kit.
-        if row.payment_status == "paid" and row.payment_failed_at is not None:
-            row.payment_failed_at = None
-            settled_owner_id = row.customer.resolve_billing_owner().id
+        # webhook already applied it — and billing then decides, at its one
+        # reactivation site, whether the owner comes back.
+        settled_owner_id = settle_failure_stamp(row, row.payment_status)
         row.save()
     if settled_owner_id is not None:
-        reactivate_owner_if_no_payment_failure_remains(settled_owner_id)
+        LiveCounter.clear_payment_failed_suspension(settled_owner_id)
     return changed
 
 

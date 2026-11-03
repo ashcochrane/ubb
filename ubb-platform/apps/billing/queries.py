@@ -16,6 +16,8 @@ Consumers:
 - apps/metering/usage/services/usage_service.py → is_usage_period_closed()
 - api/v1/spend_control_endpoints.py → signal_episodes(),
   customer_spend_pool_utilisation() (the two spend-control reports, #465)
+- apps/billing/gating/services/live_counter.py → a_payment_failure_remains_for()
+  (the reactivation site's AR check, R10 Stage C2)
 """
 
 
@@ -58,6 +60,27 @@ def get_customer_floor_control_id(customer_id, tenant_id):
     tenant's billing configuration. Resolved by the same walk as the value,
     so the stop that fired on a floor names the row that set it."""
     return _hard_floor_source(customer_id, tenant_id)[1].id
+
+
+def a_payment_failure_remains_for(owner_id) -> bool:
+    """Does any qualifying failed/unpaid local invoice — usage or subscription
+    — of this billing owner still stand (R10 Stage C2, F-6, RULED Q4)? A row
+    qualifies while it carries `payment_failed_at` and is neither paid nor
+    void, whoever's row it is among the customers the owner funds (its own
+    and its pooled seats'). The subscriptions half is asked through its port.
+    Read by the reactivation site under the owner's row lock, so a failure
+    stamped concurrently is either seen here or meets an owner already
+    active and suspends it."""
+    from apps.billing.connectors.stripe.invoice_routing import SETTLED_PAYMENT_STATUSES
+    from apps.billing.invoicing.models import CustomerUsageInvoice
+    from apps.platform.customers.models import billed_to
+    from apps.subscriptions.ports import has_unsettled_subscription_payment_failure
+
+    usage = (CustomerUsageInvoice.objects
+             .filter(billed_to(owner_id), payment_failed_at__isnull=False)
+             .exclude(payment_status__in=SETTLED_PAYMENT_STATUSES)
+             .exists())
+    return usage or has_unsettled_subscription_payment_failure(owner_id)
 
 
 def get_customer_soft_min_balance(customer_id, tenant_id):

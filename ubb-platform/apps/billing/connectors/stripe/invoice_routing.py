@@ -88,60 +88,32 @@ def _invoice_subscription_id(inv):
     return s if isinstance(s, str) else getattr(s, "id", None)
 
 
-# --- AR recovery: the clear of a payment-failed suspension (R10 Stage C2,
-# F-6, RULED Q4) ------------------------------------------------------------
+# --- the failure stamp on a local invoice row (R10 Stage C2, F-6) ----------
 #
-# An `invoice.payment_failed` for a LOCAL usage or subscription invoice
-# suspends the canonical billing OWNER that invoice represents, with
-# `suspension_reason = payment_failed`. The suspension clears from durable
-# truth and nothing else: a paid invoice clears ITS `payment_failed_at`, and
-# the owner is reactivated only when it is suspended for `payment_failed` and
-# NO qualifying failed/unpaid local invoice of that owner remains — usage or
-# subscription — so paying one invoice while another failure stands never
-# reactivates too early. Both the webhook fast path (`api/v1/webhooks.py`)
-# and the hourly AR poller (`invoicing/tasks.py`, `subscriptions/ports.py`)
-# end in `reactivate_owner_if_no_payment_failure_remains`, so the two lanes
-# cannot disagree about when an owner comes back. Lives in the connector kit
-# because the subscriptions repair must reach it (ADR-001 decision 5), and
-# asks subscriptions through its port, never its ORM.
+# AR row state only, beside the transition table above: WHICH statuses settle
+# a stamped invoice, and the one way a paid row's stamp is cleared. Whether
+# the owner then comes back is billing's decision, made at its one
+# reactivation site (`LiveCounter._maybe_unsuspend`) under the owner's row
+# lock — never here, because this module is shared Stripe plumbing and not
+# billing business logic (ADR-001 decision 5).
 
-#: The payment statuses under which a stamped invoice no longer QUALIFIES as
-#: a standing failure: paid (resolved) and void (never collectible). An open
-#: or uncollectible invoice with `payment_failed_at` set still stands.
+#: The payment statuses under which a stamped invoice no longer stands as a
+#: payment failure: paid (resolved) and void (never collectible). An open or
+#: uncollectible invoice — or one with no status yet — that carries
+#: `payment_failed_at` still stands.
 SETTLED_PAYMENT_STATUSES = ("paid", "void")
 
 
-def billing_owner_rows(owner_id):
-    """The local invoice rows that belong to the billing OWNER ``owner_id``:
-    its own, and those of the pooled seats it funds (`resolve_billing_owner`'s
-    one rule as a predicate). Shared by the usage table here and the
-    subscription table behind the port, so both lanes draw the owner's line
-    the same way."""
-    from django.db.models import Q
-    return (Q(customer_id=owner_id)
-            | Q(customer__account_type="seat", customer__parent_id=owner_id,
-                customer__parent__billing_topology="pooled"))
-
-
-def a_payment_failure_remains_for(owner_id) -> bool:
-    """Does any qualifying failed/unpaid local invoice — usage or subscription
-    — of this billing owner still stand?"""
-    from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.subscriptions.ports import has_unsettled_subscription_payment_failure
-    usage = (CustomerUsageInvoice.objects
-             .filter(billing_owner_rows(owner_id), payment_failed_at__isnull=False)
-             .exclude(payment_status__in=SETTLED_PAYMENT_STATUSES)
-             .exists())
-    return usage or has_unsettled_subscription_payment_failure(owner_id)
-
-
-def reactivate_owner_if_no_payment_failure_remains(owner_id) -> bool:
-    """After a local invoice of ``owner_id`` became paid: reactivate the owner
-    ONLY when it is suspended for `payment_failed` and no qualifying failed/
-    unpaid local invoice remains. Every other suspension reason — `hard_floor`,
-    `customer_spend_pool`, `dispute_lost`, manual/unknown — is left standing: a
-    paid invoice resolves none of those. Returns True when the owner moved."""
-    from apps.billing.gating.services.live_counter import LiveCounter
-    if a_payment_failure_remains_for(owner_id):
-        return False
-    return LiveCounter.clear_payment_failed_suspension(owner_id)
+def settle_failure_stamp(row, payment_status):
+    """Clear ``row``'s `payment_failed_at` when ``payment_status`` (the row's
+    applied status — `payment_status` on a usage invoice, `status` on a
+    subscription invoice) is paid. Call inside the transaction that holds the
+    row's lock, before its save. Returns the id of the canonical billing owner
+    the row represents when a stamp was cleared — the owner whose
+    `payment_failed` suspension the caller then asks billing to clear — else
+    None. Shared by the webhook fast path and the hourly repair of both
+    invoice tables, so a paid invoice settles its stamp one way everywhere."""
+    if payment_status != "paid" or row.payment_failed_at is None:
+        return None
+    row.payment_failed_at = None
+    return row.customer.resolve_billing_owner().id

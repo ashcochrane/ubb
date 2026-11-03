@@ -495,6 +495,40 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
         self.assertEqual(self._standing(seat), ("active", ""))
         self.assertEqual(self._standing(holder), ("active", ""))
 
+    def test_a_late_failure_on_an_invoice_already_paid_suspends_nobody(self):
+        """Stripe can deliver an earlier `invoice.payment_failed` after the
+        `invoice.paid` that settled it: the stamp lands as it always has, but
+        a settled invoice is not a standing failure, so nobody is suspended."""
+        row = self._usage_row(self.owner, "in_c2_late", payment_status="paid",
+                              paid_at=timezone.now())
+        late = _usage_obj("in_c2_late")
+        late.customer = "cus_owner"   # the owner's own Stripe customer
+        self._fail(late)
+        row.refresh_from_db()
+        self.assertIsNotNone(row.payment_failed_at)
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertFalse(self._suspended_events(self.owner).exists())
+        sub_row = self._subscription_row(self.owner, "in_c2_late_sub", "sub_c2_late")
+        SubscriptionInvoice.objects.filter(id=sub_row.id).update(status="paid")
+        late_sub = _sub_obj("in_c2_late_sub", "sub_c2_late")
+        late_sub.customer = "cus_owner"
+        self._fail(late_sub)
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertFalse(self._suspended_events(self.owner).exists())
+
+    def test_a_failure_after_reactivation_suspends_the_owner_again(self):
+        # The owner's standing is read under its row lock only, so a failure
+        # that meets an owner a clear just made active suspends it again.
+        self._usage_row(self.owner, "in_c2_a")
+        self._usage_row(self.owner, "in_c2_b")
+        self._fail(_usage_obj("in_c2_a"))
+        self._pay(_usage_obj("in_c2_a"))
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self._fail(_usage_obj("in_c2_b"))
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertEqual(self._suspended_events(self.owner).count(), 2)
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+
     def test_a_standing_suspension_keeps_its_own_reason_when_a_payment_fails(self):
         Customer.objects.filter(id=self.owner.id).update(
             status="suspended", suspension_reason=reasons.HARD_FLOOR)
