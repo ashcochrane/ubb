@@ -700,8 +700,9 @@ payment and `dispute_lost` for a lost top-up dispute whose claw-back left the wa
 `customer.reactivated` (the real `suspended → active` transition, exactly once, carrying the reason
 left — `hard_floor`/`dispute_lost` clear only when the durable balance is back at the floor,
 `payment_failed` only when no qualifying failed/unpaid local invoice of the owner remains — a paid
-or a voided invoice settles its own failure, void being a resolved AR condition and not a payment —
-and a paid or voided invoice never clears any other reason), `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
+or a voided invoice settles its own failure, void being a resolved AR condition and not a payment,
+and the hourly AR pass re-asks the same decision for every `payment_failed` owner so one failed
+delivery never strands it — and a paid or voided invoice never clears any other reason), `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
 `wallet_policy.soft_floor_crossed` / `wallet_policy.soft_floor_cleared`, `customer.stopped` /
 `customer.stop_cleared` (each carrying `control_family` and `control_id`, #458). (The platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
 either sweeper — the name carries the state entered, so a subscriber alerting on spend incidents

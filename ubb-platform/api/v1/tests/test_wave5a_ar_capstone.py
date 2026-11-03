@@ -726,6 +726,48 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
         self._void(_sub_obj("in_c2_void_sub", "sub_c2_void"))   # replay
         self.assertEqual(self._reactivated(self.owner).count(), 1)
 
+    def test_a_decision_that_fails_after_the_stamp_settled_is_restored_by_the_hourly_pass(self):
+        """The webhook settles the invoice's stamp and THEN asks billing's
+        decision in its own transaction. Make that decision really fail (the
+        remaining-failure read raises): it logs and returns, the event is
+        acknowledged, and the owner is left suspended with nothing stamped.
+        The hourly AR pass re-asks the one decision, from durable truth, and
+        the owner comes back — exactly once."""
+        from unittest.mock import patch
+        from apps.billing.invoicing.tasks import reconcile_invoice_payment_status
+        row = self._usage_row(self.owner, "in_c2_flaky")
+        self._fail(_usage_obj("in_c2_flaky"))
+        with patch("apps.billing.queries.a_payment_failure_remains_for",
+                   side_effect=RuntimeError("database blip")):
+            self._void(_usage_obj("in_c2_flaky"))
+        row.refresh_from_db()
+        self.assertIsNone(row.payment_failed_at)               # the stamp settled
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertFalse(self._reactivated(self.owner).exists())
+        reconcile_invoice_payment_status()   # this tenant is not charge-ready: no listing
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+        reconcile_invoice_payment_status()
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+
+    def test_the_hourly_pass_never_touches_a_soft_deleted_customer(self):
+        from unittest.mock import patch
+        from apps.billing.gating.services.live_counter import LiveCounter
+        from apps.billing.invoicing.tasks import reconcile_invoice_payment_status
+        gone = Customer.objects.create(
+            tenant=self.tenant, external_id="gone", status="suspended",
+            suspension_reason=reasons.PAYMENT_FAILED)
+        gone.soft_delete()
+        Customer.objects.filter(id=self.owner.id).update(
+            status="suspended", suspension_reason=reasons.PAYMENT_FAILED)
+        with patch.object(LiveCounter, "clear_payment_failed_suspension",
+                          wraps=LiveCounter.clear_payment_failed_suspension) as decided:
+            reconcile_invoice_payment_status()
+        asked = {call.args[0] for call in decided.call_args_list}
+        self.assertIn(self.owner.id, asked)
+        self.assertNotIn(gone.id, asked)
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+
     def test_an_uncollectible_failed_invoice_still_stands(self):
         """Only paid and void settle a failure: an invoice Stripe marked
         uncollectible remains payable, so it keeps the owner suspended."""

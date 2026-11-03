@@ -785,11 +785,12 @@ class LiveCounter:
 
     @staticmethod
     def clear_payment_failed_suspension(owner_id) -> bool:
-        """The AR clear (R10 Stage C2, F-6, RULED Q4 and §7 item 26): after a
-        local invoice of ``owner_id`` became paid or void, reactivate the owner
-        if it is suspended for ``payment_failed`` — and only when no
-        qualifying failed/unpaid local invoice of it remains, which the
-        reactivation site checks under the owner's lock. A ``hard_floor``,
+        """The AR clear (R10 Stage C2, F-6, RULED Q4 and §7 item 26): asked
+        after a local invoice of ``owner_id`` became paid or void, and by the
+        hourly AR pass for every owner still suspended for ``payment_failed``.
+        Reactivate the owner if it is suspended for ``payment_failed`` — and
+        only when no qualifying failed/unpaid local invoice of it remains,
+        which the reactivation site checks under the owner's lock. A ``hard_floor``,
         ``customer_spend_pool``, ``dispute_lost``, manual or unknown
         suspension is left standing: a paid or voided invoice resolves none of
         those. Returns True when the row moved."""

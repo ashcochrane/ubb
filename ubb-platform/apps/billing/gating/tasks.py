@@ -70,7 +70,10 @@ def _per_owner_reconcile(tenant):
         if not holds_a_wallet(tenant):
             return 0
         try:
-            suspended = list(Customer.all_objects.filter(
+            # Live customers only: the reactivation site loads the owner
+            # through the default manager, so a soft-deleted one is never a
+            # candidate (it would fail, quietly, every hour).
+            suspended = list(Customer.objects.filter(
                 tenant=tenant, status="suspended",
                 suspension_reason__in=LiveCounter.BALANCE_SUSPEND_REASONS,
             ).values_list("id", flat=True))
