@@ -509,7 +509,7 @@ class CustomerReactivated(EventSchema):
     changes, under ``off`` as under ``enforcing``: the durable wallet balance
     back at or above the hard floor (``hard_floor``, ``dispute_lost``), the
     pool's line lifted (``customer_spend_pool``), or every qualifying failed
-    local invoice paid (``payment_failed``). Distinct from
+    local invoice settled — paid, or voided (``payment_failed``). Distinct from
     ``CustomerStopCleared``, which is the CONTROL layer's clear of one stop
     line under ``enforcing``; a recovery there may emit both, each once, and
     an ``off`` recovery emits only this one.

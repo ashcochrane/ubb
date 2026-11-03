@@ -698,7 +698,8 @@ class LiveCounter:
         Stage C2, RULED Q3). Durably reactivate an owner suspended for one of
         the ``clearable`` reasons (the enforcing money pair by default), once
         the condition behind it has resolved: the caller decides WHEN (the D15
-        durable balance gate, the pool's line lifted, a failed invoice paid);
+        durable balance gate, the pool's line lifted, a failed invoice paid
+        or voided, the hourly AR pass re-deciding a `payment_failed` owner);
         this decides WHETHER the row actually moves. Serializes on the owner
         Customer row (the same row the suspend paths lock), and the winning
         suspended->active transition guard prevents flip-flop. NEVER

@@ -32,6 +32,7 @@ from core.widget_auth import create_widget_token
 from api.v1.webhooks import (
     handle_invoice_finalized,
     handle_invoice_paid,
+    handle_invoice_uncollectible,
     handle_invoice_voided,
 )
 from apps.billing.connectors.stripe.webhooks import handle_invoice_payment_failed
@@ -394,12 +395,14 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
     A payment-failure suspension targets the canonical billing OWNER of the
     MATCHED LOCAL usage/subscription invoice, writes
     `suspension_reason = payment_failed` and emits `customer.suspended`; a
-    Stripe invoice with no local row suspends nobody. `invoice.paid` clears
-    THAT invoice's `payment_failed_at` and reactivates only a customer
-    suspended for `payment_failed`, and only when no other qualifying
-    failed/unpaid local invoice (usage or subscription) of that owner
-    remains; payment resolution never clears any other reason; the real
-    transition emits `customer.reactivated` exactly once.
+    Stripe invoice with no local row suspends nobody. `invoice.paid` — and,
+    since PLAN §7 item 26, `invoice.voided` (a resolved AR condition, not a
+    payment) — clears THAT invoice's `payment_failed_at` and reactivates only
+    a customer suspended for `payment_failed`, and only when no other
+    qualifying failed/unpaid local invoice (usage or subscription) of that
+    owner remains; neither ever clears any other reason; an uncollectible
+    invoice still stands; the real transition emits `customer.reactivated`
+    exactly once.
 
     Before C2 the suspend wrote no reason, targeted whichever local customer
     carried the Stripe customer id, and nothing ever reinstated the customer
@@ -718,8 +721,22 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
         self.assertIsNone(row.paid_at)
         self.assertEqual(self._standing(self.owner), ("active", ""))
         self.assertEqual(self._reactivated(self.owner).count(), 1)
+        self.assertEqual(self._reactivated(self.owner).get().payload["reason_code"],
+                         reasons.PAYMENT_FAILED)
         self._void(_sub_obj("in_c2_void_sub", "sub_c2_void"))   # replay
         self.assertEqual(self._reactivated(self.owner).count(), 1)
+
+    def test_an_uncollectible_failed_invoice_still_stands(self):
+        """Only paid and void settle a failure: an invoice Stripe marked
+        uncollectible remains payable, so it keeps the owner suspended."""
+        row = self._usage_row(self.owner, "in_c2_unc")
+        self._fail(_usage_obj("in_c2_unc"))
+        handle_invoice_uncollectible(_event(self.ACCT, obj=_usage_obj("in_c2_unc")))
+        row.refresh_from_db()
+        self.assertEqual(row.payment_status, "uncollectible")
+        self.assertIsNotNone(row.payment_failed_at)
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertFalse(self._reactivated(self.owner).exists())
 
     def test_voiding_one_invoice_never_clears_while_another_failure_remains(self):
         voided = self._usage_row(self.owner, "in_c2_void_a")
@@ -782,8 +799,11 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
     def test_a_void_through_the_real_receiver_core(self):
         """`invoice.voided` is the billing receiver's own type: a signed
         delivery settles the failure and reactivates, end to end."""
+        from apps.billing.stripe.models import StripeWebhookEvent
+
         row = self._usage_row(self.owner, "in_c2_wire_void")
-        self._deliver_signed("evt_c2_void_pf", "invoice.payment_failed", "in_c2_wire_void")
+        self.assertEqual(self._deliver_signed(
+            "evt_c2_void_pf", "invoice.payment_failed", "in_c2_wire_void").status_code, 200)
         self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
         self.assertEqual(self._deliver_signed(
             "evt_c2_void", "invoice.voided", "in_c2_wire_void").status_code, 200)
@@ -791,5 +811,12 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
         self.assertEqual((row.payment_status, row.payment_failed_at), ("void", None))
         self.assertEqual(self._standing(self.owner), ("active", ""))
         self.assertEqual(self._reactivated(self.owner).count(), 1)
-        self._deliver_signed("evt_c2_void", "invoice.voided", "in_c2_wire_void")  # redelivery
+        # A second, DIFFERENT `invoice.voided` for the same invoice (Stripe
+        # resending under a new event id) runs the handler again — the
+        # receiver's dedup does not absorb it — and moves nothing twice.
+        self.assertEqual(self._deliver_signed(
+            "evt_c2_void_again", "invoice.voided", "in_c2_wire_void").status_code, 200)
+        self.assertEqual(StripeWebhookEvent.objects.get(
+            stripe_event_id="evt_c2_void_again").status, "succeeded")
+        self.assertEqual(self._standing(self.owner), ("active", ""))
         self.assertEqual(self._reactivated(self.owner).count(), 1)

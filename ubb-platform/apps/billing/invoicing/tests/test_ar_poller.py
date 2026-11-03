@@ -240,11 +240,15 @@ class RepairTransitionParityTest(RailActivated, TestCase):
 
 
 class PollerClearsAPaymentFailedSuspensionTest(RailActivated, TestCase):
-    """R10 Stage C2, F-6: the hourly AR poller observing `paid` is the second
-    lane of the clear — it clears THAT row's `payment_failed_at` and
-    reactivates the owner only when no qualifying failed/unpaid local invoice
-    (usage or subscription) remains, through the same kit function the
-    webhook fast path ends in, so the two lanes cannot disagree."""
+    """R10 Stage C2, F-6 (and PLAN §7 item 26): the hourly AR poller observing
+    `paid` or `void` is the second lane of the clear — it clears THAT row's
+    `payment_failed_at` and asks billing's one decision
+    (`LiveCounter.clear_payment_failed_suspension`), which reactivates the
+    owner only when no qualifying failed/unpaid local invoice (usage or
+    subscription) remains — the same decision the webhook fast path ends in,
+    so the two lanes cannot disagree. The pass then re-decides every owner
+    still suspended for `payment_failed`, so one failed decision never
+    strands an owner."""
 
     PS = datetime.date(2026, 6, 1)
     PE = datetime.date(2026, 7, 1)
@@ -303,6 +307,50 @@ class PollerClearsAPaymentFailedSuspensionTest(RailActivated, TestCase):
         self.assertIsNone(rec.payment_failed_at)
         self.assertEqual(self._standing(), ("active", ""))
 
+    def test_a_missed_void_webhook_whose_stamp_lingers_is_settled_by_the_poller(self):
+        # The void twin (§7 item 26): the row is already void, its stamp
+        # lingers, and the equal-status pass settles it all the same.
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        rec = CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_xv", payment_status="void",
+            payment_failed_at=timezone.now())
+        self._poll(_stripe_invoice("in_xv", "void"))
+        rec.refresh_from_db()
+        self.assertEqual((rec.payment_status, rec.payment_failed_at, rec.paid_at),
+                         ("void", None, None))
+        self.assertEqual(self._standing(), ("active", ""))
+        self.assertEqual(self._reactivated().count(), 1)
+
+    def test_an_owner_whose_decision_failed_after_the_stamp_cleared_is_restored(self):
+        # The webhook settled the last failure's stamp and THEN its decision
+        # failed (it logs and returns): nothing is stamped, nothing is left to
+        # settle, and the owner is still suspended. The pass's bottom line
+        # re-asks billing's one decision for every `payment_failed` owner — no
+        # Stripe listing needed, so even a tenant the listing skips is seen.
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from apps.platform.work import reasons
+        CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_settled", payment_status="paid",
+            paid_at=timezone.now())                            # stamp already cleared
+        Tenant.objects.filter(id=self.t.id).update(charges_enabled=False)  # not listed
+        held = Customer.objects.create(
+            tenant=self.t, external_id="held", status="suspended",
+            suspension_reason=reasons.PAYMENT_FAILED)
+        CustomerUsageInvoice.objects.create(
+            tenant=self.t, customer=held, period_start=self.PS, period_end=self.PE,
+            status="pushed", stripe_invoice_id="in_still", payment_status="open",
+            payment_failed_at=timezone.now())                  # a failure still stands
+        self._poll()
+        self.assertEqual(self._standing(), ("active", ""))
+        self.assertEqual(self._reactivated().count(), 1)
+        held.refresh_from_db()
+        self.assertEqual((held.status, held.suspension_reason),
+                         ("suspended", reasons.PAYMENT_FAILED))
+        self._poll()                                           # the next hour: nothing twice
+        self.assertEqual(self._reactivated().count(), 1)
+
     def test_a_paid_subscription_invoice_observed_by_the_poller_clears(self):
         from apps.subscriptions.models import SubscriptionInvoice
         now = timezone.now()
@@ -340,16 +388,22 @@ class PollerClearsAPaymentFailedSuspensionTest(RailActivated, TestCase):
         self.assertFalse(self._reactivated().exists())
 
     def test_the_poller_never_clears_a_money_suspension(self):
+        # Neither a paid nor a voided invoice (§7 item 26) clears a reason
+        # the AR condition did not cause.
         from apps.billing.invoicing.models import CustomerUsageInvoice
         from apps.platform.work import reasons
         Customer.objects.filter(id=self.c.id).update(suspension_reason=reasons.HARD_FLOOR)
-        CustomerUsageInvoice.objects.create(
-            tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
-            status="pushed", stripe_invoice_id="in_x", payment_status="open",
-            payment_failed_at=timezone.now())
-        self._poll(_stripe_invoice("in_x", "paid"))
-        self.assertEqual(self._standing(), ("suspended", reasons.HARD_FLOOR))
-        self.assertFalse(self._reactivated().exists())
+        for n, settled in enumerate(("paid", "void")):
+            with self.subTest(settled=settled):
+                CustomerUsageInvoice.objects.create(
+                    tenant=self.t, customer=self.c,
+                    period_start=datetime.date(2026, 1 + n, 1),
+                    period_end=datetime.date(2026, 2 + n, 1),
+                    status="pushed", stripe_invoice_id=f"in_x_{settled}",
+                    payment_status="open", payment_failed_at=timezone.now())
+                self._poll(_stripe_invoice(f"in_x_{settled}", settled))
+                self.assertEqual(self._standing(), ("suspended", reasons.HARD_FLOOR))
+                self.assertFalse(self._reactivated().exists())
 
     # -- a voided failed invoice (PLAN §7 item 26): the poller is the second
     # lane, so recovery never depends on the `invoice.voided` webhook alone.
@@ -391,14 +445,18 @@ class PollerClearsAPaymentFailedSuspensionTest(RailActivated, TestCase):
     def test_the_poller_voiding_one_never_clears_while_another_failure_remains(self):
         from apps.billing.invoicing.models import CustomerUsageInvoice
         from apps.platform.work import reasons
-        CustomerUsageInvoice.objects.create(
+        voided = CustomerUsageInvoice.objects.create(
             tenant=self.t, customer=self.c, period_start=self.PS, period_end=self.PE,
             status="pushed", stripe_invoice_id="in_va", payment_status="open",
             payment_failed_at=timezone.now())
-        CustomerUsageInvoice.objects.create(
+        still_failed = CustomerUsageInvoice.objects.create(
             tenant=self.t, customer=self.c, period_start=datetime.date(2026, 7, 1),
             period_end=datetime.date(2026, 8, 1), status="pushed",
             stripe_invoice_id="in_vb", payment_status="open", payment_failed_at=timezone.now())
         self._poll(_stripe_invoice("in_va", "void"), _stripe_invoice("in_vb", "open"))
+        voided.refresh_from_db()
+        still_failed.refresh_from_db()
+        self.assertIsNone(voided.payment_failed_at)
+        self.assertIsNotNone(still_failed.payment_failed_at)
         self.assertEqual(self._standing(), ("suspended", reasons.PAYMENT_FAILED))
         self.assertFalse(self._reactivated().exists())

@@ -16,6 +16,7 @@ from apps.billing.connectors.stripe.invoice_routing import (
     _invoice_subscription_id,
     _refresh_urls,
     ar_transition_allowed,
+    settle_failure_stamp,
 )
 from core.vocabulary import (
     SKIP_REASON_NOT_CHARGE_READY,
@@ -176,6 +177,12 @@ def reconcile_invoice_payment_status():
     transition table the webhook path uses (paid/void final; uncollectible
     remains payable/voidable). A genuinely illegal move Stripe reports (e.g.
     paid -> open) is loud-logged, never applied.
+
+    R10 Stage C2 (F-6, PLAN §7 item 26): a row observed paid or void settles
+    its failure stamp and billing re-decides the owner; and the pass ends by
+    re-deciding every owner still suspended for `payment_failed`
+    (`_restore_payment_failed_owners`), so an owner whose last failure was
+    settled never stays suspended because one delivery's decision failed.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.billing.gating.services.live_counter import LiveCounter
@@ -234,6 +241,39 @@ def reconcile_invoice_payment_status():
             continue
     if repaired:
         logger.info("ar.reconcile_repaired", extra={"data": {"repaired": repaired}})
+    _restore_payment_failed_owners()
+
+
+def _restore_payment_failed_owners():
+    """The bottom line of the AR clear (R10 Stage C2, F-6, PLAN §7 item 26):
+    re-run billing's ONE decision — `LiveCounter.clear_payment_failed_suspension`,
+    under the owner's row lock — for every customer still suspended for
+    `payment_failed`, in every tenant and without asking Stripe anything.
+
+    Not a second recovery mechanism and not a second decision: it triggers the
+    same one from durable truth. The webhook and the listing above settle an
+    invoice's stamp and THEN ask for the decision in its own transaction; a
+    decision that failed there (it logs and returns) left an owner suspended
+    with nothing stamped and nothing left to settle. This pass re-asks, so the
+    owner comes back within the hour. An owner with a qualifying failed or
+    unpaid local invoice still standing is left exactly as it is. Never raises."""
+    from apps.billing.gating.services.live_counter import LiveCounter
+    from apps.platform.customers.models import Customer
+    from apps.platform.work import reasons
+
+    try:
+        suspended = list(Customer.all_objects.filter(
+            status="suspended", suspension_reason=reasons.PAYMENT_FAILED,
+        ).values_list("id", flat=True))
+    except Exception:
+        logger.exception("ar.payment_failed_restore_failed")
+        return
+    for owner_id in suspended:
+        try:
+            LiveCounter.clear_payment_failed_suspension(owner_id)
+        except Exception:
+            logger.exception("ar.payment_failed_restore_failed",
+                             extra={"data": {"owner_id": str(owner_id)}})
 
 
 def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls,
@@ -247,7 +287,6 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
     ).exclude(stripe_invoice_id="")
     if invoice_kind is not None:
         qs = qs.filter(invoice_kind=invoice_kind)
-    from apps.billing.connectors.stripe.invoice_routing import settle_failure_stamp
     from apps.billing.gating.services.live_counter import LiveCounter
 
     existing = qs.first()
