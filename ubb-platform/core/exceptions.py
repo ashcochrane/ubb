@@ -51,8 +51,51 @@ class StripePaymentError(UBBError):
 
 
 class StripeFatalError(UBBError):
-    """Non-retryable fatal errors (auth, config, idempotency mismatch)."""
+    """Non-retryable fatal errors (auth, config, idempotency mismatch).
+
+    The composition layer answers one of these, raised by a payment
+    operation a tenant asked for, as the registered ``payment_not_available``
+    problem (409): a valid request the payment subject cannot currently
+    perform — never a bare ``internal_error`` (R10 Stage C1b, F-11, RULED Q2
+    and Q21). Subclasses that name a narrower registered problem
+    (``PaymentRailClosed``, ``CurrencyDisagreement``) keep their own.
+    """
     pass
+
+
+class StripeNotConfigured(StripeFatalError):
+    """UBB itself holds no usable Stripe key for the tenant's mode — the live
+    ``STRIPE_SECRET_KEY`` is unset, or a sandbox tenant has no (or a live)
+    ``STRIPE_TEST_SECRET_KEY``. Raised by the wrapper before any request is
+    built (F-2) and by the top-up preconditions before anything is written
+    (F-11). The composition layer answers it as ``service_unavailable`` (503,
+    RULED Q21): the service is not configured to perform the payment, which
+    is neither the tenant's state (``payment_not_available``) nor the
+    caller's request. Still a ``StripeFatalError`` to every caller of the
+    rail that degrades on one."""
+    pass
+
+
+class PaymentNotAvailable(StripeFatalError):
+    """The tenant's payment account cannot presently perform a customer
+    payment operation: no connected Stripe account, or the connected account
+    is not charge-ready (``charges_enabled=False``) — R10 Stage C1b, F-11
+    + O-6, RULED Q2. Evaluated BEFORE a top-up attempt or its audit row is
+    written, so nothing pending is left behind; answered as the registered
+    ``payment_not_available`` problem (409, RULED Q21: a state conflict, not
+    a malformed request). A ``StripeFatalError`` because that is what it is
+    to every caller of the rail: not retryable, and raised before anything
+    is sent."""
+
+    code = "payment_not_available"
+
+    def __init__(self, *, tenant_id, reason):
+        self.tenant_id = tenant_id
+        self.reason = reason
+        self.explanation = (
+            f"the tenant's payment account cannot perform this payment right "
+            f"now: {reason}")
+        super().__init__(self.explanation)
 
 
 class UnknownCurrency(UBBError):

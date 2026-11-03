@@ -57,6 +57,20 @@ class ExpireStaleTopupAttemptsTest(TestCase):
         self.assertEqual(stale.status, "expired")
         self.assertEqual(fresh.status, "pending")
 
+    def test_expires_stale_widget_attempts(self):
+        """R10 Stage C1b (F-11/O-6): a widget Checkout attempt gets the same
+        24-hour window as the tenant route's; on the C1a anchor `widget`
+        attempts were never expired at all."""
+        stale = self._create_attempt("widget", hours_ago=25)
+        fresh = self._create_attempt("widget", hours_ago=12)
+
+        expire_stale_topup_attempts()
+
+        stale.refresh_from_db()
+        fresh.refresh_from_db()
+        self.assertEqual(stale.status, "expired")
+        self.assertEqual(fresh.status, "pending")
+
     def test_does_not_expire_already_succeeded(self):
         attempt = self._create_attempt("auto_top_up", minutes_ago=60)
         TopUpAttempt.objects.filter(pk=attempt.pk).update(status="succeeded")

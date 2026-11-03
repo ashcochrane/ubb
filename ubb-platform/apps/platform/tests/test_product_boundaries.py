@@ -44,11 +44,14 @@ PAIR_CHANNELS = {
     # The "Stripe connector kit" (ADR-001 decision 5): shared Stripe plumbing
     # that lives in billing but is deliberately importable by subscriptions —
     # the stripe_call wrapper + API-version pin, the ONE StripeWebhookEvent
-    # dedup table shared across both webhook endpoints, and the AR
-    # transition/URL helpers. Future home: apps/connectors/ if products split.
+    # dedup table (scoped per receiver since C1b) shared by both webhook
+    # endpoints, the ONE receiver core both endpoints are built on (C1b,
+    # F-17), and the AR transition/URL helpers. Future home: apps/connectors/
+    # if products split.
     "apps.subscriptions": (
         "apps.billing.stripe.services.stripe_service",
         "apps.billing.stripe.models",
+        "apps.billing.stripe.receiver",
         "apps.billing.connectors.stripe.invoice_routing",
     ),
 }

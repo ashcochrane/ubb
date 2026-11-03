@@ -28,14 +28,20 @@ def expire_stale_topup_attempts():
             extra={"data": {"expired_count": auto_expired}},
         )
 
-    # Expire stale manual/checkout attempts
-    manual_expired = TopUpAttempt.objects.filter(
-        status="pending",
-        trigger="manual",
-        created_at__lt=manual_cutoff,
-    ).update(status="expired")
-    if manual_expired:
-        logger.info(
-            "Expired stale manual top-up attempts",
-            extra={"data": {"expired_count": manual_expired}},
-        )
+    # Expire stale Checkout attempts — the tenant route's (`manual`) and the
+    # widget's (`widget`, R10 Stage C1b F-11/O-6: a widget attempt is the
+    # same Checkout Session, which Stripe itself expires after 24 hours, so
+    # it gets the same window; it never expired before). An expired Checkout
+    # that completes late is still credited (handle_checkout_completed's
+    # expired-manual recovery).
+    for trigger in ("manual", "widget"):
+        expired = TopUpAttempt.objects.filter(
+            status="pending",
+            trigger=trigger,
+            created_at__lt=manual_cutoff,
+        ).update(status="expired")
+        if expired:
+            logger.info(
+                "Expired stale %s top-up attempts", trigger,
+                extra={"data": {"trigger": trigger, "expired_count": expired}},
+            )

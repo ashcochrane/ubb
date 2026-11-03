@@ -79,14 +79,20 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
    wiring products together is their job. Products never import `api.*` (in either form: the
    top-level `api/` package or another product's `api/`... the test flags any `api`-rooted
    import from `apps/` or `core/`).
-5. **Named exception — the "Stripe connector kit."** Three billing-owned modules are importable
+5. **Named exception — the "Stripe connector kit."** Four billing-owned modules are importable
    by subscriptions because they are shared Stripe infrastructure, not billing business logic:
    - `apps.billing.stripe.services.stripe_service` — the `stripe_call` wrapper (error mapping,
      retry) + the global Stripe API-version pin + the `field` / `metadata_value` accessors that
      read the pinned SDK's object model (added by R10 Stage C1a, 2026-11);
    - `apps.billing.stripe.models.StripeWebhookEvent` — deliberately **one** webhook dedup table
-     across both webhook endpoints (billing's and subscriptions'), so a replayed Stripe event is
-     deduplicated no matter which endpoint receives it;
+     for both webhook endpoints (billing's and subscriptions'), keyed per **receiver** since R10
+     Stage C1b (2026-11): unique by `(receiver, stripe_event_id)`, so a Stripe event delivered to
+     both endpoints is processed by the receiver that owns its type and recorded by the other,
+     independently, and a redelivery to one receiver is deduplicated there;
+   - `apps.billing.stripe.receiver` — the **one** receiver core both endpoints are built on
+     (verification with the receiver's own secret, the mode gate, per-receiver dedup with the
+     CAS retry, dispatch, error classification), parameterised by receiver, handler map and
+     secret (added by R10 Stage C1b);
    - `apps.billing.connectors.stripe.invoice_routing` — the AR state-transition table + invoice
      URL refresh helpers, which `apps/subscriptions/ports.py` builds on.
    If the products ever split into services, this kit's future home is a real shared package

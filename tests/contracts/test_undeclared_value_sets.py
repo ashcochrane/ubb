@@ -93,7 +93,13 @@ VALUE_SETS = {
     # 4 -> 5 in R10-W4: the skip reason gained `choices=` when the registry
     # declared `skip_reason`; it was a bare string written as literals.
     "ubb-platform/apps/billing/invoicing/models.py": 5,
-    "ubb-platform/apps/billing/stripe/models.py": 1,
+    # 1 -> 2 in R10 Stage C1b (F-17): the webhook RECEIVER, a closed internal
+    # set (`billing`, `subscriptions`) scoping deduplication, declared where
+    # the row lands and held by a CHECK. Not a registry concept on purpose:
+    # the registry has no internal kind — every concept it declares is
+    # rendered into the SDK and the console — and this set names UBB's own
+    # two Stripe endpoints, which no tenant surface publishes.
+    "ubb-platform/apps/billing/stripe/models.py": 2,
     "ubb-platform/apps/billing/tenant_billing/models.py": 2,
     "ubb-platform/apps/billing/topups/models.py": 2,
     # 3 → 4 in #355: the rule's pricing method, DERIVED from the registry

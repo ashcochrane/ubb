@@ -90,7 +90,10 @@ FRESH_INITIAL_SET = frozenset({
 #: cases below carry the red until a real migration arrives. The commit that
 #: adds the first migration after the cutover moves this to 1 — the visible,
 #: reviewed admission of a migration into the history G20 holds.
-MIGRATIONS_SINCE_THE_CUTOVER = 0
+#: One since the cutover: `stripe_integration/0002_stripewebhookevent_receiver`
+#: (R10 Stage C1b, F-17 — webhook deduplication scoped per receiver: a column
+#: with a default, a dropped single-column unique, a pair unique and a CHECK).
+MIGRATIONS_SINCE_THE_CUTOVER = 1
 
 NUMBERED = re.compile(r"^\d{4}_\w+\.py$")
 DROP_OPS = {"RemoveField", "DeleteModel"}

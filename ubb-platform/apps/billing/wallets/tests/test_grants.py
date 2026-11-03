@@ -425,12 +425,17 @@ class TestClawbackCascade:
         g = _make_grant(w, t, kind="paid", amount=20_000_000,
                         source="checkout", source_reference=str(attempt.id))
 
-        refund = MagicMock(id="re_r1", amount=1000, currency="usd")  # 10_000_000 micros
-        charge = MagicMock(id="ch_r1", amount_refunded=1000)
-        charge.refunds.data = [refund]
-        event = MagicMock()
-        event.data.object = charge
-        event.account = "acct_r1"
+        import stripe
+        # A real Charge (C1b): the handler reads its currency and cumulative.
+        event = stripe.Event.construct_from({
+            "id": "evt_r1", "object": "event", "type": "charge.refunded",
+            "livemode": True, "created": 1, "account": "acct_r1",
+            "data": {"object": {
+                "id": "ch_r1", "object": "charge", "amount": 2000,
+                "amount_refunded": 1000, "currency": "usd", "refunded": False,
+                "refunds": {"object": "list", "has_more": False, "data": [
+                    {"id": "re_r1", "object": "refund", "amount": 1000,
+                     "currency": "usd", "status": "succeeded"}]}}}}, "sk_test_sentinel")
         handle_charge_refunded(event)
         handle_charge_refunded(event)  # redelivery
 

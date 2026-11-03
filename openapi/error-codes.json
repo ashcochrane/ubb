@@ -100,6 +100,10 @@
       "status": 404,
       "title": "Not found"
     },
+    "payment_not_available": {
+      "status": 409,
+      "title": "The payment account cannot perform this payment right now"
+    },
     "payment_rail_not_activated": {
       "status": 409,
       "title": "The payment rail is not activated for this environment"

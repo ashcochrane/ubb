@@ -52,6 +52,18 @@ class TestCatchByFamilyOrCode:
         assert isinstance(a, ConflictError) and isinstance(b, ConflictError)
         assert type(a) is InsufficientBalanceError and type(b) is WouldOverdrawError
 
+    def test_payment_not_available_is_a_conflict_leaf(self):
+        """R10 Stage C1b (F-11, RULED Q21): the registry's `payment_not_available`
+        is a 409 — a valid request the payment subject cannot currently
+        perform — generated as a ConflictError leaf, never a 422."""
+        from ubb.exceptions import PaymentNotAvailableError
+        assert REGISTRY["problems"]["payment_not_available"]["status"] == 409
+        exc = exception_for(409, "payment_not_available", "not charge-ready")
+        assert type(exc) is PaymentNotAvailableError
+        assert isinstance(exc, ConflictError)
+        assert not isinstance(exc, UnprocessableEntityError)
+        assert (exc.status_code, exc.code) == (409, "payment_not_available")
+
     def test_ubbconflicterror_alias_still_works(self):
         exc = exception_for(409, "would_overdraw", "")
         assert isinstance(exc, UBBConflictError)  # legacy name, now == ConflictError

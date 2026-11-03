@@ -170,6 +170,11 @@ class LastActiveKeyError(ConflictError):
     CODE = 'last_active_key'
 
 
+class PaymentNotAvailableError(ConflictError):
+    STATUS = 409
+    CODE = 'payment_not_available'
+
+
 class PaymentRailNotActivatedError(ConflictError):
     STATUS = 409
     CODE = 'payment_rail_not_activated'
@@ -269,6 +274,7 @@ PROBLEM_CODES: dict[str, type[_ProblemError]] = {
     'last_active_key': LastActiveKeyError,
     'method_not_allowed': MethodNotAllowedError,
     'not_found': NotFoundError,
+    'payment_not_available': PaymentNotAvailableError,
     'payment_rail_not_activated': PaymentRailNotActivatedError,
     'pricing_mode_frozen': PricingModeFrozenError,
     'provider_conflicts_with_event_type': ProviderConflictsWithEventTypeError,
@@ -328,6 +334,7 @@ __all__ = [
     'InvalidTenantIdError',
     'LastActiveAdminError',
     'LastActiveKeyError',
+    'PaymentNotAvailableError',
     'PaymentRailNotActivatedError',
     'PricingModeFrozenError',
     'ProviderConflictsWithEventTypeError',

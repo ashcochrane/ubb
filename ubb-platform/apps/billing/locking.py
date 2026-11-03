@@ -34,11 +34,19 @@ def the_currency_a_top_up_credits(attempt):
     creation path writes any more) reads its seat's owner: this moves no
     money, it only names a currency.
     """
+    owner_id = (attempt.billing_owner_id
+                or attempt.customer.resolve_billing_owner().id)
+    return the_currency_a_top_up_will_credit(owner_id)
+
+
+def the_currency_a_top_up_will_credit(owner_id):
+    """``(record, currency)`` for the billing owner a top-up WILL credit —
+    the same answer as above, asked before the attempt row exists (R10 Stage
+    C1b, F-11: every knowable precondition of a top-up, the currency among
+    them, is evaluated before anything is written)."""
     from apps.billing.wallets.models import Wallet
     from apps.platform.customers.models import Customer
 
-    owner_id = (attempt.billing_owner_id
-                or attempt.customer.resolve_billing_owner().id)
     wallet = Wallet.objects.filter(customer_id=owner_id).first()
     if wallet is not None:
         return f"wallet {wallet.id}", wallet.currency

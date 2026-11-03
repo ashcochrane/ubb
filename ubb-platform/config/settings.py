@@ -362,6 +362,15 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_TEST_SECRET_KEY = os.environ.get("STRIPE_TEST_SECRET_KEY", "")
 STRIPE_TEST_WEBHOOK_SECRET = os.environ.get("STRIPE_TEST_WEBHOOK_SECRET", "")
 STRIPE_CONNECT_TEST_CLIENT_ID = os.environ.get("STRIPE_CONNECT_TEST_CLIENT_ID", "")
+# The SUBSCRIPTIONS receiver's own signing secrets (R10 Stage C1b, F-17). Each
+# Stripe endpoint UBB registers has its own secret: these verify
+# /api/v1/subscriptions/webhooks/stripe (live) and .../stripe/test (sandbox).
+# Blank or unset => that receiver FAILS CLOSED (400, nothing recorded). There
+# is no fallback to STRIPE_WEBHOOK_SECRET: configuring the same literal for two
+# receivers is a deployment's choice, never a runtime one.
+STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET = os.environ.get("STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET", "")
+STRIPE_SUBSCRIPTIONS_TEST_WEBHOOK_SECRET = os.environ.get(
+    "STRIPE_SUBSCRIPTIONS_TEST_WEBHOOK_SECRET", "")
 
 # Clerk — tenant-member token verification (identity build 1, #79). All empty =>
 # member auth is OFF and the API is API-key-only, byte-for-byte as before. A

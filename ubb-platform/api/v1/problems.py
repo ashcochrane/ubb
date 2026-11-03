@@ -177,7 +177,66 @@ def install_problem_handlers(api):
         # a subscription started, resumed or re-priced — refused by name.
         return problem_response(exc.code, exc.explanation)
 
-    from core.exceptions import NoWalletSubjectError
+    from core.currency_policy import CurrencyDisagreement, UNSUPPORTED_CURRENCY
+    from core.exceptions import (
+        NoWalletSubjectError, StripeFatalError, StripeNotConfigured,
+        StripeTransientError)
+
+    # R10 Stage C1b (F-11, RULED Q2/Q21): a payment operation the tenant asked
+    # for that the rail refuses is answered by its truthful registered
+    # problem, never a bare `internal_error`. ninja resolves handlers by
+    # exception MRO, so the narrower subclasses registered above
+    # (PaymentRailClosed -> payment_rail_not_activated) and below
+    # (CurrencyDisagreement -> unsupported_currency) keep their own codes
+    # ahead of the StripeFatalError family's.
+
+    @api.exception_handler(CurrencyDisagreement)
+    def _currency_disagreement(request, exc):
+        # The records a money call draws on disagree about the currency, or
+        # one is not UBB's (ADR-0023). Never collapsed into payment
+        # availability: the registered currency problem, with the refusal's
+        # own words.
+        return problem_response(UNSUPPORTED_CURRENCY, str(exc))
+
+    @api.exception_handler(StripeNotConfigured)
+    def _stripe_not_configured(request, exc):
+        # UBB holds no usable Stripe key for the tenant's mode: the service
+        # is not configured to perform the payment. Neither the tenant's
+        # state nor the caller's request — service_unavailable (503, RULED
+        # Q21), on every route the wrapper refuses for this reason, not only
+        # the top-up door that asks it first.
+        logger.error(
+            "payment service not configured on %s %s: %s",
+            request.method, request.path, exc,
+        )
+        return problem_response(
+            "service_unavailable",
+            "the payment service is not configured for this tenant's environment")
+
+    @api.exception_handler(StripeFatalError)
+    def _stripe_fatal(request, exc):
+        # A permanent refusal — no connected account / not charge-ready
+        # (PaymentNotAvailable), or Stripe's own refusal of the call after
+        # the attempt exists (an InvalidRequestError, an authentication or
+        # permission error, an idempotency mismatch): the payment subject
+        # cannot presently perform the operation. The detail is the
+        # refusal's own message; a secret never appears in one.
+        return problem_response("payment_not_available", str(exc))
+
+    @api.exception_handler(StripeTransientError)
+    def _stripe_transient(request, exc):
+        # Transient upstream inability (network, rate limit, 5xx) after the
+        # wrapper's retries: the payment service is unavailable right now;
+        # the caller may retry with the same idempotency key.
+        logger.warning(
+            "payment service unavailable on %s %s: %s",
+            request.method, request.path, exc,
+        )
+        return problem_response(
+            "service_unavailable",
+            "the payment service is temporarily unavailable; retry with the "
+            "same idempotency_key",
+            headers={"Retry-After": "60"})
 
     @api.exception_handler(NoWalletSubjectError)
     def _no_wallet_subject(request, exc):

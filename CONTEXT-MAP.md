@@ -54,7 +54,8 @@ lazily by `/domain-modeling` as terms are resolved — several are still to be w
   register listeners in `AppConfig.ready()` for synchronous lifecycle reactions (e.g. seat-roster
   change → Stripe quantity push on the same transaction commit).
 - **Billing → Subscriptions — Stripe connector kit** (named exception): `stripe.services`, the
-  `StripeWebhookEvent` dedup table, and `connectors.stripe.invoice_routing` are shared Stripe
-  infrastructure importable by subscriptions.
+  `StripeWebhookEvent` dedup table (keyed per receiver), the one webhook receiver core
+  `stripe.receiver`, and `connectors.stripe.invoice_routing` are shared Stripe infrastructure
+  importable by subscriptions.
 - **`api/v1` + `apps/*/api` → any product**: the composition layer wires products together;
   products never import `api.*`.

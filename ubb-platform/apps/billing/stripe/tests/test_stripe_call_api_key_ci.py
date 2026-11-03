@@ -187,10 +187,11 @@ def _collect_raw_calls():
 def test_no_production_code_calls_the_stripe_sdk_raw():
     violations, files, allowlisted = _collect_raw_calls()
     assert files >= 50, f"AST walker only scanned {files} production files"
-    # The two webhook receivers' construct_event plus the wrapper module's
+    # The ONE receiver core's construct_event (C1b folded the two receivers'
+    # copies into `apps/billing/stripe/receiver.py`) plus the wrapper module's
     # VERSION.split are allowlisted hits the scanner must have SEEN — proof it
     # reads real code rather than passing vacuously.
-    assert allowlisted >= 3, f"scanner saw only {allowlisted} allowlisted hits"
+    assert allowlisted >= 2, f"scanner saw only {allowlisted} allowlisted hits"
     assert not violations, (
         "raw stripe.<Resource>.<verb>( call in production code — route it "
         "through stripe_call(stripe.<Resource>.<verb>, api_key=..., ...) so an "

@@ -1,19 +1,16 @@
 import logging
-from datetime import timedelta
 
-import stripe
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
-from django.db import IntegrityError, transaction
-from django.db.models import F
-from django.http import JsonResponse, HttpResponse
+from django.db import transaction
+from django.http import HttpResponse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from apps.billing.invoicing.models import Invoice
-from apps.billing.stripe.models import StripeWebhookEvent
-from core.exceptions import NoWalletSubjectError, StripeFatalError
+from apps.billing.stripe.models import WEBHOOK_RECEIVER_BILLING
+from apps.billing.stripe.receiver import receive_stripe_event
 from apps.subscriptions.stripe.items import paid_amounts
 from apps.billing.locking import lock_invoice
 
@@ -21,6 +18,7 @@ from apps.billing.connectors.stripe.webhooks import (
     handle_checkout_completed,
     handle_charge_dispute_created,
     handle_charge_dispute_closed,
+    handle_charge_refund_updated,
     handle_charge_refunded,
     handle_invoice_payment_failed,
     handle_payment_intent_succeeded,
@@ -41,13 +39,11 @@ from core.vocabulary import (
 
 logger = logging.getLogger(__name__)
 
-PROCESSING_TTL_MINUTES = 30
-
 
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
-    """Stripe LIVE-mode webhook endpoint.
+    """Stripe LIVE-mode webhook endpoint — the BILLING receiver.
 
     Fails closed, exactly as the test endpoint below does, when
     STRIPE_WEBHOOK_SECRET is unset or blank: an empty secret must never
@@ -56,6 +52,10 @@ def stripe_webhook(request):
     Stripe (an `external` tenant's) would have left the live receiver open
     (W7 preparation finding F5, ruled 2026-10-30). Refused before anything is
     verified or persisted.
+
+    The body is the shared receiver core (`apps/billing/stripe/receiver.py`,
+    C1b): deduplicated per receiver, so an event id the subscriptions
+    receiver also receives is this receiver's own row here.
     """
     if not (settings.STRIPE_WEBHOOK_SECRET or "").strip():
         return HttpResponse(status=400)
@@ -73,152 +73,26 @@ def stripe_webhook_test(request):
     Handlers are shared: the livemode filters inside them bind every lookup
     to sandbox tenants.
     """
-    if not settings.STRIPE_TEST_WEBHOOK_SECRET:
+    if not (settings.STRIPE_TEST_WEBHOOK_SECRET or "").strip():
         return HttpResponse(status=400)
     return _stripe_webhook(
         request, secret=settings.STRIPE_TEST_WEBHOOK_SECRET, is_test_endpoint=True)
 
 
 def _stripe_webhook(request, *, secret, is_test_endpoint):
-    # 1. Verify signature
-    payload = request.body
-    sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, secret)
-    except (ValueError, stripe.error.SignatureVerificationError):
-        return HttpResponse(status=400)
-
-    # 1b. Mode gate (F4.4): test endpoint = test events only; live endpoint
-    # rejects test events once the test secret (= sandbox infra) exists.
-    if reject_for_mode(event, is_test_endpoint=is_test_endpoint):
-        return HttpResponse(status=400)
-
-    # 2. Event-level dedup with IntegrityError handling
-    try:
-        with transaction.atomic():
-            webhook_event, created = StripeWebhookEvent.objects.get_or_create(
-                stripe_event_id=event.id,
-                defaults={"event_type": event.type, "status": "processing"},
-            )
-    except IntegrityError:
-        StripeWebhookEvent.objects.filter(stripe_event_id=event.id).update(
-            duplicate_count=F("duplicate_count") + 1,
-            last_seen_at=timezone.now(),
-            updated_at=timezone.now(),
-        )
-        return JsonResponse({"status": "already_received"})
-
-    if not created:
-        processing_ttl = timezone.now() - timedelta(minutes=PROCESSING_TTL_MINUTES)
-
-        # CAS: allow retry of retryable failures or stale processing
-        if (
-            (webhook_event.status == "failed"
-             and webhook_event.failure_reason
-             and webhook_event.failure_reason.get("retryable") is True)
-            or (webhook_event.status == "processing"
-                and webhook_event.updated_at < processing_ttl)
-        ):
-            rows_updated = StripeWebhookEvent.objects.filter(
-                id=webhook_event.id,
-                status=webhook_event.status,
-                updated_at=webhook_event.updated_at,
-            ).update(
-                status="processing",
-                failure_reason=None,
-                duplicate_count=F("duplicate_count") + 1,
-                last_seen_at=timezone.now(),
-                updated_at=timezone.now(),
-            )
-            if rows_updated == 0:
-                return JsonResponse({"status": "already_processing"})
-            # Won CAS — fall through to handler
-        else:
-            StripeWebhookEvent.objects.filter(stripe_event_id=event.id).update(
-                duplicate_count=F("duplicate_count") + 1,
-                last_seen_at=timezone.now(),
-                updated_at=timezone.now(),
-            )
-            return JsonResponse({"status": "already_processed"})
-
-    # 3. Dispatch
-    handler = WEBHOOK_HANDLERS.get(event.type)
-    if not handler:
-        webhook_event.status = "skipped"
-        webhook_event.save(update_fields=["status", "updated_at"])
-        return JsonResponse({"status": "ok"})
-
-    # 4. Execute with error classification
-    try:
-        handler(event)
-        webhook_event.status = "succeeded"
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "processed_at", "updated_at"])
-    except ObjectDoesNotExist as e:
-        logger.warning(
-            "Webhook handler ObjectDoesNotExist (likely out-of-order)",
-            extra={"data": {"event_id": event.id, "error": str(e)}},
-        )
-        webhook_event.status = "failed"
-        webhook_event.failure_reason = {
-            "error": str(e), "type": type(e).__name__, "retryable": True
-        }
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
-        return HttpResponse(status=500)  # Stripe retries
-    except StripeFatalError as e:
-        logger.error(
-            "Webhook handler fatal error",
-            extra={"data": {"event_id": event.id, "error": str(e)}},
-        )
-        webhook_event.status = "failed"
-        webhook_event.failure_reason = {
-            "error": str(e), "type": type(e).__name__, "retryable": False
-        }
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
-        return JsonResponse({"status": "failed"})  # 200 — no Stripe retry
-    except NoWalletSubjectError as e:
-        # The wallet boundary refused: the matched tenant's billing mode holds
-        # no wallet (`external`, `postpaid`), so there is no wallet for this
-        # money to land on or leave — an out-of-band Checkout Session, or a
-        # dispute/refund/payment on an attempt whose tenant has since left
-        # `prepaid`. Nothing a retry could change: recorded on the event row
-        # by name as a NON-retryable failure and acknowledged, so Stripe never
-        # loops on it. The money stays where Stripe holds it, for the tenant.
-        logger.error(
-            "Webhook handler refused: no wallet subject",
-            extra={"data": {"event_id": event.id, "error": str(e),
-                            "billing_mode": e.billing_mode}},
-        )
-        webhook_event.status = "failed"
-        webhook_event.failure_reason = {
-            "error": str(e), "type": type(e).__name__, "retryable": False
-        }
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
-        return JsonResponse({"status": "failed"})  # 200 — no Stripe retry
-    except Exception as e:
-        logger.exception(
-            "Webhook handler transient error",
-            extra={"data": {"event_id": event.id}},
-        )
-        webhook_event.status = "failed"
-        webhook_event.failure_reason = {
-            "error": str(e), "type": type(e).__name__, "retryable": True
-        }
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
-        return HttpResponse(status=500)  # Stripe retries
-
-    return JsonResponse({"status": "ok"})
+    return receive_stripe_event(
+        request, receiver=WEBHOOK_RECEIVER_BILLING, handlers=WEBHOOK_HANDLERS,
+        secret=secret, is_test_endpoint=is_test_endpoint,
+        # This receiver moves wallet money, so the wallet boundary's refusal
+        # is one of its named, non-retryable outcomes.
+        refuses_without_a_wallet_subject=True)
 
 
 # --- AR payment-status reconcile (Wave-5a) ---------------------------------
 # ALL invoice.* reconcile lives here; the subscriptions endpoint handles
-# customer.subscription.* only — never register an invoice.* type on both
-# (they share the StripeWebhookEvent dedup table, so a double-registration would
-# let the first endpoint win the dedup row and the second silently skip).
+# customer.subscription.* only. Since C1b (F-17) each receiver deduplicates
+# its own deliveries, so a type registered on both would be processed by
+# both — keep every type on exactly one receiver's map.
 #
 # AR_ALLOWED, ar_transition_allowed, _refresh_urls, and _invoice_subscription_id
 # are billing-domain logic; they live in
@@ -470,6 +344,9 @@ WEBHOOK_HANDLERS = {
     "charge.dispute.created": handle_charge_dispute_created,
     "charge.dispute.closed": handle_charge_dispute_closed,
     "charge.refunded": handle_charge_refunded,
+    # Alert-only (C1b, RULED Q19): a refund that later fails or is cancelled
+    # is detected and reported; the wallet is never moved by it.
+    "charge.refund.updated": handle_charge_refund_updated,
     "payment_intent.succeeded": handle_payment_intent_succeeded,
     "payment_intent.payment_failed": handle_payment_intent_payment_failed,
 }
