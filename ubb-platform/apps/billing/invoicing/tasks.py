@@ -12,6 +12,7 @@ from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
 from apps.billing.connectors.stripe.invoice_routing import (
+    SETTLED_PAYMENT_STATUSES,
     _invoice_subscription_id,
     _refresh_urls,
     ar_transition_allowed,
@@ -208,10 +209,11 @@ def reconcile_invoice_payment_status():
                 if _invoice_subscription_id(inv):
                     repaired += repair_subscription_invoice(
                         tenant, stripe_invoice_id, inv, new_status)
-                    if new_status == "paid":
-                        # R10 Stage C2 (F-6): observing `paid` settles the
-                        # subscription invoice's failure stamp (the port's
-                        # row), and billing decides the owner's clear.
+                    if new_status in SETTLED_PAYMENT_STATUSES:
+                        # R10 Stage C2 (F-6, §7 item 26): observing `paid` or
+                        # `void` settles the subscription invoice's failure
+                        # stamp (the port's row), and billing decides the
+                        # owner's clear.
                         settled = settle_subscription_invoice_payment_failure(
                             tenant, stripe_invoice_id)
                         if settled is not None:
@@ -272,10 +274,11 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
             if new_status == "paid" and not row.paid_at:
                 row.paid_at = timezone.now()
             refresh_urls(row, inv)
-        # R10 Stage C2 (F-6): the poller observing `paid` clears THIS row's
-        # failure stamp — whether the transition applied now or a missed
-        # webhook already applied it — and billing then decides, at its one
-        # reactivation site, whether the owner comes back.
+        # R10 Stage C2 (F-6, §7 item 26): the poller observing `paid` or
+        # `void` clears THIS row's failure stamp — whether the transition
+        # applied now or a missed webhook already applied it — and billing
+        # then decides, at its one reactivation site, whether the owner comes
+        # back.
         settled_owner_id = settle_failure_stamp(row, row.payment_status)
         row.save()
     if settled_owner_id is not None:

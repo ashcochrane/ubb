@@ -113,18 +113,19 @@ def has_unsettled_subscription_payment_failure(owner_id) -> bool:
 
 
 def settle_subscription_invoice_payment_failure(tenant, stripe_invoice_id):
-    """The hourly AR repair observing `paid` on a SubscriptionInvoice clears
-    that row's failure stamp (R10 Stage C2, F-6) — whether the status
-    transition applied in this pass or a webhook applied it earlier and the
-    stamp lingered. Returns the billing owner id whose `payment_failed`
-    suspension billing should then ask to clear (plain data), or None when
-    the row is not paid or carries no stamp. Billing makes the clear; this
-    port never touches a customer's standing."""
+    """The hourly AR repair observing a SETTLED status — `paid`, or `void`
+    (PLAN §7 item 26) — on a SubscriptionInvoice clears that row's failure
+    stamp (R10 Stage C2, F-6), whether the status transition applied in this
+    pass or a webhook applied it earlier and the stamp lingered. Returns the
+    billing owner id whose `payment_failed` suspension billing should then
+    ask to clear (plain data), or None when the row is not settled or carries
+    no stamp (so a replayed pass clears nothing twice). Billing makes the
+    clear; this port never touches a customer's standing."""
     from apps.subscriptions.models import SubscriptionInvoice
 
     existing = SubscriptionInvoice.objects.filter(
         tenant=tenant, stripe_invoice_id=stripe_invoice_id,
-        status="paid", payment_failed_at__isnull=False,
+        status__in=SETTLED_PAYMENT_STATUSES, payment_failed_at__isnull=False,
     ).first()
     if not existing:
         return None

@@ -628,43 +628,49 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
                 self.assertEqual(self._standing(owner), ("suspended", reason))  # the owner is not
                 self.assertFalse(self._reactivated(owner).exists())
 
-    def test_through_the_real_receiver_core(self):
-        """F-6 over real events: signed deliveries through the billing
-        receiver (C1b's shared core), verified by Stripe's own verifier."""
+    #: The billing receiver's throwaway signing secret for the wire tests below.
+    WIRE_SECRET = "whsec_c2_receiver_test_only"
+
+    def _deliver_signed(self, event_id, event_type, invoice_id):
+        """One signed delivery through the billing receiver (C1b's shared
+        core), verified by Stripe's own verifier — nothing mocked."""
         import hashlib
         import hmac
         import json
         import time
         from django.test import RequestFactory
         from api.v1.webhooks import stripe_webhook
+
+        payload = json.dumps({
+            "id": event_id, "object": "event", "type": event_type,
+            "livemode": True, "created": int(time.time()), "account": self.ACCT,
+            "data": {"object": {
+                "id": invoice_id, "object": "invoice", "customer": "cus_owner",
+                "subscription": None, "parent": None, "amount_paid": 0,
+                "currency": "usd", "hosted_invoice_url": "", "invoice_pdf": "",
+                "status_transitions": {"paid_at": None}}}}).encode()
+        ts = int(time.time())
+        digest = hmac.new(self.WIRE_SECRET.encode(), f"{ts}.".encode() + payload,
+                          hashlib.sha256).hexdigest()
+        request = RequestFactory().post(
+            "/api/v1/webhooks/stripe", data=payload, content_type="application/json",
+            HTTP_STRIPE_SIGNATURE=f"t={ts},v1={digest}")
+        with self.settings(STRIPE_WEBHOOK_SECRET=self.WIRE_SECRET, STRIPE_TEST_WEBHOOK_SECRET=""):
+            return stripe_webhook(request)
+
+    def test_through_the_real_receiver_core(self):
+        """F-6 over real events: signed deliveries through the billing
+        receiver (C1b's shared core), verified by Stripe's own verifier."""
         from apps.billing.stripe.models import StripeWebhookEvent
 
-        secret = "whsec_c2_receiver_test_only"
         row = self._usage_row(self.owner, "in_c2_wire")
-
-        def deliver(event_id, event_type):
-            payload = json.dumps({
-                "id": event_id, "object": "event", "type": event_type,
-                "livemode": True, "created": int(time.time()), "account": self.ACCT,
-                "data": {"object": {
-                    "id": "in_c2_wire", "object": "invoice", "customer": "cus_owner",
-                    "subscription": None, "parent": None, "amount_paid": 0,
-                    "currency": "usd", "hosted_invoice_url": "", "invoice_pdf": "",
-                    "status_transitions": {"paid_at": None}}}}).encode()
-            ts = int(time.time())
-            digest = hmac.new(secret.encode(), f"{ts}.".encode() + payload,
-                              hashlib.sha256).hexdigest()
-            request = RequestFactory().post(
-                "/api/v1/webhooks/stripe", data=payload, content_type="application/json",
-                HTTP_STRIPE_SIGNATURE=f"t={ts},v1={digest}")
-            with self.settings(STRIPE_WEBHOOK_SECRET=secret, STRIPE_TEST_WEBHOOK_SECRET=""):
-                return stripe_webhook(request)
-
-        self.assertEqual(deliver("evt_c2_pf", "invoice.payment_failed").status_code, 200)
+        self.assertEqual(self._deliver_signed(
+            "evt_c2_pf", "invoice.payment_failed", "in_c2_wire").status_code, 200)
         row.refresh_from_db()
         self.assertIsNotNone(row.payment_failed_at)
         self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
-        self.assertEqual(deliver("evt_c2_paid", "invoice.paid").status_code, 200)
+        self.assertEqual(self._deliver_signed(
+            "evt_c2_paid", "invoice.paid", "in_c2_wire").status_code, 200)
         row.refresh_from_db()
         self.assertEqual((row.payment_status, row.payment_failed_at), ("paid", None))
         self.assertEqual(self._standing(self.owner), ("active", ""))
@@ -672,3 +678,118 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
         self.assertEqual(
             sorted(StripeWebhookEvent.objects.values_list("stripe_event_id", "status")),
             [("evt_c2_paid", "succeeded"), ("evt_c2_pf", "succeeded")])
+
+    # -- a voided failed invoice (PLAN §7 item 26) ----------------------------
+    #
+    # RULED 2026-11-03: a failed local invoice that becomes `void` is a
+    # RESOLVED AR condition for a `payment_failed` suspension — not
+    # economically paid, but no longer an outstanding failure that can keep
+    # the billing owner suspended. The void settles that invoice's stamp and
+    # the same billing-owned decision as on paid runs, under the owner's lock.
+
+    def _void(self, obj):
+        handle_invoice_voided(_event(self.ACCT, obj=obj))
+
+    def test_a_voided_failed_usage_invoice_settles_and_reactivates_exactly_once(self):
+        row = self._usage_row(self.owner, "in_c2_void")
+        self._fail(_usage_obj("in_c2_void"))
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self._void(_usage_obj("in_c2_void"))
+        row.refresh_from_db()
+        self.assertEqual((row.payment_status, row.payment_failed_at), ("void", None))
+        self.assertIsNone(row.paid_at)                      # void is not a payment
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+        payload = self._reactivated(self.owner).get().payload
+        self.assertEqual(payload["reason_code"], reasons.PAYMENT_FAILED)
+        self.assertIsNone(payload["balance_micros"])
+        # A replayed/duplicate void moves nothing twice.
+        self._void(_usage_obj("in_c2_void"))
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+
+    def test_a_voided_failed_subscription_invoice_settles_and_reactivates(self):
+        row = self._subscription_row(self.owner, "in_c2_void_sub", "sub_c2_void")
+        self._fail(_sub_obj("in_c2_void_sub", "sub_c2_void"))
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self._void(_sub_obj("in_c2_void_sub", "sub_c2_void"))
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.payment_failed_at), ("void", None))
+        self.assertIsNone(row.paid_at)
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+        self._void(_sub_obj("in_c2_void_sub", "sub_c2_void"))   # replay
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+
+    def test_voiding_one_invoice_never_clears_while_another_failure_remains(self):
+        voided = self._usage_row(self.owner, "in_c2_void_a")
+        self._subscription_row(self.owner, "in_c2_still_sub", "sub_c2_still")
+        self._fail(_usage_obj("in_c2_void_a"))
+        self._fail(_sub_obj("in_c2_still_sub", "sub_c2_still"))
+        self._void(_usage_obj("in_c2_void_a"))
+        voided.refresh_from_db()
+        self.assertIsNone(voided.payment_failed_at)          # its own failure settled
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertFalse(self._reactivated(self.owner).exists())
+        self._void(_sub_obj("in_c2_still_sub", "sub_c2_still"))
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+
+    def test_voiding_never_clears_an_unrelated_suspension(self):
+        for reason in (reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL,
+                       reasons.DISPUTE_LOST, "", "fraud_review"):
+            with self.subTest(reason=reason):
+                owner = Customer.objects.create(
+                    tenant=self.tenant, external_id=f"void-{reason or 'manual'}",
+                    status="suspended", suspension_reason=reason)
+                row = self._usage_row(owner, f"in_void_{reason or 'manual'}",
+                                      payment_failed_at=timezone.now())
+                self._void(_usage_obj(row.stripe_invoice_id))
+                row.refresh_from_db()
+                self.assertIsNone(row.payment_failed_at)     # the invoice is settled
+                self.assertEqual(self._standing(owner), ("suspended", reason))
+                self.assertFalse(self._reactivated(owner).exists())
+
+    def test_an_unmatched_voided_invoice_affects_nobody(self):
+        Customer.objects.filter(id=self.owner.id).update(
+            status="suspended", suspension_reason=reasons.PAYMENT_FAILED)
+        row = self._usage_row(self.owner, "in_c2_ours", payment_failed_at=timezone.now())
+        self._void(_usage_obj("in_nobody_holds_this"))
+        self._void(_sub_obj("in_nobody_holds_this_sub", "sub_nobody_holds"))
+        row.refresh_from_db()
+        self.assertIsNotNone(row.payment_failed_at)
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertFalse(OutboxEvent.objects.filter(
+            event_type=CustomerReactivated.EVENT_TYPE).exists())
+
+    def test_a_late_failure_after_void_suspends_nobody(self):
+        row = self._usage_row(self.owner, "in_c2_void_late", payment_status="void")
+        late = _usage_obj("in_c2_void_late")
+        late.customer = "cus_owner"   # the owner's own Stripe customer
+        self._fail(late)
+        row.refresh_from_db()
+        self.assertIsNotNone(row.payment_failed_at)          # the historical stamp, kept
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertFalse(self._suspended_events(self.owner).exists())
+        sub_row = self._subscription_row(self.owner, "in_c2_void_late_sub", "sub_c2_void_late")
+        SubscriptionInvoice.objects.filter(id=sub_row.id).update(status="void")
+        late_sub = _sub_obj("in_c2_void_late_sub", "sub_c2_void_late")
+        late_sub.customer = "cus_owner"
+        self._fail(late_sub)
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertFalse(self._suspended_events(self.owner).exists())
+
+    def test_a_void_through_the_real_receiver_core(self):
+        """`invoice.voided` is the billing receiver's own type: a signed
+        delivery settles the failure and reactivates, end to end."""
+        row = self._usage_row(self.owner, "in_c2_wire_void")
+        self._deliver_signed("evt_c2_void_pf", "invoice.payment_failed", "in_c2_wire_void")
+        self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertEqual(self._deliver_signed(
+            "evt_c2_void", "invoice.voided", "in_c2_wire_void").status_code, 200)
+        row.refresh_from_db()
+        self.assertEqual((row.payment_status, row.payment_failed_at), ("void", None))
+        self.assertEqual(self._standing(self.owner), ("active", ""))
+        self.assertEqual(self._reactivated(self.owner).count(), 1)
+        self._deliver_signed("evt_c2_void", "invoice.voided", "in_c2_wire_void")  # redelivery
+        self.assertEqual(self._reactivated(self.owner).count(), 1)

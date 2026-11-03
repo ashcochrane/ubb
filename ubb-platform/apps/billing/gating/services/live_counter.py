@@ -689,7 +689,7 @@ class LiveCounter:
     #: suspended on `past_floor`, cleared on `recovered_floor`, the same
     #: resolved floor). A balance that recovered lifts these and nothing else:
     #: never a pool suspension (a balance says nothing about spend), never
-    #: `payment_failed` (only a paid invoice does), never a manual one.
+    #: `payment_failed` (only a paid or voided invoice does), never a manual one.
     BALANCE_SUSPEND_REASONS = (reasons.HARD_FLOOR, reasons.DISPUTE_LOST)
 
     @staticmethod
@@ -711,7 +711,7 @@ class LiveCounter:
         owner remains. If one does, the owner stays suspended: a
         `payment_failed` suspension is not cleared, and any other clearable
         suspension hands its reason over to `payment_failed` — the cause that
-        still stands — so the paid invoice that resolves it is what brings
+        still stands — so the paid or voided invoice that resolves it is what brings
         the owner back. Checked under the lock so a failure stamped
         concurrently is either seen here or, arriving later, meets an owner
         already active and suspends it.
@@ -784,13 +784,14 @@ class LiveCounter:
 
     @staticmethod
     def clear_payment_failed_suspension(owner_id) -> bool:
-        """The AR clear (R10 Stage C2, F-6, RULED Q4): after a local invoice of
-        ``owner_id`` became paid, reactivate the owner if it is suspended for
-        ``payment_failed`` — and only when no qualifying failed/unpaid local
-        invoice of it remains, which the reactivation site checks under the
-        owner's lock. A ``hard_floor``, ``customer_spend_pool``,
-        ``dispute_lost``, manual or unknown suspension is left standing: a
-        paid invoice resolves none of those. Returns True when the row moved."""
+        """The AR clear (R10 Stage C2, F-6, RULED Q4 and §7 item 26): after a
+        local invoice of ``owner_id`` became paid or void, reactivate the owner
+        if it is suspended for ``payment_failed`` — and only when no
+        qualifying failed/unpaid local invoice of it remains, which the
+        reactivation site checks under the owner's lock. A ``hard_floor``,
+        ``customer_spend_pool``, ``dispute_lost``, manual or unknown
+        suspension is left standing: a paid or voided invoice resolves none of
+        those. Returns True when the row moved."""
         return LiveCounter._maybe_unsuspend(owner_id, clearable=(reasons.PAYMENT_FAILED,))
 
     @staticmethod

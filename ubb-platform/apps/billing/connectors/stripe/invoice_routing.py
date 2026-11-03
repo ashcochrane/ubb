@@ -91,14 +91,16 @@ def _invoice_subscription_id(inv):
 # --- the failure stamp on a local invoice row (R10 Stage C2, F-6) ----------
 #
 # AR row state only, beside the transition table above: WHICH statuses settle
-# a stamped invoice, and the one way a paid row's stamp is cleared. Whether
+# a stamped invoice, and the one way a settled row's stamp is cleared. Whether
 # the owner then comes back is billing's decision, made at its one
 # reactivation site (`LiveCounter._maybe_unsuspend`) under the owner's row
 # lock — never here, because this module is shared Stripe plumbing and not
 # billing business logic (ADR-001 decision 5).
 
 #: The payment statuses under which a stamped invoice no longer stands as a
-#: payment failure: paid (resolved) and void (never collectible). An open or
+#: payment failure: paid (resolved by payment) and void (RULED 2026-11-03, PLAN
+#: §7 item 26: a resolved AR condition — NOT economically paid, but no longer
+#: an outstanding failure that can keep the owner suspended). An open or
 #: uncollectible invoice — or one with no status yet — that carries
 #: `payment_failed_at` still stands.
 SETTLED_PAYMENT_STATUSES = ("paid", "void")
@@ -107,13 +109,15 @@ SETTLED_PAYMENT_STATUSES = ("paid", "void")
 def settle_failure_stamp(row, payment_status):
     """Clear ``row``'s `payment_failed_at` when ``payment_status`` (the row's
     applied status — `payment_status` on a usage invoice, `status` on a
-    subscription invoice) is paid. Call inside the transaction that holds the
-    row's lock, before its save. Returns the id of the canonical billing owner
-    the row represents when a stamp was cleared — the owner whose
-    `payment_failed` suspension the caller then asks billing to clear — else
-    None. Shared by the webhook fast path and the hourly repair of both
-    invoice tables, so a paid invoice settles its stamp one way everywhere."""
-    if payment_status != "paid" or row.payment_failed_at is None:
+    subscription invoice) is settled: paid, or void (§7 item 26). Call inside
+    the transaction that holds the row's lock, before its save. Returns the id
+    of the canonical billing owner the row represents when a stamp was cleared
+    — the owner whose `payment_failed` suspension the caller then asks billing
+    to clear — else None, so a replayed paid/void delivery clears nothing
+    twice. Shared by the webhook fast path and the hourly repair of both
+    invoice tables, so a settled invoice settles its stamp one way everywhere.
+    Only the stamp moves: a void row gains no `paid_at` and no paid amount."""
+    if payment_status not in SETTLED_PAYMENT_STATUSES or row.payment_failed_at is None:
         return None
     row.payment_failed_at = None
     return row.customer.resolve_billing_owner().id

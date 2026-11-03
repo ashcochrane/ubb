@@ -172,8 +172,9 @@ def _reconcile_customer_invoice(event, *, new_status):
                 row.currency = currency
                 row.amount_paid_micros = paid_micros
                 row.source_amount_paid_minor = paid_minor
-            # R10 Stage C2 (F-6): a paid subscription invoice clears ITS
-            # failure stamp; whether the owner comes back is billing's call.
+            # R10 Stage C2 (F-6, §7 item 26): a paid or voided subscription
+            # invoice clears ITS failure stamp; whether the owner comes back
+            # is billing's call.
             settled_owner_id = settle_failure_stamp(row, row.status)
             _refresh_urls(row, inv)
             row.save()
@@ -221,8 +222,9 @@ def _apply_usage_invoice_status(row_id, inv, new_status):
         # Money fields gate on the APPLIED state (see subscription branch).
         if row.payment_status == "paid" and not row.paid_at:
             row.paid_at = timezone.now()
-        # R10 Stage C2 (F-6): a paid invoice clears ITS failure stamp; whether
-        # the owner comes back is billing's call, at its reactivation site.
+        # R10 Stage C2 (F-6, §7 item 26): a paid or voided invoice clears ITS
+        # failure stamp; whether the owner comes back is billing's call, at
+        # its reactivation site.
         settled_owner_id = settle_failure_stamp(row, row.payment_status)
         _refresh_urls(row, inv)
         row.save()
@@ -236,7 +238,10 @@ def handle_invoice_finalized(event):
 
 
 def handle_invoice_voided(event):
-    """invoice.voided — mark the customer invoice void."""
+    """invoice.voided — mark the customer invoice void. A voided invoice that
+    carried a payment-failure stamp is a resolved AR condition (R10 Stage C2,
+    PLAN §7 item 26 — not economically paid): its stamp is settled and billing
+    re-decides the owner's `payment_failed` suspension, exactly as on paid."""
     _reconcile_customer_invoice(event, new_status="void")
 
 

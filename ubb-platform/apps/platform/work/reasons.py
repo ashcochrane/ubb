@@ -141,13 +141,14 @@ SUSPENDED = "suspended"
 # `Customer.suspension_reason` by the invoice.payment_failed handler, carried
 # by `customer.suspended`, and left — carried by `customer.reactivated` — only
 # when every qualifying failed/unpaid local invoice of that owner has been
-# paid. Never an episode reason, never an ack's `stop_reason`: it names no
+# settled: paid, or voided (a resolved AR condition, not a payment — PLAN §7
+# item 26). Never an episode reason, never an ack's `stop_reason`: it names no
 # bound a unit of work reached.
 PAYMENT_FAILED = REASON_CODE_PAYMENT_FAILED
 # The other suspension-only cause: a top-up's dispute was lost and the
 # claw-back left the wallet past its hard floor. Cleared by the durable
 # balance-recovery rule alone (the balance back at or above the floor) —
-# never because an invoice became paid.
+# never because an invoice became paid or void.
 DISPUTE_LOST = REASON_CODE_DISPUTE_LOST
 
 #: THE NINE KNOWN VALUES, held whole — what a stop's cause, or a suspension's,

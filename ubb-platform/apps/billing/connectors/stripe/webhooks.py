@@ -408,7 +408,7 @@ def handle_charge_dispute_closed(event):
             # a registry reason — and announces itself. It clears ONLY by the
             # durable balance-recovery rule (the balance back at or above this
             # same floor — `LiveCounter.BALANCE_SUSPEND_REASONS`), never
-            # because an invoice became paid.
+            # because an invoice became paid or void.
             _suspend_with_cause(owner, reasons.DISPUTE_LOST,
                                 measured=result.balance_micros)
             logger.warning(

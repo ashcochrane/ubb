@@ -112,10 +112,10 @@ synchronously to registered listeners. (`apps/platform/customers/hooks.py`)
 `active`, `suspended`, or `closed`. `suspension_reason` says why (a `reason_code` word: `hard_floor`,
 `customer_spend_pool`, `payment_failed`, `dispute_lost`, or "" for a manual/unknown suspension).
 Only a suspension whose condition has resolved auto-clears — the durable balance back at the floor,
-the pool's line lifted, every failed invoice paid — through the one reactivation site
+the pool's line lifted, every failed invoice paid or voided — through the one reactivation site
 (`LiveCounter._maybe_unsuspend`), which emits `customer.reactivated` exactly once on the real
 `suspended → active` transition; a top-up never silently un-suspends an admin/fraud suspension, and
-a paid invoice never clears a money suspension (R10 Stage C2).
+a paid or voided invoice never clears a money suspension (R10 Stage C2).
 
 ## Membership & identity
 
