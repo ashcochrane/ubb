@@ -8,13 +8,14 @@ from django.conf import settings
 
 from apps.billing.stripe.services.stripe_service import (
     api_key_for_tenant,
+    field,
     stripe_call,
     validate_amount_micros,
     micros_to_cents,
 )
 from apps.billing.locking import the_currency_a_top_up_credits
 from core.currency_policy import the_rails_currency
-from core.exceptions import StripeFatalError
+from core.exceptions import StripeFatalError, StripeTransientError
 from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
 from apps.platform.tenants.models import refuse_a_rail_operation_while_it_is_closed
 
@@ -113,14 +114,22 @@ def charge_saved_payment_method(customer, amount_micros, top_up_attempt):
     if not payment_methods.data:
         return None
 
+    # The customer's default: the real shape is
+    # ``cust.invoice_settings.default_payment_method`` (a StripeObject holding
+    # an id, or an expanded PaymentMethod); a dict-style read raised and was
+    # swallowed into "charge the first listed card" (F-3a). A Stripe failure
+    # on this read still degrades to the first listed card — the charge
+    # itself is what must not silently change.
     default_pm = None
     try:
         cust = stripe_call(stripe.Customer.retrieve, api_key=api_key,
                            retryable=True, idempotency_key=None,
                            id=customer_stripe_id, stripe_account=connected_account)
-        default_pm = (cust.get("invoice_settings") or {}).get("default_payment_method")
-    except Exception:
-        default_pm = None
+    except (StripeTransientError, StripeFatalError, stripe.error.StripeError):
+        cust = None
+    default_pm = field(field(cust, "invoice_settings"), "default_payment_method")
+    if default_pm is not None and not isinstance(default_pm, str):
+        default_pm = field(default_pm, "id")
     pm_id = default_pm or payment_methods.data[0].id
 
     intent = stripe_call(

@@ -63,20 +63,31 @@ def _row(t, c, **kwargs):
     return CustomerUsageInvoice.objects.create(tenant=t, customer=c, **defaults)
 
 
-def _stripe_invoice(id="in_1", status="draft", rec=None, deleted=False):
-    inv = MagicMock()
-    inv.id = id
-    inv.status = status
-    inv.deleted = deleted
-    inv.metadata = {"usage_invoice_id": str(rec.id)} if rec is not None else {}
-    return inv
+SK = "sk_test_sentinel"
 
 
-def _stripe_item(id="ii_old", line_index="0"):
-    item = MagicMock()
-    item.id = id
-    item.metadata = {"line_index": line_index}
-    return item
+def _stripe_invoice(id="in_1", status="draft", rec=None, deleted=False, metadata=None):
+    """A GENUINE ``stripe.Invoice`` (Stage C1a, F-3a): its ``metadata`` is a
+    StripeObject with no ``.get`` — the shape every resume/adopt/lookback read
+    meets on real Stripe. ``rec`` stamps OUR recovery metadata; ``metadata``
+    states a foreign invoice's own."""
+    import stripe
+    data = {"id": id, "object": "invoice", "status": status,
+            "metadata": ({"usage_invoice_id": str(rec.id)} if rec is not None
+                         else dict(metadata or {}))}
+    if deleted:
+        data["deleted"] = True
+    return stripe.Invoice.construct_from(data, SK)
+
+
+def _stripe_item(id="ii_old", line_index="0", usage_invoice_id=None):
+    """A GENUINE ``stripe.InvoiceItem`` (metadata a StripeObject)."""
+    import stripe
+    metadata = {"line_index": line_index}
+    if usage_invoice_id is not None:
+        metadata["usage_invoice_id"] = str(usage_invoice_id)
+    return stripe.InvoiceItem.construct_from(
+        {"id": id, "object": "invoiceitem", "metadata": metadata}, SK)
 
 
 def _paged(objs):
@@ -139,12 +150,31 @@ class TestCrashPairMatrix:
         c = _customer(t)
         rec = _row(t, c, status="pending")  # crash left no pointer...
         draft = _stripe_invoice(id="in_1", status="draft", rec=rec)  # ...but Stripe has it
+        assert not hasattr(draft.metadata, "get")  # the real shape
         with _stripe(listed=[draft]) as m, _agg():
             PostpaidUsageService.push_customer_period(t, c, PS, PE)
         rec.refresh_from_db()
         assert m.create.call_count == 0  # the metadata list-match resumed it
         assert rec.status == "pushed" and rec.stripe_invoice_id == "in_1"
         assert m.finalize.call_count == 1
+
+    def test_first_push_with_a_real_non_void_invoice_in_the_lookback_creates_ours(self):
+        """Stage C1a (F-3a): the I4 lookback lists every non-void invoice of
+        the owner's from the last day — on real Stripe, a renewal or any
+        other invoice of theirs. Its metadata is a StripeObject; the dict-style
+        read crashed the FIRST push of any owner with one, into the generic
+        except, and the row parked ``failed_permanent`` after the caps."""
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        foreign = _stripe_invoice(id="in_renewal", status="open",
+                                  metadata={"subscription_renewal": "yes"})
+        bare = _stripe_invoice(id="in_bare", status="paid")  # no metadata at all
+        with _stripe(listed=[foreign, bare]) as m, _agg():
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.stripe_invoice_id == "in_new"
+        assert m.list.call_count == 1 and m.create.call_count == 1
+        assert m.create.call_args.kwargs["metadata"]["usage_invoice_id"] == str(rec.id)
 
     def test_persist_to_items_crash_resumes_via_retrieve(self):
         t = _charge_ready_tenant()

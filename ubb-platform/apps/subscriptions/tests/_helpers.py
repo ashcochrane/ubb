@@ -111,3 +111,57 @@ def a_mirrored_subscription(**fields):
         assert not remainder, "a dollar fixture is a whole number of cents"
         fields["source_amount_minor"] = minor
     return StripeSubscription.objects.create(**fields)
+
+
+SK = "sk_test_sentinel"
+
+
+def a_licensed_item(unit_amount, qty=1, *, interval="month", product_name=None,
+                    item_id=None, price_id=None, period_start=1738368000,
+                    period_end=1740960000, usage_type="licensed"):
+    """One subscription item, as Stripe's JSON states it. `product_name` set
+    means the price's product was EXPANDED (a Product object); unset, Stripe
+    sends the product as an id string, which has no name."""
+    price = {"id": price_id or f"price_{unit_amount}", "object": "price",
+             "unit_amount": unit_amount,
+             "recurring": {"interval": interval, "usage_type": usage_type},
+             "product": ({"id": "prod_1", "object": "product", "name": product_name}
+                         if product_name is not None else "prod_1")}
+    return {"id": item_id or f"si_{unit_amount}_{qty}", "object": "subscription_item",
+            "price": price, "quantity": qty,
+            "current_period_start": period_start, "current_period_end": period_end}
+
+
+def a_subscription_dict(id, customer, status, *, items, currency="usd", **extra):
+    """The JSON of a Basil-shaped Stripe Subscription (items.data[])."""
+    data = {"id": id, "object": "subscription", "customer": customer, "status": status,
+            "currency": currency, "items": {"object": "list", "data": list(items),
+                                            "has_more": False,
+                                            "url": f"/v1/subscription_items?subscription={id}"}}
+    data.update(extra)
+    return data
+
+
+def a_stripe_subscription(id, customer, status, *, items, currency="usd", **extra):
+    """A GENUINE ``stripe.Subscription`` (Stage C1a, F-3b): what the pinned
+    stripe-python 15.2.0 delivers from a webhook, a list or a create — a
+    StripeObject with no ``.get``, whose ``items.data[]`` are
+    ``SubscriptionItem``s, whose ``price.recurring`` and an expanded
+    ``price.product`` are StripeObjects too. Replaces the dict-subclass fake
+    that kept the ``.get`` code green."""
+    import stripe
+    return stripe.Subscription.construct_from(
+        a_subscription_dict(id, customer, status, items=items, currency=currency, **extra), SK)
+
+
+def a_subscription_event(event_id, kind, sub_dict, *, account=None, livemode=True):
+    """A GENUINE ``stripe.Event`` whose ``data.object`` is a real
+    ``stripe.Subscription`` — the object ``Webhook.construct_event`` hands a
+    handler. ``account`` is absent when None."""
+    import stripe
+    import time
+    data = {"id": event_id, "object": "event", "type": kind, "livemode": livemode,
+            "created": int(time.time()), "data": {"object": sub_dict}}
+    if account is not None:
+        data["account"] = account
+    return stripe.Event.construct_from(data, SK)

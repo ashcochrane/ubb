@@ -65,36 +65,45 @@ _PERIOD_END_UNIX = int(datetime.datetime(2026, 7, 1, tzinfo=datetime.timezone.ut
 
 
 def _fake_sub():
-    """A Stripe Subscription dict: two licensed items (access price_a + seat price_s).
+    """What ``stripe.Subscription.create`` returns: a GENUINE
+    ``stripe.Subscription`` (Stage C1a, F-3b) with two licensed items (access
+    price_a + seat price_s) — a StripeObject with no ``.get``.
 
     Shapes match what mirrored_amounts / _persist_mirror read: each item carries a
     ``price`` with ``unit_amount`` (cents) + ``recurring.usage_type=licensed``, a
     ``quantity``, an ``id`` (the subscription-item id), and per-item
-    ``current_period_start/end`` (unix) for the mirror's period.
+    ``current_period_start/end`` (unix) for the mirror's period. ``price.product``
+    is the id string Stripe sends when nothing asked for it expanded.
     """
-    return {
+    import stripe
+    return stripe.Subscription.construct_from({
         "id": "sub_1",
+        "object": "subscription",
         "status": "active",
         "currency": "usd",
-        "items": {"data": [
+        "items": {"object": "list", "has_more": False, "url": "/v1/subscription_items", "data": [
             {
                 "id": "si_a",
-                "price": {"id": "price_a", "unit_amount": 5000,
-                          "recurring": {"interval": "month", "usage_type": "licensed"}},
+                "object": "subscription_item",
+                "price": {"id": "price_a", "object": "price", "unit_amount": 5000,
+                          "recurring": {"interval": "month", "usage_type": "licensed"},
+                          "product": "prod_access"},
                 "quantity": 1,
                 "current_period_start": _PERIOD_START_UNIX,
                 "current_period_end": _PERIOD_END_UNIX,
             },
             {
                 "id": "si_s",
-                "price": {"id": "price_s", "unit_amount": 800,
-                          "recurring": {"interval": "month", "usage_type": "licensed"}},
+                "object": "subscription_item",
+                "price": {"id": "price_s", "object": "price", "unit_amount": 800,
+                          "recurring": {"interval": "month", "usage_type": "licensed"},
+                          "product": "prod_seat"},
                 "quantity": 10,
                 "current_period_start": _PERIOD_START_UNIX,
                 "current_period_end": _PERIOD_END_UNIX,
             },
         ]},
-    }
+    }, "sk_test_sentinel")
 
 
 @pytest.fixture

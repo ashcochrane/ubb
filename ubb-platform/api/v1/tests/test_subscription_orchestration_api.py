@@ -22,20 +22,29 @@ from apps.subscriptions.models import (
 
 
 def _fake_sub():
-    """A Stripe Subscription dict with two licensed items (access + seat)."""
-    return {
+    """What ``stripe.Subscription.create`` returns: a GENUINE
+    ``stripe.Subscription`` (Stage C1a, F-3b) with two licensed items
+    (access + seat) — a StripeObject with no ``.get``, exactly the object
+    ``_persist_mirror`` reads after Stripe has opened the subscription."""
+    import stripe
+    return stripe.Subscription.construct_from({
         "id": "sub_1",
+        "object": "subscription",
         "status": "active",
         "currency": "usd",
-        "items": {"data": [
-            {"id": "si_a", "price": {"id": "price_a", "unit_amount": 5000,
-                                     "recurring": {"interval": "month", "usage_type": "licensed"}},
+        "items": {"object": "list", "has_more": False, "url": "/v1/subscription_items", "data": [
+            {"id": "si_a", "object": "subscription_item",
+             "price": {"id": "price_a", "object": "price", "unit_amount": 5000,
+                       "recurring": {"interval": "month", "usage_type": "licensed"},
+                       "product": "prod_a"},
              "quantity": 1},
-            {"id": "si_s", "price": {"id": "price_s", "unit_amount": 800,
-                                     "recurring": {"interval": "month", "usage_type": "licensed"}},
+            {"id": "si_s", "object": "subscription_item",
+             "price": {"id": "price_s", "object": "price", "unit_amount": 800,
+                       "recurring": {"interval": "month", "usage_type": "licensed"},
+                       "product": "prod_s"},
              "quantity": 10},
         ]},
-    }
+    }, "sk_test_sentinel")
 
 
 @pytest.mark.django_db

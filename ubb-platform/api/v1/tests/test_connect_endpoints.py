@@ -59,6 +59,42 @@ class ConnectStartStatusTest(TestCase):
         resp = self.http_client.get("/api/v1/connect/status")
         self.assertEqual(resp.status_code, 401)
 
+    def test_status_refresh_with_an_unset_live_key_never_reaches_transport(self):
+        """Stage C1a (F-2): the status route's Account.retrieve goes through
+        the wrapper, which refuses an empty live key before any request is
+        built; the route answers the stored flags. Before C1a the raw SDK call
+        sent the request with an empty key."""
+        self.tenant.stripe_connected_account_id = "acct_pending"
+        self.tenant.charges_enabled = False
+        self.tenant.save(update_fields=["stripe_connected_account_id", "charges_enabled", "updated_at"])
+        transport = MagicMock(name="request_raw")
+        with self.settings(STRIPE_SECRET_KEY=""), \
+             patch("stripe._api_requestor._APIRequestor.request_raw", transport):
+            resp = self.http_client.get("/api/v1/connect/status", **self._auth())
+        self.assertEqual(resp.status_code, 200)
+        transport.assert_not_called()
+        body = resp.json()
+        self.assertEqual(body["account_id"], "acct_pending")
+        self.assertFalse(body["charges_enabled"])
+        self.assertFalse(body["onboarded"])
+
+    def test_status_refresh_reads_a_real_account_through_the_wrapper(self):
+        import stripe
+        self.tenant.stripe_connected_account_id = "acct_live"
+        self.tenant.charges_enabled = False
+        self.tenant.save(update_fields=["stripe_connected_account_id", "charges_enabled", "updated_at"])
+        acct = stripe.Account.construct_from(
+            {"id": "acct_live", "object": "account", "charges_enabled": True}, "sk_test_sentinel")
+        with patch("apps.billing.connectors.stripe.connect.stripe.Account.retrieve",
+                   return_value=acct) as retrieve:
+            resp = self.http_client.get("/api/v1/connect/status", **self._auth())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(retrieve.call_args.kwargs["id"], "acct_live")
+        self.assertEqual(retrieve.call_args.kwargs["api_key"], "sk_test_sentinel")
+        self.assertTrue(resp.json()["onboarded"])
+        self.tenant.refresh_from_db()
+        self.assertTrue(self.tenant.charges_enabled)
+
 
 @override_settings(STRIPE_CONNECT_CLIENT_ID="ca_test")
 class ConnectCallbackTest(TestCase):

@@ -113,8 +113,10 @@ class ReconcileTopupsWithStripeTest(TestCase):
         reconcile_topups_with_stripe()
 
         from django.conf import settings
+        # Through the wrapper (Stage C1a, F-2): the id and the key reach the
+        # SDK as stripe_call's kwargs.
         mock_retrieve.assert_called_once_with(
-            "ch_ok", stripe_account="acct_test",
+            id="ch_ok", stripe_account="acct_test",
             api_key=settings.STRIPE_SECRET_KEY,  # F4.4: live tenant -> platform key
         )
 

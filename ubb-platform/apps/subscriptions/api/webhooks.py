@@ -4,6 +4,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.connectors.stripe.invoice_routing import livemode_filter
+from apps.billing.stripe.services.stripe_service import field
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.items import (
     _period_end, _period_start, _product_name, mirrored_amounts)
@@ -75,8 +76,10 @@ def handle_subscription_updated(event):
         # F5.4 lifecycle flags: Stripe keeps status "active" both under a
         # pending cancel_at_period_end and under pause_collection, so the
         # mirror carries them explicitly (pause_collection presence => paused).
-        sub.cancel_at_period_end = bool(stripe_sub.get("cancel_at_period_end") or False)
-        sub.paused = bool(stripe_sub.get("pause_collection") or False)
+        # On the real object ``pause_collection`` is a StripeObject when
+        # present (truthy even when empty) and None or absent when not (F-3b).
+        sub.cancel_at_period_end = bool(field(stripe_sub, "cancel_at_period_end", False))
+        sub.paused = field(stripe_sub, "pause_collection") is not None
         sub.save(update_fields=[
             "status", "stripe_product_name", "amount_micros", "currency",
             "source_amount_minor", "interval",

@@ -4,12 +4,12 @@ from datetime import datetime, timezone as dt_timezone
 import stripe
 from django.utils import timezone
 
-from apps.billing.stripe.services.stripe_service import api_key_for_tenant
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.items import (
     _period_end, _period_start, _product_name, mirrored_amounts)
 from apps.platform.queries import get_tenant_stripe_account, get_customers_by_stripe_id
-from core.exceptions import StripeFatalError
+from core.exceptions import StripeFatalError, StripeTransientError
 
 logger = logging.getLogger(__name__)
 
@@ -36,20 +36,26 @@ def sync_subscriptions(tenant):
     # Build a lookup of stripe_customer_id -> customer_id for this tenant
     customers_by_stripe_id = get_customers_by_stripe_id(tenant.id)
 
+    # Through the wrapper (F-2): no key for the tenant's mode is refused before
+    # transport. Every page is fetched INSIDE the try — auto_paging_iter()
+    # requests the next page lazily, and a failure there must land here.
     try:
-        subscriptions = stripe.Subscription.list(
+        subscriptions = stripe_call(
+            stripe.Subscription.list,
+            api_key=api_key_for_tenant(tenant),
             status="all",
             stripe_account=connected_account,
             expand=["data.items.data.price.product"],
-            api_key=api_key_for_tenant(tenant),
         )
+        listed = list(subscriptions.auto_paging_iter())
     except StripeFatalError:
-        # F4.4: sandbox tenant without STRIPE_TEST_SECRET_KEY configured.
-        logger.warning("Stripe key unavailable for tenant mode — sync skipped", extra={
-            "data": {"tenant_id": str(tenant.id)},
-        })
+        # F4.4: no key for the tenant's mode (sandbox without
+        # STRIPE_TEST_SECRET_KEY, an unset live key), or a non-retryable
+        # Stripe refusal — nothing to sync.
+        logger.warning("Stripe key unavailable or call refused for tenant mode — sync skipped",
+                       extra={"data": {"tenant_id": str(tenant.id)}})
         return {"synced": 0, "skipped": 0, "errors": 1}
-    except stripe.error.StripeError:
+    except (StripeTransientError, stripe.error.StripeError):
         logger.exception("Stripe API error during subscription sync", extra={
             "data": {"tenant_id": str(tenant.id)},
         })
@@ -59,7 +65,7 @@ def sync_subscriptions(tenant):
     skipped = 0
     errors = 0
 
-    for stripe_sub in subscriptions.auto_paging_iter():
+    for stripe_sub in listed:
         customer_id = customers_by_stripe_id.get(stripe_sub.customer)
         if not customer_id:
             logger.info("Skipping subscription — no matching customer", extra={

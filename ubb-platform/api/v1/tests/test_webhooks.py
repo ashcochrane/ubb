@@ -256,6 +256,40 @@ class HandleCheckoutCompletedTest(RailActivated, TestCase):
         self.assertEqual(self.attempt.stripe_payment_intent_id, "pi_test_1")
         self.assertFalse(self.attempt.stripe_charge_id)
 
+    def test_checkout_completed_with_an_unset_live_key_credits_and_never_reaches_transport(self):
+        """Stage C1a (F-2): the PaymentIntent retrieve goes through the
+        wrapper, which refuses an empty live key BEFORE any request is built;
+        the Checkout money already landed, so the wallet is still credited
+        (without a charge id). Before C1a the raw SDK call sent the request
+        with an empty key."""
+        event = self._make_event(amount_total=100)
+        event.data.object.payment_intent = "pi_test_nokey"
+        transport = MagicMock(name="request_raw")
+        with self.settings(STRIPE_SECRET_KEY=""), \
+             patch("stripe._api_requestor._APIRequestor.request_raw", transport):
+            handle_checkout_completed(event)
+        transport.assert_not_called()
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 1_000_000)
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.attempt.status, "succeeded")
+        self.assertEqual(self.attempt.stripe_payment_intent_id, "pi_test_nokey")
+        self.assertFalse(self.attempt.stripe_charge_id)
+
+    def test_checkout_completed_reads_a_real_payment_intent_through_the_wrapper(self):
+        event = self._make_event(amount_total=100)
+        event.data.object.payment_intent = "pi_test_real"
+        pi = stripe.PaymentIntent.construct_from(
+            {"id": "pi_test_real", "object": "payment_intent", "status": "succeeded",
+             "latest_charge": {"id": "ch_real", "object": "charge"}}, "sk_test_sentinel")
+        with patch("apps.billing.connectors.stripe.webhooks.stripe.PaymentIntent.retrieve",
+                   return_value=pi) as retrieve:
+            handle_checkout_completed(event)
+        self.assertEqual(retrieve.call_args.kwargs["id"], "pi_test_real")
+        self.assertEqual(retrieve.call_args.kwargs["api_key"], "sk_test_sentinel")
+        self.attempt.refresh_from_db()
+        self.assertEqual(self.attempt.stripe_charge_id, "ch_real")
+
     def test_checkout_completed_duplicate_webhook_no_double_credit(self):
         event = self._make_event(amount_total=100, session_id="cs_dup_1")
 

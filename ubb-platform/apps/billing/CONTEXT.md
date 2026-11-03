@@ -603,7 +603,16 @@ lines but is keyed per customer and reserved/deposited across a push.
 
 **stripe_call**:
 The mandatory Stripe API wrapper — maps Stripe errors to domain exceptions, retries idempotently,
-and requires an explicit `api_key` so a sandbox flow can never use the live key.
+and requires an explicit `api_key` so a sandbox flow can never use the live key. Every outbound
+SDK call goes through it (the CI guard refuses a raw `stripe.<Resource>.<verb>(` in production
+code), so an empty key is refused before any request is built.
+(`apps/billing/stripe/services/stripe_service.py`)
+
+**field / metadata_value**:
+The one place UBB spells the pinned stripe-python object model: a `StripeObject` is read by
+attribute, never dict-style (it has no `.get`, an empty one is truthy, nested `metadata` /
+`invoice_settings` / an expanded `product` are objects). Every product reads SDK objects through
+these two accessors; the CI guard refuses `.get(` on a name bound from a Stripe object.
 (`apps/billing/stripe/services/stripe_service.py`)
 
 **StripeWebhookEvent**:

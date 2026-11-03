@@ -37,11 +37,17 @@ class StripeTransientError(UBBError):
 
 
 class StripePaymentError(UBBError):
-    """Non-retryable payment errors (card declined, insufficient funds)."""
-    def __init__(self, message, code=None, decline_code=None):
+    """Non-retryable payment errors (card declined, insufficient funds).
+
+    ``payment_intent_id`` is the PaymentIntent Stripe attached to the card
+    error (``e.error.payment_intent`` on the real ``CardError`` shape), so a
+    declined or SCA-blocked attempt can record the intent it concerns (O-1).
+    """
+    def __init__(self, message, code=None, decline_code=None, payment_intent_id=None):
         super().__init__(message)
         self.code = code
         self.decline_code = decline_code
+        self.payment_intent_id = payment_intent_id
 
 
 class StripeFatalError(UBBError):

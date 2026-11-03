@@ -24,6 +24,7 @@ from django.utils import timezone
 from apps.billing.stripe.services.stripe_service import (
     StripeFatalError,
     api_key_for_tenant,
+    field,
     micros_to_cents,
     stripe_call,
 )
@@ -35,6 +36,7 @@ from apps.subscriptions.models import (
     StripeSubscription,
 )
 from apps.subscriptions.stripe.items import (
+    _items,
     _period_end,
     _period_start,
     _product_name,
@@ -564,26 +566,33 @@ class SubscriptionOrchestrator:
     @transaction.atomic
     def _persist_mirror(cls, tenant, owner, plan, sub) -> StripeSubscription:
         """The mirror of a subscription UBB just provisioned, from Stripe's own
-        answer — read through `mirrored_amounts`, as every mirror writer is."""
+        answer — read through `mirrored_amounts`, as every mirror writer is.
+
+        ``sub`` is the real ``stripe.Subscription`` ``Subscription.create``
+        returned: a StripeObject, read by attribute through ``field`` (F-3b).
+        A dict-style read here crashed AFTER Stripe had opened the
+        subscription, leaving it billing with no mirror.
+        """
         money = mirrored_amounts(sub)
+        sub_id = field(sub, "id")
         if money.amount_micros is None:
             # UBB priced this subscription itself, in the tenant's catalog; a
             # Stripe answer in a currency UBB never admits is a disagreement,
             # refused rather than mirrored as revenue (#564, #565). A webhook
             # for it still mirrors the truth, quarantined.
             raise OrchestrationError(
-                f"Stripe answered subscription {sub['id']} in "
+                f"Stripe answered subscription {sub_id} in "
                 f"{money.currency!r}; UBB priced it in US dollars only")
         start = _period_start(sub) or timezone.now()
         end = _period_end(sub) or _period_fallback_end(start, money.interval)
 
         mirror, _ = StripeSubscription.objects.update_or_create(
-            stripe_subscription_id=sub["id"],
+            stripe_subscription_id=sub_id,
             defaults={
                 "tenant": tenant,
                 "customer": owner,
                 "stripe_product_name": _product_name(sub) or plan.name,
-                "status": sub.get("status", "active"),
+                "status": field(sub, "status", "active"),
                 "amount_micros": money.amount_micros,
                 "currency": money.currency,
                 "source_amount_minor": money.source_amount_minor,
@@ -601,17 +610,16 @@ class SubscriptionOrchestrator:
         # match items that still hold an old (grandfathered) price. The local
         # item rows ARE the price-id history — classify old prices by the axis
         # they were recorded under, before falling back to the qty heuristic.
-        sub_price_ids = [
-            (it["price"] or {}).get("id", "") for it in sub["items"]["data"]
-        ]
+        items = _items(sub)
+        sub_price_ids = [field(field(it, "price"), "id", "") for it in items]
         axis_history = dict(
             CustomerSubscriptionItem.objects.filter(
                 tenant=tenant, stripe_price_id__in=[p for p in sub_price_ids if p]
             ).values_list("stripe_price_id", "axis")
         )
-        for it in sub["items"]["data"]:
-            price = it["price"] or {}
-            price_id = price.get("id", "")
+        for it in items:
+            price = field(it, "price")
+            price_id = field(price, "id", "")
             if price_id == seat_price and seat_price:
                 axis = "seat"
             elif price_id == access_price and access_price:
@@ -619,9 +627,9 @@ class SubscriptionOrchestrator:
             elif price_id in axis_history:
                 axis = axis_history[price_id]
             else:
-                axis = "seat" if (it.get("quantity") or 1) > 1 else "access"
+                axis = "seat" if (field(it, "quantity") or 1) > 1 else "access"
             CustomerSubscriptionItem.objects.update_or_create(
-                stripe_subscription_item_id=it["id"],
+                stripe_subscription_item_id=field(it, "id"),
                 defaults={
                     "tenant": tenant,
                     "customer": owner,
@@ -629,8 +637,8 @@ class SubscriptionOrchestrator:
                     "axis": axis,
                     "stripe_price_id": price_id,
                     "unit_amount_micros": from_minor(
-                        price.get("unit_amount") or 0, money.currency),
-                    "quantity": it.get("quantity", 1) or 1,
+                        field(price, "unit_amount", 0) or 0, money.currency),
+                    "quantity": field(it, "quantity", 1) or 1,
                     "plan": plan,
                 },
             )
