@@ -101,6 +101,141 @@ class TestChargeTask:
         assert mw.called and type(mw.call_args.args[0]).__name__ == "AutoTopUpRequiresAction"
 
 
+def _real_card_error(code, decline_code, payment_intent_id):
+    """A CardError as stripe-python 15.2.0 builds it from Stripe's response:
+    decline_code and the PaymentIntent live on ``e.error``, not top-level."""
+    import stripe
+    body = {"error": {"type": "card_error", "code": code, "message": "declined"}}
+    if decline_code is not None:
+        body["error"]["decline_code"] = decline_code
+    body["error"]["payment_intent"] = {"id": payment_intent_id, "object": "payment_intent"}
+    return stripe.error.CardError("declined", "payment_method", code, json_body=body)
+
+
+@pytest.mark.usefixtures("rail_activated")
+@pytest.mark.django_db
+class TestTheAttemptRecordsThePaymentIntentStripeNamed:
+    """O-1 (Stage C1a): a declined or SCA-blocked auto top-up records the
+    PaymentIntent id and decline code Stripe attached to the real CardError —
+    driven through the real wrapper (``stripe_call`` mapping a genuine
+    ``CardError``), not a hand-built StripePaymentError. Before C1a
+    ``stripe_payment_intent_id`` stayed null on every decline and SCA."""
+
+    def _attempt(self):
+        t = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                  billing_mode="prepaid")
+        c = Customer.objects.create(tenant=t, external_id="c1")
+        Wallet.objects.create(customer=c, balance_micros=0)
+        AutoTopUpConfig.objects.create(customer=c, is_enabled=True,
+                                       trigger_threshold_micros=10_000_000,
+                                       top_up_amount_micros=20_000_000)
+        return c, TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                              amount_micros=20_000_000,
+                                              trigger="auto_top_up", status="pending")
+
+    def _charge_raising(self, card_error):
+        from apps.billing.stripe.services.stripe_service import stripe_call
+
+        def charge(customer, amount_micros, attempt):
+            # The real path: the SDK raises CardError inside the wrapper, which
+            # maps it to StripePaymentError off the real error shape.
+            return stripe_call(MagicMock(side_effect=card_error), api_key="sk_test_sentinel")
+        return charge
+
+    def test_an_sca_challenge_records_the_payment_intent_id(self):
+        _, a = self._attempt()
+        err = _real_card_error("authentication_required", None, "pi_sca_1")
+        with patch("apps.billing.connectors.stripe.tasks.charge_saved_payment_method",
+                   side_effect=self._charge_raising(err)), \
+             patch("apps.platform.events.tasks.process_single_event"):
+            charge_auto_top_up_task(str(a.id))
+        a.refresh_from_db()
+        assert a.status == "requires_action"
+        assert a.stripe_payment_intent_id == "pi_sca_1"
+        assert a.failure_reason["payment_intent_id"] == "pi_sca_1"
+        assert a.failure_reason["code"] == "authentication_required"
+
+    def test_a_decline_records_the_payment_intent_id_and_the_decline_code(self):
+        c, a = self._attempt()
+        err = _real_card_error("card_declined", "insufficient_funds", "pi_declined_1")
+        with patch("apps.billing.connectors.stripe.tasks.charge_saved_payment_method",
+                   side_effect=self._charge_raising(err)):
+            charge_auto_top_up_task(str(a.id))
+        a.refresh_from_db()
+        assert a.status == "failed"
+        assert a.stripe_payment_intent_id == "pi_declined_1"
+        assert a.failure_reason["error_type"] == "StripePaymentError"
+        assert a.failure_reason["code"] == "card_declined"
+        assert a.failure_reason["decline_code"] == "insufficient_funds"
+        assert a.failure_reason["payment_intent_id"] == "pi_declined_1"
+        assert Wallet.objects.get(customer=c).balance_micros == 0
+
+
+@pytest.mark.usefixtures("rail_activated")
+@pytest.mark.django_db
+class TestTheDefaultPaymentMethodOnARealCustomer:
+    """Stage C1a (F-3a, ``stripe_api.py``): the off-session charge uses the
+    customer's DEFAULT payment method, read off a genuine ``stripe.Customer``
+    (``invoice_settings`` is a StripeObject: no ``.get``). Before C1a the
+    dict-style read raised, was swallowed, and the FIRST listed card was
+    charged instead of the default — silently."""
+
+    def _customer(self):
+        t = Tenant.objects.create(name="T", products=["metering", "billing"],
+                                  billing_mode="prepaid",
+                                  stripe_connected_account_id="acct_x", charges_enabled=True)
+        c = Customer.objects.create(tenant=t, external_id="c1", stripe_customer_id="cus_1")
+        Wallet.objects.create(customer=c, balance_micros=0)
+        a = TopUpAttempt.objects.create(customer=c, billing_owner_id=c.id,
+                                        amount_micros=20_000_000,
+                                        trigger="auto_top_up", status="pending")
+        return c, a
+
+    def _stripe(self, default_payment_method):
+        """Real SDK objects for every read the charge makes; the PaymentIntent
+        create is captured so the chosen payment method can be asserted."""
+        import stripe
+        sk = "sk_test_sentinel"
+        pms = stripe.ListObject.construct_from(
+            {"object": "list", "has_more": False, "url": "/v1/payment_methods",
+             "data": [{"id": "pm_first_listed", "object": "payment_method", "type": "card"},
+                      {"id": "pm_default", "object": "payment_method", "type": "card"}]}, sk)
+        cust = stripe.Customer.construct_from(
+            {"id": "cus_1", "object": "customer",
+             "invoice_settings": {"default_payment_method": default_payment_method,
+                                  "custom_fields": None, "footer": None}}, sk)
+        created = {}
+
+        def fake(fn, **kw):
+            name = getattr(fn, "__qualname__", "")
+            if name == "PaymentMethod.list":
+                return pms
+            if name == "Customer.retrieve":
+                return cust
+            assert name == "PaymentIntent.create", name
+            created.update(kw)
+            return stripe.PaymentIntent.construct_from(
+                {"id": "pi_1", "object": "payment_intent", "status": "succeeded"}, sk)
+        return fake, created
+
+    def test_the_customers_default_card_is_charged_not_the_first_listed(self):
+        from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
+        c, a = self._customer()
+        fake, created = self._stripe("pm_default")
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call", side_effect=fake):
+            intent = charge_saved_payment_method(c, 20_000_000, a)
+        assert intent.id == "pi_1"
+        assert created["payment_method"] == "pm_default"
+
+    def test_with_no_default_the_first_listed_card_is_charged(self):
+        from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
+        c, a = self._customer()
+        fake, created = self._stripe(None)
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call", side_effect=fake):
+            charge_saved_payment_method(c, 20_000_000, a)
+        assert created["payment_method"] == "pm_first_listed"
+
+
 @pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestChargeTaskBillingOwnerRouting:

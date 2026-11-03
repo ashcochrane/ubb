@@ -82,7 +82,8 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
 5. **Named exception — the "Stripe connector kit."** Three billing-owned modules are importable
    by subscriptions because they are shared Stripe infrastructure, not billing business logic:
    - `apps.billing.stripe.services.stripe_service` — the `stripe_call` wrapper (error mapping,
-     retry) + the global Stripe API-version pin;
+     retry) + the global Stripe API-version pin + the `field` / `metadata_value` accessors that
+     read the pinned SDK's object model (added by R10 Stage C1a, 2026-11);
    - `apps.billing.stripe.models.StripeWebhookEvent` — deliberately **one** webhook dedup table
      across both webhook endpoints (billing's and subscriptions'), so a replayed Stripe event is
      deduplicated no matter which endpoint receives it;

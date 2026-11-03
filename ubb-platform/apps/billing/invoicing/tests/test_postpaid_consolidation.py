@@ -74,25 +74,27 @@ def _sub(t, c, status="active", with_plan=True, sub_id="sub_1", paused=False):
     return sub
 
 
+SK = "sk_test_sentinel"
+
+
 def _renewal(id="in_renewal", status="draft", age_seconds=120, auto_advance=True):
-    """The subscription renewal invoice: FOREIGN (no usage metadata)."""
-    inv = MagicMock()
-    inv.id = id
-    inv.status = status
-    inv.deleted = False
-    inv.auto_advance = auto_advance
-    inv.created = int(timezone.now().timestamp()) - age_seconds
-    inv.metadata = {}
-    return inv
+    """The subscription renewal invoice: FOREIGN (no usage metadata) — a
+    GENUINE ``stripe.Invoice`` (Stage C1a, F-3a) whose empty ``metadata`` is
+    a StripeObject: truthy, with no ``.get``."""
+    import stripe
+    return stripe.Invoice.construct_from(
+        {"id": id, "object": "invoice", "status": status, "auto_advance": auto_advance,
+         "created": int(timezone.now().timestamp()) - age_seconds, "metadata": {}}, SK)
 
 
 def _item(rec, line_index, id=None, amount=None):
-    """An InvoiceItem of OURS (carries the rec's metadata)."""
-    item = MagicMock()
-    item.id = id or f"ii_renewal_{line_index}"
-    item.amount = amount if amount is not None else (60 if line_index == 0 else 40)
-    item.metadata = {"usage_invoice_id": str(rec.id), "line_index": str(line_index)}
-    return item
+    """An InvoiceItem of OURS (carries the rec's metadata) — a GENUINE
+    ``stripe.InvoiceItem``."""
+    import stripe
+    return stripe.InvoiceItem.construct_from(
+        {"id": id or f"ii_renewal_{line_index}", "object": "invoiceitem",
+         "amount": amount if amount is not None else (60 if line_index == 0 else 40),
+         "metadata": {"usage_invoice_id": str(rec.id), "line_index": str(line_index)}}, SK)
 
 
 def _paged(objs):
@@ -339,9 +341,10 @@ class TestSafetyAddendumResume:
         t = _tenant()
         c = _customer(t)
         rec = _consolidated_rec(t, c)
-        alien = MagicMock()
-        alien.id = "ii_alien"
-        alien.metadata = {"usage_invoice_id": "someone-else", "line_index": "0"}
+        import stripe
+        alien = stripe.InvoiceItem.construct_from(
+            {"id": "ii_alien", "object": "invoiceitem",
+             "metadata": {"usage_invoice_id": "someone-else", "line_index": "0"}}, SK)
         with _stripe(retrieve=_renewal(), items=[alien]) as m, _agg():
             PostpaidUsageService.push_customer_period(t, c, PS, PE)
         rec.refresh_from_db()
@@ -440,11 +443,10 @@ class TestSafetyAddendumResume:
         t = _tenant()
         c = _customer(t)
         rec = _consolidated_rec(t, c)
-        remainder = MagicMock()
-        remainder.id = "in_rem"
-        remainder.status = "draft"
-        remainder.deleted = False
-        remainder.metadata = {"usage_invoice_id": str(rec.id)}
+        import stripe
+        remainder = stripe.Invoice.construct_from(
+            {"id": "in_rem", "object": "invoice", "status": "draft",
+             "metadata": {"usage_invoice_id": str(rec.id)}}, SK)
         with _stripe(retrieve=_renewal(status="open"), items=[_item(rec, 0)],
                      meta_listed=[remainder]) as m, _agg():
             PostpaidUsageService.push_customer_period(t, c, PS, PE)

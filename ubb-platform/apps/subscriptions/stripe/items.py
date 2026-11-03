@@ -15,6 +15,7 @@ import logging
 from collections import namedtuple
 from datetime import datetime, timezone as dt_timezone
 
+from apps.billing.stripe.services.stripe_service import field
 from core.currency_policy import ECONOMIC_CURRENCY, is_admitted
 from core.money import from_minor
 
@@ -53,19 +54,27 @@ def mirrored_amounts(stripe_sub):
     unit; metered items contribute nothing (their revenue arrives as invoice
     items). ``amount_micros`` is that sum in UBB's one currency, or ``None``.
     """
-    currency = source_currency(stripe_sub.get("currency"))
+    currency = source_currency(field(stripe_sub, "currency"))
     total, seat_qty, interval = 0, 1, "month"
-    for it in stripe_sub["items"]["data"]:
-        price = it["price"]; rec = price.get("recurring") or {}
-        interval = rec.get("interval", interval)
-        if rec.get("usage_type") == "metered":
+    for it in _items(stripe_sub):
+        price = field(it, "price")
+        rec = field(price, "recurring")
+        interval = field(rec, "interval", interval)
+        if field(rec, "usage_type") == "metered":
             continue
-        qty = it.get("quantity", 1) or 1
-        total += (price.get("unit_amount") or 0) * qty
+        qty = field(it, "quantity", 1) or 1
+        total += (field(price, "unit_amount", 0) or 0) * qty
         if qty > 1:
             seat_qty = qty
     return MirroredAmount(currency, total, economic_micros(currency, total),
                           seat_qty, interval)
+
+
+def _items(stripe_sub):
+    """The subscription's items, ``items.data`` on the real object: a
+    ``ListObject`` whose ``data`` is a list of ``SubscriptionItem``s, each a
+    ``StripeObject`` and never a dict (F-3b). Empty when Stripe sent none."""
+    return field(field(stripe_sub, "items"), "data", []) or []
 
 
 def paid_amounts(invoice):
@@ -83,20 +92,27 @@ def _u(ts):
 
 
 def _period_start(stripe_sub):
-    s = [i.get("current_period_start") for i in stripe_sub["items"]["data"] if i.get("current_period_start")]
+    s = [field(i, "current_period_start") for i in _items(stripe_sub)
+         if field(i, "current_period_start")]
     return _u(s[0]) if s else None
 
 
 def _period_end(stripe_sub):
-    e = [i.get("current_period_end") for i in stripe_sub["items"]["data"] if i.get("current_period_end")]
+    e = [field(i, "current_period_end") for i in _items(stripe_sub)
+         if field(i, "current_period_end")]
     if len(set(e)) > 1:
         logger.warning("subscription has mixed item billing periods")
     return _u(e[0]) if e else None
 
 
 def _product_name(stripe_sub):
-    for it in stripe_sub["items"]["data"]:
-        prod = (it["price"] or {}).get("product")
-        if isinstance(prod, dict) and prod.get("name"):
-            return prod["name"]
+    """The first named product across the items. ``price.product`` is an
+    expanded ``Product`` object only when the caller asked for it
+    (``expand=["data.items.data.price.product"]``) and an id string
+    otherwise; a string has no name, and an expanded product is a
+    ``StripeObject``, never a dict (F-3b)."""
+    for it in _items(stripe_sub):
+        name = field(field(field(it, "price"), "product"), "name")
+        if name:
+            return name
     return ""

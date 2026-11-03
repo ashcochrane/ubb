@@ -12,7 +12,8 @@ from core.exceptions import (NoWalletSubjectError, StripeFatalError,
 from core.currency_policy import CurrencyDisagreement, the_rails_currency
 from core.money import from_minor
 from apps.billing.locking import lock_for_billing, lock_top_up_attempt
-from apps.billing.stripe.services.stripe_service import api_key_for_tenant
+from apps.billing.stripe.services.stripe_service import (
+    api_key_for_tenant, metadata_value, stripe_call)
 from apps.billing.connectors.stripe.stripe_api import charge_saved_payment_method
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import AutoTopUpRequiresAction
@@ -109,16 +110,22 @@ def charge_auto_top_up_task(attempt_id):
         charge_error = e
 
     if charge_error is not None:
+        # O-1: the PaymentIntent Stripe attached to the card error, read off the
+        # real error shape by the wrapper — recorded on the attempt whether the
+        # outcome is an SCA challenge or a decline, so the attempt names the
+        # intent it concerns.
+        pi_id = getattr(charge_error, "payment_intent_id", None) or None
         if getattr(charge_error, "code", None) == "authentication_required":
-            pi = getattr(charge_error, "payment_intent", None)
             with transaction.atomic():
                 attempt = lock_top_up_attempt(attempt.id)
                 if attempt.status != "pending":
                     return
                 attempt.status = "requires_action"
-                if pi is not None:
-                    attempt.stripe_payment_intent_id = pi.id if hasattr(pi, "id") else pi
-                attempt.failure_reason = {"error_type": "AuthenticationRequired", "code": "authentication_required"}
+                if pi_id is not None:
+                    attempt.stripe_payment_intent_id = pi_id
+                attempt.failure_reason = {"error_type": "AuthenticationRequired",
+                                          "code": "authentication_required",
+                                          "payment_intent_id": pi_id}
                 attempt.save(update_fields=["status", "stripe_payment_intent_id", "failure_reason", "updated_at"])
                 write_event(AutoTopUpRequiresAction(
                     tenant_id=str(attempt.customer.tenant_id), customer_id=str(attempt.customer_id),
@@ -129,12 +136,16 @@ def charge_auto_top_up_task(attempt_id):
             if attempt.status != "pending":
                 return
             attempt.status = "failed"
+            if pi_id is not None:
+                attempt.stripe_payment_intent_id = pi_id
             attempt.failure_reason = {
                 "error_type": type(charge_error).__name__,
                 "code": getattr(charge_error, "code", None),
                 "decline_code": getattr(charge_error, "decline_code", None),
+                "payment_intent_id": pi_id,
                 "message": str(charge_error)}
-            attempt.save(update_fields=["status", "failure_reason", "updated_at"])
+            attempt.save(update_fields=["status", "stripe_payment_intent_id",
+                                        "failure_reason", "updated_at"])
         return
 
     status = getattr(charge_result, "status", "") if charge_result else ""
@@ -182,14 +193,19 @@ def reconcile_topups_with_stripe():
         except StripeFatalError:
             # Sandbox tenant without STRIPE_TEST_SECRET_KEY — nothing to sweep.
             continue
+        # Through the wrapper (F-2): an empty key is refused before transport.
+        # Every page is fetched INSIDE the try — auto_paging_iter() requests
+        # page two lazily, and a failure there must land here, not in the loop.
         try:
-            pis = stripe.PaymentIntent.list(created={"gte": cutoff}, limit=100,
-                                            stripe_account=account, api_key=api_key)
-        except stripe.error.StripeError:
+            pis = stripe_call(stripe.PaymentIntent.list, api_key=api_key,
+                              created={"gte": cutoff}, limit=100, stripe_account=account)
+            listed = list(pis.auto_paging_iter())
+        except (StripeTransientError, StripeFatalError, stripe.error.StripeError):
             logger.warning("Reconcile: PI list failed", extra={"data": {"account": account}})
             continue
-        for pi in pis.auto_paging_iter():
-            attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
+        for pi in listed:
+            # A real PaymentIntent's metadata is a StripeObject, not a dict (F-3a).
+            attempt_id = metadata_value(pi, "topup_attempt_id")
             if not attempt_id or getattr(pi, "status", "") != "succeeded":
                 continue
             if WalletTransaction.objects.filter(
@@ -235,15 +251,18 @@ def reconcile_topups_with_stripe():
     mismatches = 0
     for attempt in audit_attempts.iterator():
         try:
-            charge = stripe.Charge.retrieve(
-                attempt.stripe_charge_id,
-                stripe_account=get_tenant_stripe_account(attempt.customer.tenant_id),
+            charge = stripe_call(
+                stripe.Charge.retrieve,
                 api_key=api_key_for_tenant(attempt.customer.tenant),
+                id=attempt.stripe_charge_id,
+                stripe_account=get_tenant_stripe_account(attempt.customer.tenant_id),
             )
         except StripeFatalError:
-            # Sandbox attempt without STRIPE_TEST_SECRET_KEY — cannot audit.
+            # No key for the attempt's mode (sandbox without
+            # STRIPE_TEST_SECRET_KEY, or an unset live key) — refused by the
+            # wrapper before transport; cannot audit.
             continue
-        except stripe.error.StripeError:
+        except (StripeTransientError, stripe.error.StripeError):
             logger.warning("Stripe charge fetch failed", extra={"data": {
                 "attempt_id": str(attempt.id), "charge_id": attempt.stripe_charge_id}})
             continue

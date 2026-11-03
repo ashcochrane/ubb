@@ -7,7 +7,8 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
+from apps.billing.stripe.services.stripe_service import (
+    api_key_for_tenant, metadata_value, stripe_call)
 from core.cost_totals import UNPRICED_EVENT_COUNT_KEY
 from core.exceptions import StripeFatalError
 from core.currency_policy import the_rails_currency
@@ -445,9 +446,9 @@ class PostpaidUsageService:
             # split remainder) must always resume through the self-controlled
             # standalone path below, whatever the audit column says, because
             # our drafts are auto_advance=False and only finalize when we say.
-            meta = getattr(inv, "metadata", None) or {}
+            # A real Invoice's metadata is a StripeObject, not a dict (F-3a).
             consolidated = (rec.invoice_kind == "consolidated"
-                            and meta.get("usage_invoice_id") != str(rec.id))
+                            and metadata_value(inv, "usage_invoice_id") != str(rec.id))
         else:
             inv = PostpaidUsageService._find_existing_invoice(rec, owner, connected, api_key)
             if inv is None:
@@ -804,8 +805,10 @@ class PostpaidUsageService:
         for inv in result.auto_paging_iter():
             if getattr(inv, "status", "") == "void":
                 continue
-            meta = getattr(inv, "metadata", None) or {}
-            if meta.get("usage_invoice_id") == str(rec.id):
+            # A real Invoice's metadata is a StripeObject, not a dict (F-3a):
+            # the dict-style read here raised on the first push whenever the
+            # owner had any non-void invoice in the lookback.
+            if metadata_value(inv, "usage_invoice_id") == str(rec.id):
                 return inv
         return None
 
@@ -821,10 +824,11 @@ class PostpaidUsageService:
             invoice=invoice_id, stripe_account=connected, limit=100)
         indexed = {}
         for item in result.auto_paging_iter():
-            meta = getattr(item, "metadata", None) or {}
-            if usage_invoice_id is not None and meta.get("usage_invoice_id") != usage_invoice_id:
+            # A real InvoiceItem's metadata is a StripeObject, not a dict (F-3a).
+            if (usage_invoice_id is not None
+                    and metadata_value(item, "usage_invoice_id") != usage_invoice_id):
                 continue
-            line_index = meta.get("line_index")
+            line_index = metadata_value(item, "line_index")
             if line_index is not None:
                 indexed[line_index] = item
         return indexed

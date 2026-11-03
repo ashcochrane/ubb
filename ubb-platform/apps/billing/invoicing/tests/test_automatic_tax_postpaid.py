@@ -124,7 +124,12 @@ class TestWalletMoneySitesNeverCarryTax:
             if name == "PaymentMethod.list":
                 return MagicMock(data=[MagicMock(id="pm_1")])
             if name == "Customer.retrieve":
-                return {"invoice_settings": {"default_payment_method": "pm_1"}}
+                # A GENUINE stripe.Customer (Stage C1a): invoice_settings is a
+                # StripeObject, not a dict.
+                return stripe.Customer.construct_from(
+                    {"id": "cus_1", "object": "customer",
+                     "invoice_settings": {"default_payment_method": "pm_1"}},
+                    "sk_test_sentinel")
             return MagicMock(id="pi_1")
 
         with patch("apps.billing.connectors.stripe.stripe_api.stripe_call",

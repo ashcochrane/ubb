@@ -29,8 +29,8 @@ from django.test import Client, RequestFactory, TestCase
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
 from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
-from apps.subscriptions.tests._helpers import a_mirrored_subscription
-from apps.subscriptions.tests.test_sync import FakeStripeSub, _licensed_item
+from apps.subscriptions.tests._helpers import (
+    a_licensed_item, a_mirrored_subscription, a_stripe_subscription)
 from core.currency_policy import FOREIGN_CURRENCY_SUBSCRIPTION_COUNT_KEY as COUNT
 
 ACCOUNT = "acct_foreign"
@@ -47,10 +47,10 @@ CLOSES = date(2026, 4, 30)
 
 
 def _subscription(stripe_id, customer, currency, unit_amount):
-    return FakeStripeSub(
-        id=stripe_id, customer=customer.stripe_customer_id, status="active",
-        currency=currency,
-        items={"data": [_licensed_item(unit_amount, qty=1, product_name="Pro")]})
+    # A genuine stripe.Subscription (Stage C1a): the shape every inbound path reads.
+    return a_stripe_subscription(
+        stripe_id, customer.stripe_customer_id, "active", currency=currency,
+        items=[a_licensed_item(unit_amount, qty=1, product_name="Pro")])
 
 
 def _event(event_id, kind, obj, account=ACCOUNT):

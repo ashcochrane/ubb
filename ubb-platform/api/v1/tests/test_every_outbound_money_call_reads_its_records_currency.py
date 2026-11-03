@@ -21,6 +21,7 @@ sent is the record's.
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import stripe
 from django.db import connection
 from django.test import TestCase
 
@@ -108,8 +109,13 @@ class ATopUpReadsTheWalletItCreditsTest(_ConnectedTenant):
 
     @patch("apps.billing.connectors.stripe.stripe_api.stripe_call")
     def test_the_off_session_charge_sends_the_wallets_currency(self, stripe_call):
+        # The Customer read answers a GENUINE stripe.Customer (Stage C1a):
+        # invoice_settings is a StripeObject, not a dict.
         stripe_call.side_effect = [MagicMock(data=[MagicMock(id="pm_1")]),
-                                   {"invoice_settings": {}},
+                                   stripe.Customer.construct_from(
+                                       {"id": "cus_1", "object": "customer",
+                                        "invoice_settings": {"default_payment_method": None}},
+                                       "sk_test_sentinel"),
                                    MagicMock(id="pi_1")]
         charge_saved_payment_method(self.customer, 20_000_000, self.attempt)
         self.assertEqual(stripe_call.call_args.kwargs["currency"],

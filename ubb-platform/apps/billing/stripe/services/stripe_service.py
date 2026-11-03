@@ -25,6 +25,43 @@ stripe.api_version = STRIPE_API_VERSION
 logger = logging.getLogger(__name__)
 
 
+#: Sentinel for "the object has no such field" — distinct from a field that is
+#: present and ``None``, which the accessor also folds into the default.
+_ABSENT = object()
+
+
+def field(obj, name, default=None):
+    """One field of a Stripe SDK object, or ``default`` when it is absent or
+    ``None``.
+
+    The pinned ``stripe==15.2.0`` ``StripeObject`` is NOT a dict: it has no
+    ``.get``, an absent field raises on attribute access, nested fields
+    (``metadata``, ``invoice_settings``, ``recurring``, an expanded
+    ``product``) are themselves ``StripeObject``s, and an EMPTY one is truthy —
+    so ``obj.get(...)`` crashes and ``x or {}`` never falls back. Attribute
+    access is the SDK's documented read, and this is the one place UBB spells
+    it. A string (an unexpanded id where an object was hoped for) has no
+    fields. A plain ``dict`` is tolerated ONLY so this helper's own unit tests
+    can prove both sides of the boundary; production callers pass SDK objects.
+    """
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        value = obj.get(name, default)
+    else:
+        value = getattr(obj, name, _ABSENT)
+        if value is _ABSENT:
+            return default
+    return default if value is None else value
+
+
+def metadata_value(obj, key, default=None):
+    """``obj.metadata[key]`` on a Stripe object whose ``metadata`` may be
+    absent, ``None`` or empty — how UBB correlates a Stripe object with the
+    row it stamped."""
+    return field(field(obj, "metadata"), key, default)
+
+
 def validate_amount_micros(amount_micros):
     """Validate amount_micros > 0. Raises StripeFatalError otherwise."""
     if amount_micros is None or amount_micros <= 0:
@@ -124,11 +161,24 @@ def stripe_call(fn, *, api_key, retryable=False, idempotency_key=None, max_retri
             raise StripeTransientError(str(e)) from e
         except stripe.error.CardError as e:
             _log_stripe_error(fn, e, attempt)
+            # The real CardError carries decline_code and the PaymentIntent on
+            # ``e.error`` (the ErrorObject built from the response body), not
+            # as top-level attributes (O-1). ``payment_intent`` is an object
+            # or, unexpanded, an id string.
+            error_object = getattr(e, "error", None)
+            payment_intent = field(error_object, "payment_intent")
             raise StripePaymentError(
                 str(e),
                 code=getattr(e, "code", None),
-                decline_code=getattr(e, "decline_code", None),
+                decline_code=field(error_object, "decline_code"),
+                payment_intent_id=(payment_intent if isinstance(payment_intent, str)
+                                   else field(payment_intent, "id")),
             ) from e
+        except stripe.oauth_error.OAuthError as e:
+            # Connect token exchange refused (invalid/expired code, wrong
+            # client id): a configuration or authorisation fault, never retried.
+            _log_stripe_error(fn, e, attempt)
+            raise StripeFatalError(str(e)) from e
         except stripe.error.IdempotencyError as e:
             _log_stripe_error(fn, e, attempt)
             raise StripeFatalError(str(e)) from e

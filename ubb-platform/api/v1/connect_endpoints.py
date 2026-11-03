@@ -39,12 +39,14 @@ def connect_start(request, payload: ConnectStartIn):
 @role_floor(READ)
 def connect_status(request):
     import stripe
-    from apps.billing.stripe.services.stripe_service import api_key_for_tenant
+    from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
     t = request.auth.tenant
     if t.stripe_connected_account_id and not t.charges_enabled:
+        # Through the wrapper (F-2): no key for the tenant's mode is refused
+        # before transport; the status read then answers the stored flag.
         try:
-            acct = stripe.Account.retrieve(
-                t.stripe_connected_account_id, api_key=api_key_for_tenant(t))
+            acct = stripe_call(stripe.Account.retrieve, api_key=api_key_for_tenant(t),
+                               id=t.stripe_connected_account_id)
             new_val = bool(getattr(acct, "charges_enabled", False))
             if new_val != t.charges_enabled:
                 t.charges_enabled = new_val

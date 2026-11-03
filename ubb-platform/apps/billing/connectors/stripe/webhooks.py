@@ -15,7 +15,9 @@ from apps.billing.connectors.stripe.invoice_routing import (
     event_livemode,
     livemode_filter,
 )
-from apps.billing.stripe.services.stripe_service import api_key_for_tenant
+from apps.billing.stripe.services.stripe_service import (
+    api_key_for_tenant, metadata_value, stripe_call)
+from core.exceptions import StripeFatalError, StripeTransientError
 from core.locking import lock_customer
 from core.currency_policy import the_rails_currency
 from core.money import from_minor
@@ -98,12 +100,16 @@ def handle_checkout_completed(event):
     pi_id = getattr(session, "payment_intent", None)
     charge_id_from_pi = None
     if isinstance(pi_id, str) and pi_id:
+        # Through the wrapper (F-2): a tenant whose mode has no key configured
+        # is refused BEFORE transport, and the credit below still lands — the
+        # Checkout Session already took the money; only the charge id is lost.
         try:
-            pi = stripe.PaymentIntent.retrieve(
-                pi_id,
+            pi = stripe_call(
+                stripe.PaymentIntent.retrieve,
+                api_key=api_key_for_tenant(customer.tenant),
+                id=pi_id,
                 stripe_account=connected_account,
                 expand=["latest_charge"],
-                api_key=api_key_for_tenant(customer.tenant),
             )
             if pi.latest_charge:
                 cid = (
@@ -113,7 +119,7 @@ def handle_checkout_completed(event):
                 )
                 if isinstance(cid, str) and cid:
                     charge_id_from_pi = cid
-        except stripe.error.StripeError:
+        except (StripeTransientError, StripeFatalError, stripe.error.StripeError):
             logger.warning(
                 "Failed to retrieve charge ID for reconciliation",
                 extra={"data": {"payment_intent": pi_id}},
@@ -444,7 +450,8 @@ def handle_charge_refunded(event):
 def handle_payment_intent_succeeded(event):
     """Backstop: credit the wallet for a succeeded auto top-up PaymentIntent (idempotent)."""
     pi = event.data.object
-    attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
+    # A real PaymentIntent's metadata is a StripeObject, not a dict (F-3a).
+    attempt_id = metadata_value(pi, "topup_attempt_id")
     if not attempt_id:
         return
     from apps.billing.topups.services import AutoTopUpService
@@ -463,7 +470,7 @@ def handle_payment_intent_succeeded(event):
 def handle_payment_intent_payment_failed(event):
     """Mark an auto top-up attempt failed when its PaymentIntent fails (idempotent)."""
     pi = event.data.object
-    attempt_id = (getattr(pi, "metadata", None) or {}).get("topup_attempt_id")
+    attempt_id = metadata_value(pi, "topup_attempt_id")
     if not attempt_id:
         return
     try:

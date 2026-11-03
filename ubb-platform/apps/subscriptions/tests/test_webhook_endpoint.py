@@ -1,9 +1,14 @@
+import hashlib
+import hmac
 import json
+import time
 import pytest
 from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client
 from django.utils import timezone
-from apps.subscriptions.tests.test_sync import FakeStripeSub, _licensed_item
+from apps.subscriptions.tests._helpers import (
+    a_licensed_item, a_mirrored_subscription, a_stripe_subscription,
+    a_subscription_dict)
 
 
 class TestSubscriptionsWebhookEndpoint(TestCase):
@@ -40,9 +45,9 @@ class TestSubscriptionsWebhookEndpoint(TestCase):
         mock_event.id = "evt_wh_1"
         mock_event.type = "customer.subscription.created"
         mock_event.account = "acct_wh_test"
-        mock_event.data.object = FakeStripeSub(
-            id="sub_wh_1", customer="cus_wh", status="active", currency="usd",
-            items={"data": [_licensed_item(4900, qty=1, product_name="Pro")]})
+        mock_event.data.object = a_stripe_subscription(
+            "sub_wh_1", "cus_wh", "active",
+            items=[a_licensed_item(4900, qty=1, product_name="Pro")])
 
         mock_stripe.Webhook.construct_event.return_value = mock_event
 
@@ -188,3 +193,73 @@ class TestLiveSubscriptionsReceiverFailsClosed(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(StripeWebhookEvent.objects.filter(
             stripe_event_id="evt_w7_subs_fail_closed").exists())
+
+
+class TestARealSignedSubscriptionEventOverTheSubscriptionsReceiver(TestCase):
+    """Stage C1a (F-3b): a genuinely signed ``customer.subscription.created``
+    and ``updated`` posted to the subscriptions receiver, verified by Stripe's
+    own ``Webhook.construct_event`` — the handler gets the real
+    ``stripe.Subscription`` (no ``.get``; ``pause_collection`` a StripeObject;
+    ``price.product`` an id string unless expanded). On the anchor both
+    answered 500 ``{"type": "AttributeError", "error": "get"}`` over the wire
+    (``R10-BILLING-READINESS/evidence/07-plans-subscriptions.txt``)."""
+
+    SECRET = "whsec_c1a_subs_receiver"
+
+    def setUp(self):
+        from apps.platform.tenants.models import Tenant
+        from apps.platform.customers.models import Customer
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="signed", products=["metering", "billing"],
+            stripe_connected_account_id="acct_signed_subs")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="cust-1", stripe_customer_id="cus_signed")
+
+    def _deliver(self, event_id, kind, sub_dict):
+        payload = json.dumps({
+            "id": event_id, "object": "event", "type": kind, "livemode": True,
+            "created": int(time.time()), "account": "acct_signed_subs",
+            "data": {"object": sub_dict}}).encode()
+        ts = int(time.time())
+        digest = hmac.new(self.SECRET.encode(), f"{ts}.".encode() + payload,
+                          hashlib.sha256).hexdigest()
+        with self.settings(STRIPE_WEBHOOK_SECRET=self.SECRET):
+            return self.http_client.post(
+                "/api/v1/subscriptions/webhooks/stripe", data=payload,
+                content_type="application/json",
+                HTTP_STRIPE_SIGNATURE=f"t={ts},v1={digest}")
+
+    def test_a_signed_created_event_mirrors_the_subscription_and_answers_200(self):
+        from apps.billing.stripe.models import StripeWebhookEvent
+        from apps.subscriptions.models import StripeSubscription
+        response = self._deliver(
+            "evt_signed_created", "customer.subscription.created",
+            a_subscription_dict("sub_signed", "cus_signed", "active", items=[
+                a_licensed_item(4900, qty=1, product_name="Pro"),
+                a_licensed_item(1000, qty=3)]))
+        self.assertEqual(response.status_code, 200, response.content)
+        mirror = StripeSubscription.objects.get(stripe_subscription_id="sub_signed")
+        self.assertEqual((mirror.stripe_product_name, mirror.amount_micros, mirror.quantity),
+                         ("Pro", (4900 + 3 * 1000) * 10_000, 3))
+        self.assertEqual(StripeWebhookEvent.objects.get(
+            stripe_event_id="evt_signed_created").status, "succeeded")
+
+    def test_a_signed_updated_event_with_pause_and_pending_cancel_answers_200(self):
+        from apps.subscriptions.models import StripeSubscription
+        now = timezone.now()
+        a_mirrored_subscription(
+            tenant=self.tenant, customer=self.customer, stripe_subscription_id="sub_signed_u",
+            stripe_product_name="Pro", status="active", amount_micros=49_000_000,
+            currency="usd", interval="month", current_period_start=now,
+            current_period_end=now, last_synced_at=now)
+        response = self._deliver(
+            "evt_signed_updated", "customer.subscription.updated",
+            a_subscription_dict("sub_signed_u", "cus_signed", "active",
+                                cancel_at_period_end=True,
+                                pause_collection={"behavior": "void", "resumes_at": None},
+                                items=[a_licensed_item(4900, qty=1)]))
+        self.assertEqual(response.status_code, 200, response.content)
+        mirror = StripeSubscription.objects.get(stripe_subscription_id="sub_signed_u")
+        self.assertEqual((mirror.cancel_at_period_end, mirror.paused, mirror.status),
+                         (True, True, "active"))

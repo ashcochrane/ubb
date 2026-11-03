@@ -7,8 +7,8 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from apps.billing.stripe.services.stripe_service import api_key_for_tenant
-from core.exceptions import StripeFatalError
+from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
+from core.exceptions import StripeFatalError, StripeTransientError
 
 STATE_TTL = timedelta(minutes=15)
 
@@ -68,12 +68,19 @@ def complete_oauth(*, code, state):
         # a live tenant a live one. The acct_ id is the same in both modes;
         # the tenant row keeps them apart.
         api_key = _api_key_for_tenant_or_connect_error(tenant)
-        resp = stripe.OAuth.token(grant_type="authorization_code", code=code,
-                                  api_key=api_key)
+        # Through the wrapper (F-2): an unset live key is refused before
+        # transport, and an OAuth refusal (a used or expired code, a wrong
+        # client id) is mapped to StripeFatalError; both answer ConnectError
+        # here so the callback keeps its "never a 500".
+        try:
+            resp = stripe_call(stripe.OAuth.token, api_key=api_key,
+                               grant_type="authorization_code", code=code)
+        except (StripeFatalError, StripeTransientError) as e:
+            raise ConnectError(str(e)) from e
         acct_id = resp.stripe_user_id
         tenant.stripe_connected_account_id = acct_id
         try:
-            acct = stripe.Account.retrieve(acct_id, api_key=api_key)
+            acct = stripe_call(stripe.Account.retrieve, api_key=api_key, id=acct_id)
             tenant.charges_enabled = bool(getattr(acct, "charges_enabled", False))
         except Exception:
             tenant.charges_enabled = False
