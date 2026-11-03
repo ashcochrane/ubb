@@ -1,6 +1,6 @@
 import json
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, Client
 
@@ -807,13 +807,16 @@ class TopUpAttemptBillingOwnerPinTest(RailActivated, TestCase):
 
 
 class TopUpWithConnectorTest(RailActivated, TestCase):
-    """Verify that top-up with Stripe connector still works (existing behavior)."""
+    """Verify that top-up with Stripe connector still works (existing behavior).
+    "Stripe active" means a connected account that is charge-ready: since C1b
+    (F-11) a top-up asks that BEFORE it writes, so the fixture says so."""
 
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Has Stripe", products=["metering", "billing"],
             stripe_connected_account_id="acct_test", billing_mode="prepaid",
+            charges_enabled=True,
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.customer = Customer.objects.create(
@@ -873,6 +876,208 @@ class TopUpWithConnectorTest(RailActivated, TestCase):
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response["Content-Type"], "application/problem+json")
         self.assertEqual(response.json()["code"], "conflict")
+
+
+class ATopUpRefusesBeforeItWritesTest(RailActivated, TestCase):
+    """R10 Stage C1b (F-11 + O-6, RULED Q2/Q21): every knowable precondition
+    of a top-up checkout is evaluated BEFORE the TopUpAttempt and its audit
+    row are written, and each refusal is its truthful registered problem. On
+    the C1a anchor a tenant whose connected account was not charge-ready got
+    a bare 500 `internal_error` from the connector's StripeFatalError, with
+    a `pending` attempt and an audit row left behind every time (Stage B
+    F-11); a closed rail refused by name but also left the pending attempt
+    (O-6)."""
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Refuses", products=["metering", "billing"],
+            stripe_connected_account_id="acct_refuses", billing_mode="prepaid",
+            charges_enabled=True,
+        )
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="cust_refuses", stripe_customer_id="cus_refuses")
+
+    def _topup(self, idempotency_key="tp_refuse_1", amount=20_000_000):
+        return self.http_client.post(
+            f"/api/v1/billing/customers/{self.customer.id}/top-up",
+            data=json.dumps({
+                "amount_micros": amount,
+                "success_url": "https://example.com/success",
+                "cancel_url": "https://example.com/cancel",
+                "idempotency_key": idempotency_key,
+            }),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
+        )
+
+    def _zero_rows(self):
+        from apps.billing.topups.models import TopUpAttempt
+        from apps.platform.audit.models import AuditRecord
+        self.assertFalse(TopUpAttempt.objects.filter(customer=self.customer).exists())
+        self.assertFalse(AuditRecord.objects.filter(
+            tenant_id=self.tenant.id, action="top_up.requested").exists())
+
+    def _problem(self, response, status, code):
+        self.assertEqual(response.status_code, status, response.content)
+        self.assertEqual(response["Content-Type"], "application/problem+json")
+        body = response.json()
+        self.assertEqual(body["code"], code)
+        return body
+
+    def test_a_connected_account_that_is_not_charge_ready_is_payment_not_available_with_zero_rows(self):
+        Tenant.objects.filter(pk=self.tenant.pk).update(charges_enabled=False)
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call") as stripe_call:
+            response = self._topup()
+        body = self._problem(response, 409, "payment_not_available")
+        self.assertIn("charges_enabled=False", body["detail"])
+        stripe_call.assert_not_called()
+        self._zero_rows()
+
+    def test_no_connected_account_is_payment_not_available_at_the_connector(self):
+        """The route takes the no-connector branch for a tenant with no
+        account at all (a legitimate product path: the event hand-off), so
+        the "no connected account" refusal is the connector's own, asked by
+        anything that calls it directly."""
+        from apps.billing.connectors.stripe.stripe_api import (
+            refuse_a_checkout_that_cannot_proceed)
+        from core.exceptions import PaymentNotAvailable
+        Tenant.objects.filter(pk=self.tenant.pk).update(stripe_connected_account_id="")
+        self.customer.tenant.refresh_from_db()
+        with self.assertRaisesRegex(PaymentNotAvailable, "no connected Stripe account") as ctx:
+            refuse_a_checkout_that_cannot_proceed(
+                self.customer, 20_000_000, owner_id=self.customer.id)
+        self.assertEqual(ctx.exception.code, "payment_not_available")
+        self._zero_rows()
+
+    def test_no_server_key_is_service_unavailable_with_zero_rows(self):
+        with self.settings(STRIPE_SECRET_KEY=""), \
+                patch("apps.billing.connectors.stripe.stripe_api.stripe_call") as stripe_call:
+            response = self._topup()
+        self._problem(response, 503, "service_unavailable")
+        stripe_call.assert_not_called()
+        self._zero_rows()
+
+    def test_a_sandbox_tenant_without_a_test_key_is_service_unavailable_with_zero_rows(self):
+        from apps.billing.topups.models import TopUpAttempt
+        sandbox = Tenant.objects.create(
+            name="Refuses sandbox", products=["metering", "billing"],
+            billing_mode="prepaid", is_sandbox=True, parent_tenant=self.tenant,
+            stripe_connected_account_id="acct_refuses", charges_enabled=True)
+        _key_obj, raw_key = TenantApiKey.create_key(sandbox, label="sandbox", is_test=True)
+        customer = Customer.objects.create(
+            tenant=sandbox, external_id="cust_sandbox", stripe_customer_id="cus_sandbox")
+        with self.settings(STRIPE_TEST_SECRET_KEY=""), \
+                patch("apps.billing.connectors.stripe.stripe_api.stripe_call") as stripe_call:
+            response = self.http_client.post(
+                f"/api/v1/billing/customers/{customer.id}/top-up",
+                data=json.dumps({
+                    "amount_micros": 20_000_000,
+                    "success_url": "https://example.com/success",
+                    "cancel_url": "https://example.com/cancel",
+                    "idempotency_key": "tp_sandbox_no_key",
+                }),
+                content_type="application/json",
+                HTTP_AUTHORIZATION=f"Bearer {raw_key}",
+            )
+        self._problem(response, 503, "service_unavailable")
+        stripe_call.assert_not_called()
+        self.assertFalse(TopUpAttempt.objects.filter(customer=customer).exists())
+
+    def test_a_currency_disagreement_is_the_registered_currency_problem_with_zero_rows(self):
+        # The database holds every wallet to USD (ADR-0023), so the record
+        # that disagrees is staged at the one seam that names it: the wallet
+        # a top-up will credit answers a currency the rail does not admit.
+        with patch("apps.billing.connectors.stripe.stripe_api.the_currency_a_top_up_will_credit",
+                   return_value=("wallet w_eur", "eur")), \
+                patch("apps.billing.connectors.stripe.stripe_api.stripe_call") as stripe_call:
+            response = self._topup()
+        body = self._problem(response, 422, "unsupported_currency")
+        self.assertIn("'eur'", body["detail"])
+        stripe_call.assert_not_called()
+        self._zero_rows()
+
+    def test_an_invalid_amount_is_a_validation_error_with_zero_rows(self):
+        # The request schema refuses it first; the money-boundary rule says
+        # the same thing when asked directly.
+        from apps.billing.connectors.stripe.stripe_api import (
+            refuse_a_checkout_that_cannot_proceed)
+        from core.problems import Problem
+        response = self._topup(amount=0)
+        self._problem(response, 422, "validation_error")
+        with self.assertRaises(Problem) as ctx:
+            refuse_a_checkout_that_cannot_proceed(self.customer, 0, owner_id=self.customer.id)
+        self.assertEqual(ctx.exception.code, "validation_error")
+        with self.assertRaises(Problem) as ctx:
+            refuse_a_checkout_that_cannot_proceed(self.customer, 15, owner_id=self.customer.id)
+        self.assertEqual(ctx.exception.code, "validation_error")
+        self._zero_rows()
+
+    def test_a_stripe_refusal_at_session_create_fails_the_attempt_and_is_payment_not_available(self):
+        """Only Stripe's own refusal can arrive after the attempt exists: the
+        attempt is `failed` with the reason (never left pending), the audit
+        row stands (the top-up WAS requested), and the answer is the
+        registered problem with the Stripe detail — never `internal_error`."""
+        from apps.billing.topups.models import TopUpAttempt
+        from apps.platform.audit.models import AuditRecord
+        from core.exceptions import StripeFatalError
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call",
+                   side_effect=StripeFatalError("No such customer: 'cus_refuses'")):
+            response = self._topup("tp_refused_by_stripe")
+        body = self._problem(response, 409, "payment_not_available")
+        self.assertEqual(body["detail"], "No such customer: 'cus_refuses'")
+        attempt = TopUpAttempt.objects.get(
+            customer=self.customer, idempotency_key="tp_refused_by_stripe")
+        self.assertEqual(attempt.status, "failed")
+        self.assertEqual(attempt.failure_reason["error"], "No such customer: 'cus_refuses'")
+        self.assertEqual(attempt.failure_reason["stage"], "checkout_session_create")
+        self.assertEqual(AuditRecord.objects.filter(
+            tenant_id=self.tenant.id, action="top_up.requested").count(), 1)
+        # Replaying the same key starts no second attempt and does not resurrect it.
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call",
+                   side_effect=StripeFatalError("No such customer: 'cus_refuses'")):
+            self._problem(self._topup("tp_refused_by_stripe"), 409, "payment_not_available")
+        self.assertEqual(TopUpAttempt.objects.filter(customer=self.customer).count(), 1)
+
+    def test_a_transient_upstream_failure_is_service_unavailable_and_the_attempt_stays_pending(self):
+        from apps.billing.topups.models import TopUpAttempt
+        from core.exceptions import StripeTransientError
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call",
+                   side_effect=StripeTransientError("connection reset")):
+            response = self._topup("tp_transient")
+        self._problem(response, 503, "service_unavailable")
+        self.assertEqual(response["Retry-After"], "60")
+        attempt = TopUpAttempt.objects.get(customer=self.customer, idempotency_key="tp_transient")
+        self.assertEqual(attempt.status, "pending")
+        # The same key then succeeds against a recovered upstream — same attempt.
+        import stripe
+        session = stripe.checkout.Session.construct_from({
+            "id": "cs_recovered", "object": "checkout.session",
+            "url": "https://checkout.stripe.com/recovered", "mode": "payment",
+            "payment_status": "unpaid"}, "sk_test_sentinel")
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call",
+                   return_value=session):
+            ok = self._topup("tp_transient")
+        self.assertEqual(ok.status_code, 200, ok.content)
+        self.assertEqual(ok.json()["checkout_url"], "https://checkout.stripe.com/recovered")
+        self.assertEqual(TopUpAttempt.objects.filter(customer=self.customer).count(), 1)
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.stripe_checkout_session_id, "cs_recovered")
+
+    def test_a_key_lost_at_session_create_is_service_unavailable_and_the_attempt_stays_pending(self):
+        """The wrapper's own not-configured refusal (the key vanished between
+        the precondition and the call) is the service's state, not the
+        subject's: 503, the attempt pending for the same key to retry —
+        never `failed`, never `payment_not_available`."""
+        from apps.billing.topups.models import TopUpAttempt
+        from core.exceptions import StripeNotConfigured
+        with patch("apps.billing.connectors.stripe.stripe_api.stripe_call",
+                   side_effect=StripeNotConfigured("Stripe API key is not configured.")):
+            response = self._topup("tp_key_lost")
+        self._problem(response, 503, "service_unavailable")
+        self.assertEqual(TopUpAttempt.objects.get(
+            customer=self.customer, idempotency_key="tp_key_lost").status, "pending")
 
 
 class TenantUsageInvoicePeriodValidationTest(TestCase):

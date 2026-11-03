@@ -378,6 +378,22 @@ class AClosedRailStartsNoNewMoneyTest(_TenantsTestCase):
         self.assertRefusedByName(answered, PAYMENT_RAIL_ENVIRONMENT_LIVE)
         stripe_call.assert_not_called()
 
+    def test_a_top_up_refused_by_the_closed_rail_writes_no_attempt_and_no_audit_row(self):
+        """R10 Stage C1b (O-6, with F-11): the rail is asked BEFORE the
+        attempt and its audit row are written. On the C1a anchor the 409 was
+        right and a `pending` TopUpAttempt plus a `top_up.requested` audit row
+        were left behind by every refused call."""
+        from apps.platform.audit.models import AuditRecord
+        with patch(self.STRIPE_CALL) as stripe_call:
+            answered = self._top_up("tp-rail-zero-rows")
+
+        self.assertEqual(answered.status_code, 409)
+        self.assertEqual(answered.json()["code"], "payment_rail_not_activated")
+        stripe_call.assert_not_called()
+        self.assertFalse(TopUpAttempt.objects.filter(customer=self.customer).exists())
+        self.assertFalse(AuditRecord.objects.filter(
+            tenant_id=self.tenant.id, action="top_up.requested").exists())
+
     def test_an_auto_top_up_charge_is_refused_before_stripe(self):
         from apps.billing.connectors.stripe.stripe_api import (
             charge_saved_payment_method)

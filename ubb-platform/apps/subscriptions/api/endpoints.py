@@ -1,23 +1,16 @@
 import logging
 import uuid
-from datetime import timedelta
-
-import stripe
-from stripe import SignatureVerificationError as StripeSignatureError
 
 from django.conf import settings
-from django.core.exceptions import ObjectDoesNotExist
-from django.db import IntegrityError, transaction
-from django.db.models import F
-from django.http import JsonResponse, HttpResponse
+from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from ninja import Router
 
-from apps.billing.stripe.models import StripeWebhookEvent
-from core.exceptions import StripeFatalError
+from apps.billing.stripe.models import WEBHOOK_RECEIVER_SUBSCRIPTIONS
+from apps.billing.stripe.receiver import receive_stripe_event
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 
@@ -150,36 +143,36 @@ from core.vocabulary import (
 
 # This endpoint handles customer.subscription.* ONLY. ALL invoice.* reconcile
 # (including subscription-invoice status) lives on api/v1 — see api/v1/webhooks.py.
-# Never register an invoice.* type here: both endpoints share the
-# StripeWebhookEvent dedup table, so the first to handle an event wins the dedup
-# row and the second silently skips (C-1).
+# Since C1b (F-17) the dedup table is scoped PER RECEIVER, so a type registered
+# on both endpoints is processed by its owner and recorded `skipped` by the
+# other, independently; keep the maps disjoint anyway — one owner per type.
 SUBSCRIPTIONS_WEBHOOK_HANDLERS = {
     "customer.subscription.created": handle_subscription_created,
     "customer.subscription.updated": handle_subscription_updated,
     "customer.subscription.deleted": handle_subscription_deleted,
 }
 
-PROCESSING_TTL_MINUTES = 30
-
 
 @csrf_exempt
 @require_POST
 def subscriptions_stripe_webhook(request):
-    """Stripe webhook endpoint for subscription events.
+    """Stripe LIVE-mode webhook endpoint — the SUBSCRIPTIONS receiver.
 
     This is the authoritative seat-quantity confirm path for Wave-4 orchestration,
-    so it must process each Stripe event at most once. Deduplication mirrors the
-    api/v1 webhook: StripeWebhookEvent get_or_create + IntegrityError fallback +
-    CAS-guarded retry of retryable failures / stale processing.
+    so it must process each Stripe event at most once. The body is the shared
+    receiver core (`apps/billing/stripe/receiver.py`, C1b): get_or_create +
+    IntegrityError fallback + CAS-guarded retry of retryable failures / stale
+    processing, deduplicated per receiver.
+
+    Verified with THIS receiver's own secret, STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET
+    (R-3: each live endpoint registered with Stripe has its own signing secret).
+    Fails closed on an unset or blank one, as the billing receiver does
+    (W7 preparation finding F5): an empty secret must never verify. There is
+    NO fallback to STRIPE_WEBHOOK_SECRET — the billing receiver's secret does
+    not verify deliveries to this endpoint. Refused before anything is verified
+    or persisted.
     """
-    secret = (
-        settings.STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET
-        if hasattr(settings, "STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET")
-        else settings.STRIPE_WEBHOOK_SECRET
-    )
-    # Fail closed on an unset or blank secret, as the test endpoint below
-    # does: an empty secret must never verify (W7 preparation finding F5,
-    # ruled 2026-10-30). Refused before anything is verified or persisted.
+    secret = getattr(settings, "STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET", "")
     if not (secret or "").strip():
         return HttpResponse(status=400)
     return _subscriptions_stripe_webhook(request, secret=secret, is_test_endpoint=False)
@@ -190,131 +183,25 @@ def subscriptions_stripe_webhook(request):
 def subscriptions_stripe_webhook_test(request):
     """Stripe TEST-mode subscriptions webhook (F4.4) — sandbox tenants' events.
 
-    Verified with STRIPE_TEST_WEBHOOK_SECRET; 400 when that secret is unset or
-    the event is livemode=True. Same handlers — the livemode filters inside
-    them bind every lookup to sandbox tenants.
+    Verified with STRIPE_SUBSCRIPTIONS_TEST_WEBHOOK_SECRET (this receiver's own
+    test-mode secret, never the billing receiver's); 400 when it is unset or
+    blank or the event is livemode=True. Same handlers — the livemode filters
+    inside them bind every lookup to sandbox tenants.
     """
-    if not settings.STRIPE_TEST_WEBHOOK_SECRET:
+    secret = getattr(settings, "STRIPE_SUBSCRIPTIONS_TEST_WEBHOOK_SECRET", "")
+    if not (secret or "").strip():
         return HttpResponse(status=400)
-    return _subscriptions_stripe_webhook(
-        request, secret=settings.STRIPE_TEST_WEBHOOK_SECRET, is_test_endpoint=True)
+    return _subscriptions_stripe_webhook(request, secret=secret, is_test_endpoint=True)
 
 
 def _subscriptions_stripe_webhook(request, *, secret, is_test_endpoint):
-    from apps.billing.connectors.stripe.invoice_routing import reject_for_mode
-
-    # 1. Verify signature
-    payload = request.body
-    sig_header = request.META.get("HTTP_STRIPE_SIGNATURE", "")
-
-    try:
-        event = stripe.Webhook.construct_event(payload, sig_header, secret)
-    except (ValueError, StripeSignatureError):
-        return HttpResponse(status=400)
-
-    # 1b. Mode gate (F4.4) — same policy as the api/v1 endpoint.
-    if reject_for_mode(event, is_test_endpoint=is_test_endpoint):
-        return HttpResponse(status=400)
-
-    # 2. Event-level dedup with IntegrityError handling
-    try:
-        with transaction.atomic():
-            webhook_event, created = StripeWebhookEvent.objects.get_or_create(
-                stripe_event_id=event.id,
-                defaults={"event_type": event.type, "status": "processing"},
-            )
-    except IntegrityError:
-        StripeWebhookEvent.objects.filter(stripe_event_id=event.id).update(
-            duplicate_count=F("duplicate_count") + 1,
-            last_seen_at=timezone.now(),
-            updated_at=timezone.now(),
-        )
-        return JsonResponse({"status": "already_received"})
-
-    if not created:
-        processing_ttl = timezone.now() - timedelta(minutes=PROCESSING_TTL_MINUTES)
-
-        # CAS: allow retry of retryable failures or stale processing
-        if (
-            (webhook_event.status == "failed"
-             and webhook_event.failure_reason
-             and webhook_event.failure_reason.get("retryable") is True)
-            or (webhook_event.status == "processing"
-                and webhook_event.updated_at < processing_ttl)
-        ):
-            rows_updated = StripeWebhookEvent.objects.filter(
-                id=webhook_event.id,
-                status=webhook_event.status,
-                updated_at=webhook_event.updated_at,
-            ).update(
-                status="processing",
-                failure_reason=None,
-                duplicate_count=F("duplicate_count") + 1,
-                last_seen_at=timezone.now(),
-                updated_at=timezone.now(),
-            )
-            if rows_updated == 0:
-                return JsonResponse({"status": "already_processing"})
-            # Won CAS — fall through to handler
-        else:
-            StripeWebhookEvent.objects.filter(stripe_event_id=event.id).update(
-                duplicate_count=F("duplicate_count") + 1,
-                last_seen_at=timezone.now(),
-                updated_at=timezone.now(),
-            )
-            return JsonResponse({"status": "already_processed"})
-
-    # 3. Dispatch
-    handler = SUBSCRIPTIONS_WEBHOOK_HANDLERS.get(event.type)
-    if not handler:
-        webhook_event.status = "skipped"
-        webhook_event.save(update_fields=["status", "updated_at"])
-        return JsonResponse({"status": "ok"})
-
-    # 4. Execute with error classification
-    try:
-        handler(event)
-        webhook_event.status = "succeeded"
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "processed_at", "updated_at"])
-    except ObjectDoesNotExist as e:
-        logger.warning(
-            "Subscriptions webhook handler ObjectDoesNotExist (likely out-of-order)",
-            extra={"data": {"event_id": event.id, "event_type": event.type, "error": str(e)}},
-        )
-        webhook_event.status = "failed"
-        webhook_event.failure_reason = {
-            "error": str(e), "type": type(e).__name__, "retryable": True
-        }
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
-        return HttpResponse(status=500)  # Stripe retries
-    except StripeFatalError as e:
-        logger.error(
-            "Subscriptions webhook handler fatal error",
-            extra={"data": {"event_id": event.id, "event_type": event.type, "error": str(e)}},
-        )
-        webhook_event.status = "failed"
-        webhook_event.failure_reason = {
-            "error": str(e), "type": type(e).__name__, "retryable": False
-        }
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
-        return JsonResponse({"status": "failed"})  # 200 — no Stripe retry
-    except Exception as e:
-        logger.exception(
-            "Subscriptions webhook handler failed",
-            extra={"data": {"event_id": event.id, "event_type": event.type}},
-        )
-        webhook_event.status = "failed"
-        webhook_event.failure_reason = {
-            "error": str(e), "type": type(e).__name__, "retryable": True
-        }
-        webhook_event.processed_at = timezone.now()
-        webhook_event.save(update_fields=["status", "failure_reason", "processed_at", "updated_at"])
-        return HttpResponse(status=500)  # Stripe retries
-
-    return JsonResponse({"status": "ok"})
+    return receive_stripe_event(
+        request, receiver=WEBHOOK_RECEIVER_SUBSCRIPTIONS,
+        handlers=SUBSCRIPTIONS_WEBHOOK_HANDLERS, secret=secret,
+        is_test_endpoint=is_test_endpoint,
+        # This receiver never moves wallet money, so a wallet-subject refusal
+        # here is not a named outcome: it takes the core's generic arm.
+        refuses_without_a_wallet_subject=False)
 
 
 # ---------- Lifecycle (moved from platform_router, design doc §6) ----------

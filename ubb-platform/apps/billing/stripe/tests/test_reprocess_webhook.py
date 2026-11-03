@@ -14,7 +14,7 @@ class ReprocessWebhookCommandTest(TestCase):
             failure_reason={"error": "timeout"},
         )
 
-        call_command("reprocess_webhook", "evt_reprocess_1")
+        call_command("reprocess_webhook", "evt_reprocess_1", receiver="billing")
 
         event.refresh_from_db()
         self.assertEqual(event.status, "processing")
@@ -22,7 +22,7 @@ class ReprocessWebhookCommandTest(TestCase):
 
     def test_raises_for_nonexistent_event(self):
         with self.assertRaises(CommandError) as ctx:
-            call_command("reprocess_webhook", "evt_nonexistent")
+            call_command("reprocess_webhook", "evt_nonexistent", receiver="billing")
 
         self.assertIn("No webhook event found", str(ctx.exception))
 
@@ -34,7 +34,7 @@ class ReprocessWebhookCommandTest(TestCase):
         )
 
         with self.assertRaises(CommandError) as ctx:
-            call_command("reprocess_webhook", "evt_ok")
+            call_command("reprocess_webhook", "evt_ok", receiver="billing")
 
         self.assertIn("not 'failed'", str(ctx.exception))
 
@@ -46,7 +46,7 @@ class ReprocessWebhookCommandTest(TestCase):
         )
 
         with self.assertRaises(CommandError) as ctx:
-            call_command("reprocess_webhook", "evt_proc")
+            call_command("reprocess_webhook", "evt_proc", receiver="billing")
 
         self.assertIn("not 'failed'", str(ctx.exception))
 
@@ -58,6 +58,36 @@ class ReprocessWebhookCommandTest(TestCase):
         )
 
         with self.assertRaises(CommandError) as ctx:
-            call_command("reprocess_webhook", "evt_skip")
+            call_command("reprocess_webhook", "evt_skip", receiver="billing")
 
         self.assertIn("not 'failed'", str(ctx.exception))
+
+    def test_the_receiver_is_part_of_the_identity(self):
+        """C1b (F-17): the same event id is a different row per receiver, so
+        the command resets only the named receiver's row and refuses a
+        receiver outside the closed set."""
+        StripeWebhookEvent.objects.create(
+            receiver="billing", stripe_event_id="evt_both", event_type="invoice.paid",
+            status="failed", failure_reason={"error": "timeout"})
+        StripeWebhookEvent.objects.create(
+            receiver="subscriptions", stripe_event_id="evt_both",
+            event_type="invoice.paid", status="skipped")
+
+        with self.assertRaises(CommandError) as ctx:
+            call_command("reprocess_webhook", "evt_both", receiver="subscriptions")
+        self.assertIn("not 'failed'", str(ctx.exception))
+
+        call_command("reprocess_webhook", "evt_both", receiver="billing")
+        rows = {r.receiver: r.status for r in StripeWebhookEvent.objects.filter(
+            stripe_event_id="evt_both")}
+        self.assertEqual(rows, {"billing": "processing", "subscriptions": "skipped"})
+
+        with self.assertRaises(CommandError):
+            call_command("reprocess_webhook", "evt_both", receiver="metering")
+
+    def test_the_receiver_is_required(self):
+        StripeWebhookEvent.objects.create(
+            stripe_event_id="evt_req", event_type="invoice.paid", status="failed",
+            failure_reason={"error": "timeout"})
+        with self.assertRaises(CommandError):
+            call_command("reprocess_webhook", "evt_req")

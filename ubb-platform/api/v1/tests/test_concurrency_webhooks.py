@@ -111,7 +111,7 @@ class ConcurrentWebhookDedup(TransactionTestCase):
             finally:
                 connection.close()
 
-        with patch("api.v1.webhooks.stripe.Webhook.construct_event",
+        with patch("stripe.Webhook.construct_event",
                    return_value=event):
             threads = [threading.Thread(target=worker) for _ in range(2)]
             for t in threads:
@@ -147,6 +147,74 @@ class ConcurrentWebhookDedup(TransactionTestCase):
         self.assertEqual(row.status, "paid")
         self.assertIsNotNone(row.paid_at)
         self.assertEqual(row.amount_paid_micros, 49_000_000)
+
+
+class ConcurrentSubscriptionsWebhookDedup(TransactionTestCase):
+    """Race (a) PER RECEIVER (C1b, F-17): two threads deliver the SAME Stripe
+    event id to the SUBSCRIPTIONS receiver simultaneously — exactly one row
+    on that receiver, the handler effect applied once. The dedup identity is
+    `(receiver, stripe_event_id)`, so the race is won under the same unique
+    constraint the billing receiver's race is, on this receiver's own row."""
+
+    def test_same_event_delivered_twice_to_the_subscriptions_receiver_processes_once(self):
+        from django.test import override_settings
+        from apps.subscriptions.api.endpoints import subscriptions_stripe_webhook
+        from apps.subscriptions.models import StripeSubscription
+        from apps.subscriptions.tests._helpers import a_licensed_item, a_stripe_subscription
+
+        tenant = Tenant.objects.create(
+            name="RACE_SUBS_DEDUP", products=["metering", "billing"],
+            stripe_connected_account_id="acct_race_subs",
+        )
+        Customer.objects.create(
+            tenant=tenant, external_id="race_subs_c1", stripe_customer_id="cus_race_subs")
+        event = _event(
+            "evt_race_subs_dedup", "customer.subscription.created", "acct_race_subs",
+            a_stripe_subscription("sub_race_subs", "cus_race_subs", "active",
+                                  items=[a_licensed_item(4900, qty=1, product_name="Pro")]),
+        )
+
+        factory = RequestFactory()
+        barrier = threading.Barrier(2)
+        responses = []
+        errors = []
+
+        def worker():
+            try:
+                request = factory.post(
+                    "/api/v1/subscriptions/webhooks/stripe", data="{}",
+                    content_type="application/json",
+                )
+                barrier.wait()
+                response = subscriptions_stripe_webhook(request)
+                responses.append(
+                    (response.status_code, json.loads(response.content)))
+            except Exception as exc:  # noqa: BLE001
+                errors.append(repr(exc))
+            finally:
+                connection.close()
+
+        with patch("stripe.Webhook.construct_event", return_value=event), \
+                override_settings(STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET="whsec_race_subs_placeholder"):
+            threads = [threading.Thread(target=worker) for _ in range(2)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+        self.assertEqual(errors, [], f"workers raised unexpected exceptions: {errors}")
+        self.assertEqual(len(responses), 2)
+        statuses = [body["status"] for code, body in responses]
+        for code, _body in responses:
+            self.assertEqual(code, 200)
+        self.assertEqual(statuses.count("ok"), 1, statuses)
+        other = next(s for s in statuses if s != "ok")
+        self.assertIn(other, DEDUP_VOCAB, f"unexpected dedup response {other!r}")
+
+        rows = StripeWebhookEvent.objects.filter(stripe_event_id="evt_race_subs_dedup")
+        self.assertEqual([(r.receiver, r.status) for r in rows], [("subscriptions", "succeeded")])
+        self.assertEqual(
+            StripeSubscription.objects.filter(stripe_subscription_id="sub_race_subs").count(), 1)
 
 
 class ConcurrentARDelivery(TransactionTestCase):
@@ -192,7 +260,7 @@ class ConcurrentARDelivery(TransactionTestCase):
             finally:
                 connection.close()
 
-        with patch("api.v1.webhooks.stripe.Webhook.construct_event",
+        with patch("stripe.Webhook.construct_event",
                    side_effect=fake_construct):
             threads = [
                 threading.Thread(target=worker, args=(b"FIN",)),

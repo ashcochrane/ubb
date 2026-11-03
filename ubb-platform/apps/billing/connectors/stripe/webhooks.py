@@ -25,6 +25,12 @@ from core.vocabulary import GRANT_SOURCE_CHECKOUT
 
 logger = logging.getLogger(__name__)
 
+#: The two top-up triggers that run a Stripe Checkout Session (the tenant
+#: route and the widget twin). Both expire after 24h (`topups/tasks.py`), and
+#: both are recovered by `handle_checkout_completed` when the session
+#: completes late.
+CHECKOUT_TRIGGERS = ("manual", "widget")
+
 
 def handle_checkout_completed(event):
     """Handle checkout.session.completed — credit wallet for top-up."""
@@ -52,9 +58,12 @@ def handle_checkout_completed(event):
                 extra={"data": {"client_reference_id": session.client_reference_id}},
             )
 
-    # Handler-level idempotency: check attempt status if present
+    # Handler-level idempotency: check attempt status if present. An EXPIRED
+    # Checkout attempt (the tenant route's `manual` or the widget's `widget`
+    # — both expire after 24h since C1b) that completes late is recovered:
+    # the money was taken, so it is credited.
     if attempt and attempt.status != "pending":
-        if not (attempt.status == "expired" and attempt.trigger == "manual"):
+        if not (attempt.status == "expired" and attempt.trigger in CHECKOUT_TRIGGERS):
             return
 
     # Guard null/zero amount (Stripe can send None for incomplete sessions)
@@ -145,11 +154,11 @@ def handle_checkout_completed(event):
         if attempt:
             attempt = lock_top_up_attempt(attempt.id)
             if attempt.status != "pending":
-                if not (attempt.status == "expired" and attempt.trigger == "manual"):
+                if not (attempt.status == "expired" and attempt.trigger in CHECKOUT_TRIGGERS):
                     return
             if attempt.status == "expired":
                 logger.info(
-                    "Recovering expired manual top-up from webhook",
+                    "Recovering expired Checkout top-up from webhook",
                     extra={"data": {"attempt_id": str(attempt.id), "session_id": session.id}},
                 )
             attempt.status = "succeeded"
@@ -378,46 +387,20 @@ def handle_charge_dispute_closed(event):
                 notify_seat_roster_changed(owner.parent)
 
 
-def handle_charge_refunded(event):
-    """Handle charge.refunded — deduct wallet for Stripe-initiated refund.
-
-    Each individual refund on the charge is processed as a separate WalletTransaction
-    keyed on `stripe_refund:{refund.id}`, enabling correct handling of partial refunds
-    (Stripe fires one charge.refunded event per refund, so charge-keyed idempotency
-    would silently drop refund #2+).
-    """
-    charge = event.data.object
-    charge_id = charge.id
-    connected_account = event.account
-
-    attempt = TopUpAttempt.objects.filter(
+def _attempt_for_charge(event, charge_id):
+    """The top-up attempt a Stripe charge paid for, bound to the connected
+    account and mode the event came from (one attempt <-> one charge)."""
+    return TopUpAttempt.objects.filter(
         stripe_charge_id=charge_id,
-        customer__tenant__stripe_connected_account_id=connected_account,
+        customer__tenant__stripe_connected_account_id=event.account,
         **livemode_filter(event, tenant_path="customer__tenant"),
     ).first()
-    if not attempt:
-        return
 
-    refunds_obj = getattr(charge, "refunds", None)
-    refund_list = list(getattr(refunds_obj, "data", None) or [])
-    if not refund_list:
-        if not charge.amount_refunded:
-            logger.warning(
-                "Charge refunded with null/zero amount and no refund list",
-                extra={"data": {"charge_id": charge_id}},
-            )
-            return
-        # Fallback: synthesise a single entry from the top-level amount_refunded
-        refund_list = [type("R", (), {"id": charge_id, "amount": charge.amount_refunded})()]
 
-    from apps.billing.wallets import operations as wallet_ops
-
-    tenant = attempt.customer.tenant
-
-    # Task 8a: same shape and same failure mode as handle_charge_dispute_closed
-    # above — this clawback must debit whichever wallet the original top-up
-    # credit landed on (the billing OWNER, pinned at attempt creation), never
-    # the seat. See that handler's comment for the full reasoning.
+def _owner_of(attempt, charge_id):
+    """Task 8a: the claw-back must debit whichever wallet the original top-up
+    credit landed on (the billing OWNER, pinned at attempt creation), never
+    the seat — the same shape and failure mode as the dispute handler."""
     if attempt.billing_owner_id is None:
         logger.error(
             "TopUpAttempt missing billing_owner_id — refusing to claw back",
@@ -426,13 +409,76 @@ def handle_charge_refunded(event):
         raise RuntimeError(
             f"TopUpAttempt {attempt.id} has no billing_owner_id — "
             "refusing to claw back rather than risk debiting the seat")
-    owner_id = attempt.billing_owner_id
+    return attempt.billing_owner_id
+
+
+def handle_charge_refunded(event):
+    """charge.refunded — claw back exactly the increment Stripe has refunded
+    (R10 Stage C1b, RULED Q15; design in the Stage C plan §5.1b).
+
+    The authoritative facts are on the event's Charge: ``id``, ``currency``
+    and the CUMULATIVE ``amount_refunded`` (present on every Charge). The
+    ledger holds the durable applied sum per charge (the ``stripe_refund``
+    rows referencing the attempt), and the wallet op applies the positive
+    difference exactly once, keyed on the cumulative level
+    (``stripe_refund:{charge_id}:{amount_refunded}``). When the Charge
+    carries an expanded ``refunds.data`` (older API versions or an
+    expansion), the per-refund facts are applied instead, each keyed
+    ``stripe_refund:{refund_id}`` and reconciled against the SAME applied
+    sum, with any remainder (a truncated list) applied on the cumulative
+    key — so the two families can never double-apply. Processing never
+    depends on ``refunds`` being expanded and makes no outbound call.
+
+    A zero increment (duplicate delivery, an already-applied level) moves
+    nothing; a NEGATIVE one (Stripe's cumulative below the applied sum: an
+    out-of-order older event, or a refund that later failed — Q19) is a
+    structured ERROR and moves nothing. The claw-back applies when the
+    cumulative increases, including while the refund is still ``pending``
+    (RULED Q20) — never deferred to a later ``succeeded`` update. Currency
+    is the Charge's (or the refund's own), through ``the_rails_currency``:
+    USD only (ADR-0023), a foreign currency refuses by name and moves
+    nothing. The F4.3 grant cascade and the owner-wallet targeting are the
+    wallet op's and unchanged.
+    """
+    charge = event.data.object
+    charge_id = charge.id
+    attempt = _attempt_for_charge(event, charge_id)
+    if not attempt:
+        return
+
+    amount_refunded = getattr(charge, "amount_refunded", None)
+    refunds_obj = getattr(charge, "refunds", None)
+    refund_list = list(getattr(refunds_obj, "data", None) or [])
+    if not amount_refunded and not refund_list:
+        logger.warning(
+            "Charge refunded with null/zero amount_refunded and no refund list",
+            extra={"data": {"charge_id": charge_id}},
+        )
+        return
+
+    from apps.billing.wallets import operations as wallet_ops
+
+    tenant = attempt.customer.tenant
+    owner_id = _owner_of(attempt, charge_id)
+    charge_currency = the_rails_currency(
+        f"Stripe charge {charge_id}", getattr(charge, "currency", None))
+    # Where the Charge states its cumulative, that is the level to converge
+    # to; a Charge shape without it (only an expanded list) converges to the
+    # list's own sum.
+    if amount_refunded:
+        cumulative_micros = from_minor(amount_refunded, charge_currency)
+    else:
+        cumulative_micros = sum(
+            from_minor(getattr(r, "amount", 0) or 0, the_rails_currency(
+                f"Stripe refund {getattr(r, 'id', None)}", getattr(r, "currency", None)))
+            for r in refund_list)
 
     with transaction.atomic():
-        # One commit for the whole refund list (parity with the pre-#109
-        # single transaction); each refund is its own exactly-once wallet op
-        # keyed on stripe_refund:{refund_id} — a replayed one skips, the rest
-        # still land.
+        # One commit for the whole event; each movement is its own
+        # exactly-once wallet op, every one reconciled under the wallet lock
+        # against the applied sum the previous one left. A refused op (the
+        # cumulative below the applied sum) has already logged the one
+        # structured ERROR with every identifier; nothing moves.
         for refund in refund_list:
             refund_id = getattr(refund, "id", None)
             refund_amount = getattr(refund, "amount", None)
@@ -440,11 +486,84 @@ def handle_charge_refunded(event):
                 continue
             wallet_ops.claw_back_stripe_refund(
                 customer_id=owner_id, tenant=tenant,
+                cumulative_micros=cumulative_micros,
                 # In the currency each REFUND states (§0.4 B).
-                amount_micros=from_minor(refund_amount, the_rails_currency(
-                    f"Stripe refund {refund_id}",
-                    getattr(refund, "currency", None))),
-                refund_id=refund_id, attempt_id=attempt.id)
+                refund_micros=from_minor(refund_amount, the_rails_currency(
+                    f"Stripe refund {refund_id}", getattr(refund, "currency", None))),
+                key=f"stripe_refund:{refund_id}", charge_id=charge_id,
+                attempt_id=attempt.id)
+        # The cumulative level: the only movement when no refund ids are
+        # present; the remainder (a truncated list) otherwise; a no-op when
+        # the per-refund keys already brought the applied sum to the level.
+        if amount_refunded:
+            wallet_ops.claw_back_stripe_refund(
+                customer_id=owner_id, tenant=tenant,
+                cumulative_micros=cumulative_micros,
+                key=f"stripe_refund:{charge_id}:{amount_refunded}",
+                charge_id=charge_id, attempt_id=attempt.id)
+
+
+REFUND_REVERSAL_STATUSES = ("failed", "canceled")
+
+
+def handle_charge_refund_updated(event):
+    """charge.refund.updated — ALERT-ONLY (R10 Stage C1b, RULED Q19).
+
+    A refund that later becomes ``failed`` or ``canceled`` means money UBB
+    clawed back on the cumulative increase (Q20) is staying with the
+    customer after all. UBB never re-credits automatically: an automatic
+    re-credit is a new compensating money movement needing its own durable
+    identity, replay semantics and audit contract, and C1b does not invent
+    one. This handler detects the condition, emits ONE structured ERROR
+    carrying the tenant/customer/charge/refund identifiers, the status and
+    the amounts (no secrets), and leaves the wallet unchanged — the
+    cumulative decrease that accompanies it is refused by the claw-back op
+    (``REFUND_TOTAL_BELOW_APPLIED``), never applied.
+
+    THE KNOWN v1 OPERATIONAL RECOVERY PATH, not automatic refund reversal:
+    an accountable operator verifies the Stripe fact (the Refund's status in
+    the Dashboard or ``Refund.retrieve``) and, where a re-credit is
+    warranted, uses the existing supported credit path
+    (``POST /api/v1/billing/customers/{id}/credit`` with a movement reason
+    and an idempotency key). No new wallet transaction type and no reversal
+    workflow exist for it. Any other refund status (``pending``,
+    ``succeeded``, ``requires_action``) is nothing to act on here.
+    """
+    refund = event.data.object
+    status = getattr(refund, "status", None)
+    if status not in REFUND_REVERSAL_STATUSES:
+        return
+    charge_ref = getattr(refund, "charge", None)
+    charge_id = charge_ref if isinstance(charge_ref, str) else getattr(charge_ref, "id", None)
+    attempt = _attempt_for_charge(event, charge_id) if charge_id else None
+    if not attempt:
+        return
+
+    from apps.billing.wallets import operations as wallet_ops
+
+    tenant = attempt.customer.tenant
+    owner_id = attempt.billing_owner_id
+    logger.error(
+        "Stripe refund reversed after claw-back — operator recovery required "
+        "(no automatic re-credit; verify the refund in Stripe, then use the "
+        "supported credit path if a re-credit is warranted)",
+        extra={"data": {
+            "alert": "stripe_refund_reversed",
+            "tenant_id": str(tenant.id),
+            "customer_id": str(attempt.customer_id),
+            "owner_id": str(owner_id) if owner_id else None,
+            "attempt_id": str(attempt.id),
+            "charge_id": charge_id,
+            "refund_id": getattr(refund, "id", None),
+            "refund_status": status,
+            "failure_reason": getattr(refund, "failure_reason", None),
+            "refund_amount_minor": getattr(refund, "amount", None),
+            "refund_currency": getattr(refund, "currency", None),
+            "applied_micros": (wallet_ops.stripe_refund_applied_micros_for(owner_id, attempt.id)
+                               if owner_id else None),
+            "event_id": getattr(event, "id", None),
+        }},
+    )
 
 
 def handle_payment_intent_succeeded(event):

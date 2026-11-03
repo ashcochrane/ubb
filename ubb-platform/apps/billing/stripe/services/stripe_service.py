@@ -10,6 +10,7 @@ from core.exceptions import (
     StripeTransientError,
     StripePaymentError,
     StripeFatalError,
+    StripeNotConfigured,
 )
 from core.currency_policy import the_rails_currency
 from core.money import DEFAULT_CURRENCY, assert_aligned, minor_units, to_minor
@@ -107,7 +108,7 @@ def api_key_for_tenant(tenant):
     if getattr(tenant, "is_sandbox", False):
         key = settings.STRIPE_TEST_SECRET_KEY
         if not key or not key.startswith("sk_test_"):
-            raise StripeFatalError(
+            raise StripeNotConfigured(
                 "Sandbox Stripe calls require STRIPE_TEST_SECRET_KEY "
                 "(must start with sk_test_)."
             )
@@ -127,7 +128,7 @@ def stripe_call(fn, *, api_key, retryable=False, idempotency_key=None, max_retri
     - Maps Stripe exceptions to domain exceptions
     """
     if not api_key:
-        raise StripeFatalError(
+        raise StripeNotConfigured(
             "Stripe API key is not configured. "
             "Set STRIPE_SECRET_KEY in the environment to enable Stripe operations."
         )

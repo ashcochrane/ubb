@@ -84,8 +84,10 @@ class _ForeignCurrencyCase(TestCase):
             tenant=self.tenant, external_id="c1", stripe_customer_id="cus_1")
 
     def _subscription_webhook(self, event):
-        with patch("apps.subscriptions.api.endpoints.stripe") as stripe:
-            stripe.Webhook.construct_event.return_value = event
+        # The subscriptions receiver verifies with ITS OWN secret (C1b): a
+        # placeholder is configured so the (patched) verifier is reached.
+        with patch("stripe.Webhook.construct_event", return_value=event), \
+                self.settings(STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET="whsec_placeholder_subs"):
             answered = self.http_client.post(
                 "/api/v1/subscriptions/webhooks/stripe", data=b"{}",
                 content_type="application/json", HTTP_STRIPE_SIGNATURE="v")
@@ -94,7 +96,7 @@ class _ForeignCurrencyCase(TestCase):
     def _invoice_webhook(self, event):
         """The connector's webhook view, driven as its own module drives it."""
         from api.v1.webhooks import stripe_webhook
-        with patch("api.v1.webhooks.stripe.Webhook.construct_event",
+        with patch("stripe.Webhook.construct_event",
                    return_value=event):
             answered = stripe_webhook(RequestFactory().post(
                 "/api/v1/webhooks/stripe/", content_type="application/json",

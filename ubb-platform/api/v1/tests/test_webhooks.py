@@ -1,11 +1,12 @@
 import hashlib
 import hmac
 import json
+import logging
 import time
 
 import stripe
 from unittest.mock import patch, MagicMock, PropertyMock
-from django.test import TestCase, RequestFactory
+from django.test import Client, TestCase, RequestFactory
 from django.utils import timezone
 from datetime import timedelta
 
@@ -23,19 +24,62 @@ from apps.billing.connectors.stripe.webhooks import (
     handle_charge_refunded,
 )
 
+#: The pinned SDK's sentinel key: `construct_from` needs one, and the conftest
+#: guard blocks every network call anyway.
+SK = "sk_test_sentinel"
+
+
+def a_refund_dict(refund_id, amount, *, currency="usd", status="succeeded", charge=None):
+    """One Stripe Refund as the API serialises it (only the fields UBB reads,
+    plus the identity fields every Refund carries)."""
+    return {"id": refund_id, "object": "refund", "amount": amount, "currency": currency,
+            "status": status, "charge": charge, "reason": None}
+
+
+def a_charge_dict(charge_id, *, amount_refunded, currency="usd", amount=None,
+                  refunds=None, refunded=None):
+    """One Stripe Charge as the API serialises it since 2022-11-15: the
+    cumulative ``amount_refunded`` is always present; ``refunds`` is ABSENT
+    unless expanded (pass ``refunds=[...]`` to model the expansion or an older
+    API version's inline list)."""
+    amount = (amount if amount is not None else max(amount_refunded or 0, 500))
+    charge = {"id": charge_id, "object": "charge", "amount": amount,
+              "amount_refunded": amount_refunded, "currency": currency,
+              "refunded": (refunded if refunded is not None
+                           else bool(amount_refunded) and amount_refunded >= amount),
+              "status": "succeeded"}
+    if refunds is not None:
+        charge["refunds"] = {"object": "list", "data": refunds, "has_more": False,
+                             "url": f"/v1/charges/{charge_id}/refunds"}
+    return charge
+
+
+def a_charge(*args, **kwargs):
+    """A genuine ``stripe.Charge`` (no ``.get``; nested ``refunds`` a ListObject
+    of real ``stripe.Refund``s when present)."""
+    return stripe.Charge.construct_from(a_charge_dict(*args, **kwargs), SK)
+
+
+def a_refund_event(charge, *, account, event_id="evt_refund", type="charge.refunded"):
+    """A real ``stripe.Event`` whose ``data.object`` is a real Charge."""
+    return stripe.Event.construct_from({
+        "id": event_id, "object": "event", "type": type, "livemode": True,
+        "created": int(time.time()), "account": account,
+        "data": {"object": charge.to_dict() if hasattr(charge, "to_dict") else charge}}, SK)
+
 
 class WebhookDispatcherTest(RailActivated, TestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_signature_failure_returns_400(self, mock_construct):
         mock_construct.side_effect = ValueError("bad sig")
         request = self.factory.post("/api/v1/webhooks/stripe/", content_type="application/json")
         response = stripe_webhook(request)
         self.assertEqual(response.status_code, 400)
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_new_event_creates_webhook_event(self, mock_construct):
         mock_event = MagicMock()
         mock_event.id = "evt_test_new"
@@ -49,7 +93,7 @@ class WebhookDispatcherTest(RailActivated, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(StripeWebhookEvent.objects.filter(stripe_event_id="evt_test_new").exists())
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_duplicate_event_returns_already_processed(self, mock_construct):
         # Create an already-processed event
         StripeWebhookEvent.objects.create(
@@ -69,7 +113,7 @@ class WebhookDispatcherTest(RailActivated, TestCase):
         event = StripeWebhookEvent.objects.get(stripe_event_id="evt_dup")
         self.assertEqual(event.duplicate_count, 1)
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_unknown_event_type_sets_skipped(self, mock_construct):
         mock_event = MagicMock()
         mock_event.id = "evt_unknown"
@@ -123,7 +167,7 @@ class WebhookDispatcherTest(RailActivated, TestCase):
         mock_event.data.object.id = "cs_test_session_1"
         return mock_event
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_checkout_completed_credits_expired_manual_attempt(self, mock_construct):
         tenant, customer, wallet, attempt = self._create_checkout_fixtures(
             attempt_status="expired", attempt_trigger="manual",
@@ -144,7 +188,27 @@ class WebhookDispatcherTest(RailActivated, TestCase):
             WalletTransaction.objects.filter(wallet=wallet, transaction_type="top_up").exists()
         )
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
+    def test_checkout_completed_credits_expired_widget_attempt(self, mock_construct):
+        """C1b: widget Checkout attempts expire after 24h now, so a session
+        that completes late is recovered exactly as the tenant route's is —
+        the money was taken, so it is credited."""
+        tenant, customer, wallet, attempt = self._create_checkout_fixtures(
+            attempt_status="expired", attempt_trigger="widget",
+        )
+        mock_event = self._make_checkout_event(tenant, customer, attempt, event_id="evt_expired_widget")
+        mock_construct.return_value = mock_event
+
+        request = self.factory.post("/api/v1/webhooks/stripe/", content_type="application/json")
+        response = stripe_webhook(request)
+
+        self.assertEqual(response.status_code, 200)
+        attempt.refresh_from_db()
+        wallet.refresh_from_db()
+        self.assertEqual(attempt.status, "succeeded")
+        self.assertEqual(wallet.balance_micros, 1_000_000)
+
+    @patch("stripe.Webhook.construct_event")
     def test_checkout_completed_skips_expired_auto_top_up_attempt(self, mock_construct):
         tenant, customer, wallet, attempt = self._create_checkout_fixtures(
             attempt_status="expired", attempt_trigger="auto_top_up",
@@ -161,7 +225,7 @@ class WebhookDispatcherTest(RailActivated, TestCase):
         self.assertEqual(attempt.status, "expired")
         self.assertEqual(wallet.balance_micros, 0)
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_checkout_completed_skips_already_succeeded_attempt(self, mock_construct):
         tenant, customer, wallet, attempt = self._create_checkout_fixtures(
             attempt_status="succeeded", attempt_trigger="manual",
@@ -379,7 +443,7 @@ class PooledSeatTopUpWebhookTest(RailActivated, TestCase):
         event.type = "checkout.session.completed"
         event.id = "evt_pooled_dispatch"
 
-        with patch("api.v1.webhooks.stripe.Webhook.construct_event", return_value=event):
+        with patch("stripe.Webhook.construct_event", return_value=event):
             request = self.factory.post(
                 "/api/v1/webhooks/stripe/", content_type="application/json")
             response = stripe_webhook(request)
@@ -621,6 +685,10 @@ class ChargeDisputeClosedTest(RailActivated, TestCase):
 
 
 class ChargeRefundedTest(RailActivated, TestCase):
+    """The handler over genuine ``stripe.Charge`` objects (C1b moved these six
+    off ``MagicMock``: the handler now reads the Charge's own ``currency`` and
+    cumulative ``amount_refunded``, which a mock does not carry)."""
+
     def setUp(self):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
@@ -635,16 +703,18 @@ class ChargeRefundedTest(RailActivated, TestCase):
             trigger="manual", status="succeeded", stripe_charge_id="ch_refund_1",
         )
 
+    def _event(self, charge_id, amount_refunded, refunds=None, **kw):
+        return a_refund_event(
+            a_charge(charge_id, amount_refunded=amount_refunded, refunds=refunds, **kw),
+            account="acct_test")
+
     def test_a_refund_in_another_currency_claws_back_nothing(self):
         """§0.4 B, money moving out: the refund's own currency decides the
         scale, and one UBB does not admit is refused — the wallet keeps every
         micro rather than losing a guessed amount."""
         from core.currency_policy import CurrencyDisagreement
-        event = MagicMock()
-        event.data.object.id = "ch_refund_1"
-        event.account = "acct_test"
-        r = MagicMock(); r.id = "re_eur"; r.amount = 300; r.currency = "eur"
-        event.data.object.refunds.data = [r]
+        event = self._event("ch_refund_1", 300, refunds=[
+            a_refund_dict("re_eur", 300, currency="eur")])
 
         with self.assertRaisesRegex(CurrencyDisagreement, "'eur'"):
             handle_charge_refunded(event)
@@ -653,12 +723,7 @@ class ChargeRefundedTest(RailActivated, TestCase):
         self.assertEqual(self.wallet.balance_micros, 10_000_000)
 
     def test_deducts_wallet_on_stripe_refund(self):
-        event = MagicMock()
-        event.data.object.id = "ch_refund_1"
-        event.data.object.amount_refunded = 300  # 300 cents = 3_000_000 micros
-        event.account = "acct_test"
-        r = MagicMock(); r.id = "re_single"; r.amount = 300; r.currency = "usd"
-        event.data.object.refunds.data = [r]
+        event = self._event("ch_refund_1", 300, refunds=[a_refund_dict("re_single", 300)])
 
         handle_charge_refunded(event)
 
@@ -671,12 +736,7 @@ class ChargeRefundedTest(RailActivated, TestCase):
         self.assertEqual(txn.idempotency_key, "stripe_refund:re_single")
 
     def test_idempotent_on_duplicate(self):
-        event = MagicMock()
-        event.data.object.id = "ch_refund_1"
-        event.data.object.amount_refunded = 300
-        event.account = "acct_test"
-        r = MagicMock(); r.id = "re_idem"; r.amount = 300; r.currency = "usd"
-        event.data.object.refunds.data = [r]
+        event = self._event("ch_refund_1", 300, refunds=[a_refund_dict("re_idem", 300)])
 
         handle_charge_refunded(event)
         handle_charge_refunded(event)
@@ -688,12 +748,7 @@ class ChargeRefundedTest(RailActivated, TestCase):
         )
 
     def test_skips_unknown_charge(self):
-        event = MagicMock()
-        event.data.object.id = "ch_unknown"
-        event.data.object.amount_refunded = 300
-        event.account = "acct_test"
-        r = MagicMock(); r.id = "re_unknown"; r.amount = 300; r.currency = "usd"
-        event.data.object.refunds.data = [r]
+        event = self._event("ch_unknown", 300, refunds=[a_refund_dict("re_unknown", 300)])
 
         handle_charge_refunded(event)
 
@@ -701,11 +756,7 @@ class ChargeRefundedTest(RailActivated, TestCase):
         self.assertEqual(self.wallet.balance_micros, 10_000_000)
 
     def test_charge_refunded_null_amount_refunded(self):
-        event = MagicMock()
-        event.data.object.id = "ch_refund_1"
-        event.data.object.amount_refunded = None
-        event.data.object.refunds.data = []
-        event.account = "acct_test"
+        event = self._event("ch_refund_1", None, refunds=[], refunded=False)
 
         handle_charge_refunded(event)
 
@@ -716,28 +767,16 @@ class ChargeRefundedTest(RailActivated, TestCase):
         ).exists())
 
     def test_two_partial_refunds_both_debited(self):
-        from apps.billing.wallets.models import WalletTransaction
         # Partial refund #1: $1 (re_1)
-        event1 = MagicMock()
-        event1.data.object.id = "ch_refund_1"
-        event1.data.object.amount_refunded = 100
-        event1.account = "acct_test"
-        r1 = MagicMock(); r1.id = "re_1"; r1.amount = 100; r1.currency = "usd"
-        event1.data.object.refunds.data = [r1]
-        handle_charge_refunded(event1)
+        handle_charge_refunded(self._event("ch_refund_1", 100, refunds=[
+            a_refund_dict("re_1", 100)]))
         self.wallet.refresh_from_db()
         self.assertEqual(self.wallet.balance_micros, 9_000_000)
         # Partial refund #2: another $1 (re_2), same charge (cumulative 200c)
-        event2 = MagicMock()
-        event2.data.object.id = "ch_refund_1"
-        event2.data.object.amount_refunded = 200
-        event2.account = "acct_test"
-        r2a = MagicMock(); r2a.id = "re_1"; r2a.amount = 100; r2a.currency = "usd"
-        r2b = MagicMock(); r2b.id = "re_2"; r2b.amount = 100; r2b.currency = "usd"
-        event2.data.object.refunds.data = [r2a, r2b]
-        handle_charge_refunded(event2)
+        handle_charge_refunded(self._event("ch_refund_1", 200, refunds=[
+            a_refund_dict("re_1", 100), a_refund_dict("re_2", 100)]))
         self.wallet.refresh_from_db()
-        self.assertEqual(self.wallet.balance_micros, 8_000_000)  # BUG TODAY: stays 9_000_000
+        self.assertEqual(self.wallet.balance_micros, 8_000_000)
         self.assertEqual(WalletTransaction.objects.filter(transaction_type="stripe_refund").count(), 2)
         self.assertTrue(WalletTransaction.objects.filter(idempotency_key="stripe_refund:re_2").exists())
 
@@ -779,16 +818,10 @@ class PooledSeatClawbackWebhookTest(RailActivated, TestCase):
         return event
 
     def _refund_event(self, charge_id, refund_id, amount=300):
-        event = MagicMock()
-        event.data.object.id = charge_id
-        event.data.object.amount_refunded = amount
-        event.account = "acct_clawback"
-        r = MagicMock()
-        r.id = refund_id
-        r.amount = amount
-        r.currency = "usd"
-        event.data.object.refunds.data = [r]
-        return event
+        return a_refund_event(
+            a_charge(charge_id, amount_refunded=amount,
+                     refunds=[a_refund_dict(refund_id, amount)]),
+            account="acct_clawback")
 
     # ---- dispute-lost clawback ----
 
@@ -929,7 +962,7 @@ class InvoicePaidTenantInvoiceTest(TestCase):
             status="sent",
         )
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_invoice_paid_tenant_invoice_locked(self, mock_construct):
         """TenantInvoice payment uses select_for_update."""
         mock_event = MagicMock()
@@ -947,7 +980,7 @@ class InvoicePaidTenantInvoiceTest(TestCase):
         self.assertEqual(self.tenant_invoice.status, "paid")
         self.assertIsNotNone(self.tenant_invoice.paid_at)
 
-    @patch("api.v1.webhooks.stripe.Webhook.construct_event")
+    @patch("stripe.Webhook.construct_event")
     def test_invoice_paid_tenant_invoice_idempotent(self, mock_construct):
         """Already-paid TenantInvoice skips update."""
         from django.utils import timezone as tz
@@ -1037,7 +1070,7 @@ class NoWalletSubjectWebhookTest(RailActivated, TestCase):
         self.factory = RequestFactory()
 
     def _dispatch(self, event):
-        with patch("api.v1.webhooks.stripe.Webhook.construct_event", return_value=event):
+        with patch("stripe.Webhook.construct_event", return_value=event):
             request = self.factory.post(
                 "/api/v1/webhooks/stripe/", content_type="application/json")
             return stripe_webhook(request)
@@ -1122,17 +1155,10 @@ class NoWalletSubjectWebhookTest(RailActivated, TestCase):
     def test_a_refund_on_an_attempt_whose_tenant_left_prepaid_is_recorded_not_retried(self):
         _tenant, _customer, wallet, _attempt = self._a_tenant_that_left_prepaid(
             charge_id="ch_left_refund")
-        event = MagicMock()
-        event.id = "evt_left_refund"
-        event.type = "charge.refunded"
-        event.account = "acct_left"
-        event.data.object.id = "ch_left_refund"
-        event.data.object.amount_refunded = 300
-        refund = MagicMock()
-        refund.id = "re_left"
-        refund.amount = 300
-        refund.currency = "usd"
-        event.data.object.refunds.data = [refund]
+        event = a_refund_event(
+            a_charge("ch_left_refund", amount_refunded=300,
+                     refunds=[a_refund_dict("re_left", 300)]),
+            account="acct_left", event_id="evt_left_refund")
 
         self._recorded_not_retried(event)
         self._wallet_untouched(wallet)
@@ -1155,3 +1181,354 @@ class NoWalletSubjectWebhookTest(RailActivated, TestCase):
         self._wallet_untouched(wallet)
         attempt.refresh_from_db()
         self.assertEqual(attempt.status, "pending")
+
+
+class EachReceiverOwnsItsEventsTest(RailActivated, TestCase):
+    """R10 Stage C1b (F-17, RULED Q1): Stripe delivers one event id to every
+    endpoint subscribed to its type, and the two receivers deduplicate PER
+    RECEIVER. On the C1a anchor one table keyed on the event id alone let
+    whichever receiver answered first own the row: the other's delivery was
+    "already_processed" — a `skipped` row from the wrong receiver buried the
+    owner's processing, and a RETRYABLE failure on the owner was buried by
+    the other receiver's skip. Here each receiver keeps its own row.
+    """
+
+    SUBS_SECRET = "whsec_c1b_subs_placeholder"
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.tenant = Tenant.objects.create(
+            name="Both", stripe_connected_account_id="acct_both",
+            products=["metering", "billing"], billing_mode="prepaid")
+
+    def _billing(self, event):
+        with patch("stripe.Webhook.construct_event", return_value=event):
+            return stripe_webhook(self.factory.post(
+                "/api/v1/webhooks/stripe", content_type="application/json"))
+
+    def _subscriptions(self, event):
+        from apps.subscriptions.api.endpoints import subscriptions_stripe_webhook
+        with patch("stripe.Webhook.construct_event", return_value=event), \
+                self.settings(STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET=self.SUBS_SECRET):
+            return subscriptions_stripe_webhook(self.factory.post(
+                "/api/v1/subscriptions/webhooks/stripe", content_type="application/json"))
+
+    def _rows(self, event_id):
+        return {r.receiver: r for r in StripeWebhookEvent.objects.filter(
+            stripe_event_id=event_id)}
+
+    def _account_updated(self, event_id):
+        """A type the BILLING receiver owns and the subscriptions receiver does
+        not; its effect (charges_enabled) is observable."""
+        return stripe.Event.construct_from({
+            "id": event_id, "object": "event", "type": "account.updated",
+            "livemode": True, "created": int(time.time()), "account": "acct_both",
+            "data": {"object": {"id": "acct_both", "object": "account",
+                                "charges_enabled": True}}}, SK)
+
+    def test_billing_first_then_subscriptions_each_keep_their_own_row(self):
+        event = self._account_updated("evt_both_1")
+        first = self._billing(event)
+        second = self._subscriptions(event)
+        self.assertEqual(json.loads(first.content)["status"], "ok")
+        self.assertEqual(json.loads(second.content)["status"], "ok")
+        rows = self._rows("evt_both_1")
+        self.assertEqual({k: v.status for k, v in rows.items()},
+                         {"billing": "succeeded", "subscriptions": "skipped"})
+        self.assertEqual({v.duplicate_count for v in rows.values()}, {0})
+        self.tenant.refresh_from_db()
+        self.assertTrue(self.tenant.charges_enabled)
+
+    def test_subscriptions_first_then_billing_still_processes_on_the_owner(self):
+        """The order that buried the owner on the anchor: the subscriptions
+        receiver's `skipped` row no longer answers the billing receiver
+        "already_processed"."""
+        event = self._account_updated("evt_both_2")
+        first = self._subscriptions(event)
+        second = self._billing(event)
+        self.assertEqual(json.loads(first.content)["status"], "ok")
+        self.assertEqual(json.loads(second.content)["status"], "ok")
+        rows = self._rows("evt_both_2")
+        self.assertEqual({k: v.status for k, v in rows.items()},
+                         {"billing": "succeeded", "subscriptions": "skipped"})
+        self.tenant.refresh_from_db()
+        self.assertTrue(self.tenant.charges_enabled)
+
+    def test_a_redelivery_to_one_receiver_is_a_duplicate_there_only(self):
+        event = self._account_updated("evt_both_3")
+        self._billing(event)
+        again = self._billing(event)
+        self.assertEqual(json.loads(again.content)["status"], "already_processed")
+        rows = self._rows("evt_both_3")
+        self.assertEqual(list(rows), ["billing"])
+        self.assertEqual(rows["billing"].duplicate_count, 1)
+        # The other receiver's first delivery is still its own first delivery.
+        self.assertEqual(json.loads(self._subscriptions(event).content)["status"], "ok")
+        rows = self._rows("evt_both_3")
+        self.assertEqual((rows["subscriptions"].status, rows["subscriptions"].duplicate_count),
+                         ("skipped", 0))
+
+    def test_a_retryable_failure_on_billing_is_not_buried_by_a_skip_on_subscriptions(self):
+        """invoice.paid on UBB's own account with no TenantInvoice yet raises
+        ObjectDoesNotExist — recorded retryable, 500 so Stripe retries. The
+        subscriptions receiver then skips the same id; Stripe's retry to the
+        billing receiver must STILL run the handler (and succeed once the row
+        exists), not be answered from the subscriptions receiver's row."""
+        from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+        event = stripe.Event.construct_from({
+            "id": "evt_both_retry", "object": "event", "type": "invoice.paid",
+            "livemode": True, "created": int(time.time()), "account": None,
+            "data": {"object": {"id": "in_both_retry", "object": "invoice",
+                                "status": "paid"}}}, SK)
+        first = self._billing(event)
+        self.assertEqual(first.status_code, 500)
+        row = self._rows("evt_both_retry")["billing"]
+        self.assertEqual((row.status, row.failure_reason["retryable"]), ("failed", True))
+
+        skipped = self._subscriptions(event)
+        self.assertEqual(json.loads(skipped.content)["status"], "ok")
+        self.assertEqual(self._rows("evt_both_retry")["subscriptions"].status, "skipped")
+
+        period = TenantBillingPeriod.objects.create(
+            tenant=self.tenant, period_start="2026-01-01", period_end="2026-02-01",
+            status="closed")
+        invoice = TenantInvoice.objects.create(
+            billing_period=period, tenant=self.tenant, stripe_invoice_id="in_both_retry",
+            total_amount_micros=5_000_000, status="sent")
+        retry = self._billing(event)
+        self.assertEqual(json.loads(retry.content)["status"], "ok")
+        rows = self._rows("evt_both_retry")
+        self.assertEqual({k: v.status for k, v in rows.items()},
+                         {"billing": "succeeded", "subscriptions": "skipped"})
+        self.assertEqual(rows["billing"].duplicate_count, 1)
+        invoice.refresh_from_db()
+        self.assertEqual(invoice.status, "paid")
+
+
+class _Capture(logging.Handler):
+    """`caplog` cannot see `apps.*` loggers (propagate=False in settings), so
+    the module's own logger gets a handler."""
+
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+class ARealRefundIsClawedBackExactlyOnceTest(RailActivated, TestCase):
+    """R10 Stage C1b, RULED Q15/Q19/Q20: genuinely constructed Charge/Refund
+    shapes, HMAC-signed and delivered through the billing receiver, verified
+    by Stripe's own ``Webhook.construct_event``. A real Charge under any API
+    version since 2022-11-15 carries the CUMULATIVE ``amount_refunded`` and
+    NO ``refunds`` list unless expanded. On the C1a anchor the handler keyed
+    the no-list fallback on the charge id with no currency, so
+    ``the_rails_currency(…, None)`` refused every real refund by name and no
+    refund was ever clawed back; with a list, a second partial refund
+    replayed the charge key and was dropped.
+    """
+
+    SECRET = "whsec_c1b_refund_receiver_placeholder"
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Refunds", stripe_connected_account_id="acct_refunds",
+            products=["metering", "billing"], billing_mode="prepaid")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="c1", stripe_customer_id="cus_refunds")
+        self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=10_000_000)
+        self.attempt = TopUpAttempt.objects.create(
+            customer=self.customer, billing_owner_id=self.customer.id,
+            amount_micros=5_000_000, trigger="manual", status="succeeded",
+            stripe_charge_id="ch_real")
+
+    def _deliver(self, event_id, obj, *, type="charge.refunded"):
+        payload = json.dumps({
+            "id": event_id, "object": "event", "type": type, "livemode": True,
+            "created": int(time.time()), "account": "acct_refunds",
+            "data": {"object": obj}}).encode()
+        ts = int(time.time())
+        digest = hmac.new(self.SECRET.encode(), f"{ts}.".encode() + payload,
+                          hashlib.sha256).hexdigest()
+        with self.settings(STRIPE_WEBHOOK_SECRET=self.SECRET):
+            response = self.http_client.post(
+                "/api/v1/webhooks/stripe", data=payload, content_type="application/json",
+                HTTP_STRIPE_SIGNATURE=f"t={ts},v1={digest}")
+        return response
+
+    def _refunded(self, event_id, amount_refunded, **kw):
+        return self._deliver(event_id, a_charge_dict("ch_real", amount_refunded=amount_refunded, **kw))
+
+    def _applied(self):
+        from apps.billing.wallets import operations as wallet_ops
+        return wallet_ops.stripe_refund_applied_micros_for(self.customer.id, self.attempt.id)
+
+    def _refund_rows(self):
+        return list(WalletTransaction.objects.filter(
+            wallet=self.wallet, transaction_type="stripe_refund").order_by("created_at"))
+
+    def _balance(self):
+        self.wallet.refresh_from_db()
+        return self.wallet.balance_micros
+
+    def _ok(self, response):
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(json.loads(response.content)["status"], "ok")
+
+    def test_one_partial_refund_with_no_refunds_list_is_clawed_back_in_usd(self):
+        self._ok(self._refunded("evt_r1", 300))
+        self.assertEqual(self._balance(), 7_000_000)
+        rows = self._refund_rows()
+        self.assertEqual([(r.amount_micros, r.idempotency_key, r.reference_id) for r in rows],
+                         [(-3_000_000, "stripe_refund:ch_real:300", str(self.attempt.id))])
+        self.assertEqual(self._applied(), 3_000_000)
+        self.assertEqual(StripeWebhookEvent.objects.get(
+            receiver="billing", stripe_event_id="evt_r1").status, "succeeded")
+
+    def test_a_duplicate_delivery_of_the_same_event_moves_nothing(self):
+        self._ok(self._refunded("evt_r2", 300))
+        again = self._refunded("evt_r2", 300)
+        self.assertEqual(json.loads(again.content)["status"], "already_processed")
+        self.assertEqual((self._balance(), len(self._refund_rows())), (7_000_000, 1))
+
+    def test_the_same_level_under_a_new_event_id_moves_nothing(self):
+        """Stripe may re-send the Charge at the same cumulative level under a
+        fresh event id: the applied-sum check (and the level key) answer it."""
+        self._ok(self._refunded("evt_r3a", 300))
+        self._ok(self._refunded("evt_r3b", 300))
+        self.assertEqual((self._balance(), len(self._refund_rows())), (7_000_000, 1))
+
+    def test_a_second_partial_refund_claws_back_exactly_the_increment(self):
+        self._ok(self._refunded("evt_r4a", 100))
+        self._ok(self._refunded("evt_r4b", 300))
+        self.assertEqual(self._balance(), 7_000_000)
+        self.assertEqual([(r.amount_micros, r.idempotency_key) for r in self._refund_rows()],
+                         [(-1_000_000, "stripe_refund:ch_real:100"),
+                          (-2_000_000, "stripe_refund:ch_real:300")])
+
+    def test_a_full_refund_after_a_partial_applies_only_the_remainder(self):
+        self._ok(self._refunded("evt_r5a", 200))
+        self._ok(self._refunded("evt_r5b", 500, refunded=True))
+        self.assertEqual(self._balance(), 5_000_000)
+        self.assertEqual([r.amount_micros for r in self._refund_rows()],
+                         [-2_000_000, -3_000_000])
+        self.assertEqual(self._applied(), 5_000_000)
+
+    def test_out_of_order_redelivery_converges_with_no_negative_movement(self):
+        """The higher level arrives first, then the older lower one: the final
+        applied sum is Stripe's cumulative, the older level is refused as a
+        structured ERROR, and nothing moves back."""
+        from apps.billing.wallets import operations as wallet_ops
+        capture = _Capture()
+        wallet_ops.logger.addHandler(capture)
+        try:
+            self._ok(self._refunded("evt_r6b", 300))
+            self._ok(self._refunded("evt_r6a", 100))
+        finally:
+            wallet_ops.logger.removeHandler(capture)
+        self.assertEqual((self._balance(), self._applied()), (7_000_000, 3_000_000))
+        self.assertEqual([r.amount_micros for r in self._refund_rows()], [-3_000_000])
+        errors = [r for r in capture.records
+                  if r.levelno == logging.ERROR
+                  and r.getMessage() == "billing.stripe_refund_total_below_applied"]
+        self.assertEqual(len(errors), 1)
+        self.assertEqual((errors[0].data["cumulative_refunded_micros"],
+                          errors[0].data["applied_micros"]), (1_000_000, 3_000_000))
+
+    def test_an_expanded_refunds_list_uses_refund_keys_and_a_later_cumulative_event_does_not_double_apply(self):
+        self._ok(self._refunded("evt_r7a", 200, refunds=[
+            a_refund_dict("re_7a", 100), a_refund_dict("re_7b", 100)]))
+        self.assertEqual(self._balance(), 8_000_000)
+        self.assertEqual([(r.amount_micros, r.idempotency_key) for r in self._refund_rows()],
+                         [(-1_000_000, "stripe_refund:re_7a"), (-1_000_000, "stripe_refund:re_7b")])
+        # The same level, unexpanded, under a new event id: nothing moves.
+        self._ok(self._refunded("evt_r7b", 200))
+        self.assertEqual((self._balance(), len(self._refund_rows())), (8_000_000, 2))
+        # A third refund, unexpanded, then re-sent expanded: one increment only.
+        self._ok(self._refunded("evt_r7c", 350))
+        self._ok(self._refunded("evt_r7d", 350, refunds=[
+            a_refund_dict("re_7a", 100), a_refund_dict("re_7b", 100),
+            a_refund_dict("re_7c", 150)]))
+        self.assertEqual((self._balance(), self._applied()), (6_500_000, 3_500_000))
+        self.assertEqual([r.idempotency_key for r in self._refund_rows()][2:],
+                         ["stripe_refund:ch_real:350"])
+
+    def test_a_non_usd_charge_is_refused_by_name_and_moves_nothing(self):
+        response = self._refunded("evt_r8", 300, currency="eur")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.content)["status"], "failed")
+        row = StripeWebhookEvent.objects.get(receiver="billing", stripe_event_id="evt_r8")
+        self.assertEqual((row.status, row.failure_reason["type"], row.failure_reason["retryable"]),
+                         ("failed", "CurrencyDisagreement", False))
+        self.assertIn("'eur'", row.failure_reason["error"])
+        self.assertEqual((self._balance(), self._refund_rows()), (10_000_000, []))
+
+    def test_a_refund_still_pending_at_charge_refunded_time_is_clawed_back_on_the_cumulative_increase(self):
+        """RULED Q20: the money is leaving when Stripe raises the cumulative,
+        so the claw-back is not deferred to a later `succeeded` update."""
+        self._ok(self._refunded("evt_r9", 300, refunds=[
+            a_refund_dict("re_pending", 300, status="pending")]))
+        self.assertEqual((self._balance(), self._applied()), (7_000_000, 3_000_000))
+        self.assertEqual([r.idempotency_key for r in self._refund_rows()],
+                         ["stripe_refund:re_pending"])
+
+    def test_a_refund_that_later_fails_raises_the_structured_alert_and_moves_nothing(self):
+        """RULED Q19 (alert-only): `charge.refund.updated` with status
+        failed/canceled is detected, the ERROR names the tenant, customer,
+        charge, refund, status and amounts, and the wallet and the applied
+        sum are unchanged — no automatic re-credit."""
+        from apps.billing.connectors.stripe import webhooks as connector
+        self._ok(self._refunded("evt_r10", 300, refunds=[
+            a_refund_dict("re_fails", 300, status="pending")]))
+        self.assertEqual(self._applied(), 3_000_000)
+
+        for status, event_id in (("failed", "evt_r10_failed"), ("canceled", "evt_r10_canceled")):
+            capture = _Capture()
+            connector.logger.addHandler(capture)
+            try:
+                refund = a_refund_dict("re_fails", 300, status=status, charge="ch_real")
+                refund["failure_reason"] = "expired_or_canceled_card"
+                self._ok(self._deliver(event_id, refund, type="charge.refund.updated"))
+            finally:
+                connector.logger.removeHandler(capture)
+            alerts = [r for r in capture.records if r.levelno == logging.ERROR
+                      and getattr(r, "data", {}).get("alert") == "stripe_refund_reversed"]
+            self.assertEqual(len(alerts), 1, [r.getMessage() for r in capture.records])
+            data = alerts[0].data
+            self.assertEqual(
+                {k: data[k] for k in ("tenant_id", "customer_id", "owner_id", "attempt_id",
+                                      "charge_id", "refund_id", "refund_status",
+                                      "refund_amount_minor", "refund_currency",
+                                      "applied_micros")},
+                {"tenant_id": str(self.tenant.id), "customer_id": str(self.customer.id),
+                 "owner_id": str(self.customer.id), "attempt_id": str(self.attempt.id),
+                 "charge_id": "ch_real", "refund_id": "re_fails", "refund_status": status,
+                 "refund_amount_minor": 300, "refund_currency": "usd",
+                 "applied_micros": 3_000_000})
+            self.assertNotIn("whsec", json.dumps(data))
+            self.assertEqual(StripeWebhookEvent.objects.get(
+                receiver="billing", stripe_event_id=event_id).status, "succeeded")
+        # Unchanged: no re-credit, no new transaction type, the applied sum holds.
+        self.assertEqual((self._balance(), self._applied()), (7_000_000, 3_000_000))
+        self.assertEqual(len(self._refund_rows()), 1)
+        self.assertFalse(WalletTransaction.objects.filter(
+            wallet=self.wallet).exclude(transaction_type="stripe_refund").exists())
+        # And the lowered cumulative Stripe now reports on the Charge is refused,
+        # never clawed back again and never re-credited.
+        self._ok(self._refunded("evt_r10_after", 0, refunded=False))
+        self.assertEqual((self._balance(), self._applied()), (7_000_000, 3_000_000))
+
+    def test_a_refund_update_with_another_status_is_nothing_to_act_on(self):
+        from apps.billing.connectors.stripe import webhooks as connector
+        capture = _Capture()
+        connector.logger.addHandler(capture)
+        try:
+            self._ok(self._deliver("evt_r11", a_refund_dict(
+                "re_ok", 300, status="succeeded", charge="ch_real"),
+                type="charge.refund.updated"))
+        finally:
+            connector.logger.removeHandler(capture)
+        self.assertEqual([r for r in capture.records if r.levelno >= logging.ERROR], [])
+        self.assertEqual(self._balance(), 10_000_000)

@@ -124,8 +124,9 @@ def _op_registry(tenant, customer, wallet):
             dispute_id=str(uuid.uuid4()), charge_id="ch_1",
             attempt_id=uuid.uuid4()), None),
         ("claw_back_stripe_refund", lambda: wallet_ops.claw_back_stripe_refund(
-            customer_id=customer.id, tenant=tenant, amount_micros=1_000_000,
-            refund_id=str(uuid.uuid4()), attempt_id=uuid.uuid4()), None),
+            customer_id=customer.id, tenant=tenant, cumulative_micros=1_000_000,
+            key=f"stripe_refund:{uuid.uuid4()}", charge_id="ch_1",
+            attempt_id=uuid.uuid4()), None),
     ]
 
 
@@ -161,7 +162,13 @@ class TestMirrorRule:
             "void_grant", "draw_down_usage", "credit_top_up",
             "claw_back_dispute", "claw_back_stripe_refund",
         }
-        reads_and_sweeps = {"expire_due_sweep", "balance_summary"}
+        reads_and_sweeps = {
+            "expire_due_sweep", "balance_summary",
+            # C1b: the applied sum per Stripe charge, derived from the ledger
+            # (read under the lock by the claw-back op; lock-free by the
+            # alert-only refund-reversal path).
+            "stripe_refund_applied_micros", "stripe_refund_applied_micros_for",
+        }
         import inspect
         public = {n for n in dir(wallet_ops)
                   if not n.startswith("_")
@@ -517,8 +524,8 @@ class TestExpiryPlacement:
                 dispute_id="dp_1", charge_id="ch_1", attempt_id=uuid.uuid4())
         else:
             wallet_ops.claw_back_stripe_refund(
-                customer_id=c.id, tenant=t, amount_micros=1_000_000,
-                refund_id="re_1", attempt_id=uuid.uuid4())
+                customer_id=c.id, tenant=t, cumulative_micros=1_000_000,
+                key="stripe_refund:re_1", charge_id="ch_1", attempt_id=uuid.uuid4())
         grant.refresh_from_db()
         assert grant.status == "expired", op_name
         assert grant.remaining_micros == 0
@@ -621,8 +628,8 @@ class TestMoneyRules:
             expires_at=None, idempotency_key=str(attempt_id))
         api_lot = result.grant
         claw = wallet_ops.claw_back_stripe_refund(
-            customer_id=c.id, tenant=t, amount_micros=3_000_000,
-            refund_id="re_1", attempt_id=attempt_id)
+            customer_id=c.id, tenant=t, cumulative_micros=3_000_000,
+            key="stripe_refund:re_1", charge_id="ch_1", attempt_id=attempt_id)
         assert claw.outcome == "applied"
         api_lot.refresh_from_db()
         assert api_lot.voided_micros == 0          # not treated as the source
@@ -840,8 +847,8 @@ class TestEveryWalletOpIsRefusedWhereNoWalletIsHeld:
             customer_id=c.id, tenant=t, amount_micros=1_000_000,
             dispute_id="dp_x", charge_id="ch_x", attempt_id=uuid.uuid4()),
         "claw_back_stripe_refund": lambda c, t: wallet_ops.claw_back_stripe_refund(
-            customer_id=c.id, tenant=t, amount_micros=1_000_000,
-            refund_id="re_x", attempt_id=uuid.uuid4()),
+            customer_id=c.id, tenant=t, cumulative_micros=1_000_000,
+            key="stripe_refund:re_x", charge_id="ch_x", attempt_id=uuid.uuid4()),
         "expire_due_sweep": lambda c, t: wallet_ops.expire_due_sweep(c.id),
     }
 

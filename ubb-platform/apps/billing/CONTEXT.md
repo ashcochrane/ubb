@@ -87,6 +87,34 @@ remainder charged to base money.
 Restoring the credit invariant after a dispute loss or Stripe refund by voiding/consuming lot
 remainders.
 
+**Stripe refund claw-back (the applied sum)**:
+On `charge.refunded` UBB claws back exactly the increment Stripe has refunded on a top-up's charge
+(R10 Stage C1b, RULED Q15): the handler reads the authoritative Charge facts on the event — `id`,
+`currency`, the cumulative `amount_refunded` — and the wallet op applies `cumulative − applied sum`
+once under the wallet lock, where the **applied sum** is derived from the ledger (the
+`stripe_refund` rows referencing the attempt; one attempt ↔ one charge; no column records it).
+Keyed `stripe_refund:{charge_id}:{amount_refunded}` (the cumulative level) or, when the Charge
+carries an expanded `refunds.data`, `stripe_refund:{refund_id}` per refund reconciled against the
+same applied sum, so the two key families never double-apply. A zero increment (duplicate, same
+level) moves nothing; a negative one (an out-of-order older event, or a refund that later failed)
+is a structured ERROR and moves nothing. The claw-back applies on the cumulative increase even
+while the refund is still `pending` (RULED Q20). No outbound call; no dependence on `refunds`
+being expanded. (`apps/billing/connectors/stripe/webhooks.py:handle_charge_refunded`,
+`apps/billing/wallets/operations.py:claw_back_stripe_refund`)
+
+**Refund reversal — a known v1 operational recovery path (alert-only)**:
+A refund Stripe later fails or cancels (`charge.refund.updated` with status `failed`/`canceled`)
+after UBB clawed it back is **detected and reported, never reversed automatically** (RULED Q19):
+the billing receiver emits one structured ERROR (`alert: stripe_refund_reversed`, with the
+tenant, customer, owner, attempt, charge and refund identifiers, the status, the refund amount and
+currency, and the applied sum — no secrets) and leaves the wallet unchanged; the lowered cumulative
+Stripe then reports is refused by the claw-back op. An accountable operator verifies the Stripe
+fact (the Refund in the Dashboard or `Refund.retrieve`) and, where a re-credit is warranted, uses
+the existing supported credit path (`POST /api/v1/billing/customers/{id}/credit` with a movement
+reason and an idempotency key). There is no new wallet transaction type and no reversal workflow;
+this is not automatic refund-reversal support.
+(`apps/billing/connectors/stripe/webhooks.py:handle_charge_refund_updated`)
+
 **Wallet policy**:
 The family of controls that are POLICY on a customer's wallet rather than a bound on any one
 unit of work (`control_family: wallet_policy`; #150 §2.2, slice 6 §5): the two floors, and the
@@ -496,8 +524,23 @@ trigger threshold. (`apps/billing/topups/models.py:AutoTopUpConfig`)
 
 **Top-up attempt**:
 A persisted charge attempt created *before* calling Stripe (to supply deterministic idempotency
-keys); status walks `pending → succeeded/failed/requires_action/superseded`.
-(`apps/billing/topups/models.py:TopUpAttempt`)
+keys); status walks `pending → succeeded/failed/expired/requires_action/superseded`.
+A top-up **refuses before it writes** (R10 Stage C1b, F-11 + O-6): every knowable precondition of
+the checkout — the wallet subject, the rail, the connected account and its charge-readiness, the
+amount, the currency, the server key — is asked before the attempt and its audit row land
+(`refuse_a_checkout_that_cannot_proceed`), each refusal answering its registered problem
+(`feature_not_enabled`, `payment_rail_not_activated`, `payment_not_available` 409,
+`validation_error`, `unsupported_currency`, `service_unavailable`); only Stripe's own refusal at
+`Session.create` can follow the attempt, and it marks the attempt `failed` with the reason. Stale
+`manual` and `widget` Checkout attempts expire after 24 hours.
+(`apps/billing/topups/models.py:TopUpAttempt`, `api/v1/topups.py`)
+
+**Payment not available**:
+The registered problem (`payment_not_available`, 409 — a state conflict, never 422) for a valid
+payment request the tenant's payment account cannot presently perform: no connected Stripe
+account, or one with `charges_enabled=False`. Distinct from a closed rail
+(`payment_rail_not_activated`) and from a currency disagreement (`unsupported_currency`).
+(`core/exceptions.py:PaymentNotAvailable`)
 
 **requires_action**:
 A top-up that needs SCA (Strong Customer Authentication) before it can complete.
@@ -615,9 +658,23 @@ attribute, never dict-style (it has no `.get`, an empty one is truthy, nested `m
 these two accessors; the CI guard refuses `.get(` on a name bound from a Stripe object.
 (`apps/billing/stripe/services/stripe_service.py`)
 
+**Webhook receiver**:
+One of the two Stripe webhook endpoints UBB registers — `billing` (`/api/v1/webhooks/stripe`,
+owning checkout, account, invoice, dispute, refund and PaymentIntent events) and `subscriptions`
+(`/api/v1/subscriptions/webhooks/stripe`, owning `customer.subscription.*`) — each verified with
+its own signing secret (`STRIPE_WEBHOOK_SECRET` / `STRIPE_SUBSCRIPTIONS_WEBHOOK_SECRET`, with
+`_TEST_` twins for sandbox mode) and failing closed when it is blank, never borrowing the other's.
+A closed internal set (`WEBHOOK_RECEIVERS`), held by the dedup table's CHECK. Both endpoints are
+one shared receiver core (`apps/billing/stripe/receiver.py`, part of the Stripe connector kit),
+parameterised by receiver, handler map and secret. (R10 Stage C1b, F-17.)
+
 **StripeWebhookEvent**:
-The single dedup table shared across both webhook endpoints, so a replayed Stripe event is
-deduplicated no matter which endpoint receives it. (`apps/billing/stripe/models.py`)
+The one dedup table for both webhook receivers, keyed **per receiver**: unique by
+`(receiver, stripe_event_id)`, so a Stripe event delivered to both endpoints is processed by the
+receiver that owns its type and recorded `skipped` by the other, independently; a redelivery to
+one receiver is deduplicated there; a retryable failure on one is never buried by the other's row.
+`reprocess_webhook --receiver <name> <event id>` resets one receiver's failed row.
+(`apps/billing/stripe/models.py`)
 
 **AR transition table**:
 Stripe's legal invoice-status graph, shared by the webhook fast path and the hourly poller so they

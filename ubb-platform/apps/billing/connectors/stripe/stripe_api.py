@@ -13,11 +13,14 @@ from apps.billing.stripe.services.stripe_service import (
     validate_amount_micros,
     micros_to_cents,
 )
-from apps.billing.locking import the_currency_a_top_up_credits
+from apps.billing.locking import (
+    the_currency_a_top_up_credits, the_currency_a_top_up_will_credit)
 from core.currency_policy import the_rails_currency
-from core.exceptions import StripeFatalError, StripeTransientError
+from core.exceptions import (
+    PaymentNotAvailable, StripeFatalError, StripeNotConfigured, StripeTransientError)
 from apps.platform.queries import get_customer_stripe_id, get_tenant_stripe_account
 from apps.platform.tenants.models import refuse_a_rail_operation_while_it_is_closed
+from core.problems import Problem
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
 
@@ -34,6 +37,62 @@ def _charges_ready(tenant_id) -> bool:
     ).exclude(stripe_connected_account_id="").exists()
 
 
+def refuse_a_checkout_that_cannot_proceed(customer, amount_micros, *, owner_id):
+    """EVERY KNOWABLE PRECONDITION OF A TOP-UP CHECKOUT, asked before the
+    attempt exists (R10 Stage C1b, F-11 + O-6, RULED Q2). The top-up door
+    (``api/v1/topups.py``) calls this BEFORE it writes the ``TopUpAttempt``
+    and its audit row, so a refusal leaves nothing pending behind; the
+    checkout call below asks the same questions again on its own, so the
+    connector refuses correctly whoever calls it. Each refusal is its
+    truthful registered problem (RULED Q21):
+
+    - an invalid amount → ``validation_error`` (the request schema already
+      refuses one; this is the rule, asked at the money boundary);
+    - a closed rail → ``payment_rail_not_activated`` (``PaymentRailClosed``);
+    - a currency the wallet does not share with the rail →
+      ``unsupported_currency`` (``CurrencyDisagreement``), never collapsed
+      into payment availability;
+    - no connected account, or one not charge-ready →
+      ``payment_not_available`` (``PaymentNotAvailable``, 409);
+    - no server Stripe key for the tenant's mode → ``service_unavailable``
+      (503): the service is not configured to perform the payment, which is
+      not the tenant's state and not the customer's request.
+
+    Returns ``(currency, amount_cents, connected_account, api_key)`` for the
+    call that follows.
+    """
+    try:
+        validate_amount_micros(amount_micros)
+    except StripeFatalError as exc:
+        raise Problem("validation_error", str(exc)) from exc
+    # G27's flag, operationally: no new money on a closed rail.
+    refuse_a_rail_operation_while_it_is_closed(customer.tenant)
+    # The currency is the wallet's this top-up credits, never a literal
+    # (#565): refused here, before anything is sent, if that record is not
+    # in UBB's one currency.
+    currency = the_rails_currency(*the_currency_a_top_up_will_credit(owner_id))
+    try:
+        amount_cents = micros_to_cents(amount_micros, currency)
+    except StripeFatalError as exc:
+        raise Problem("validation_error", str(exc)) from exc
+    connected_account = get_tenant_stripe_account(customer.tenant_id)
+    if not connected_account:
+        raise PaymentNotAvailable(
+            tenant_id=customer.tenant_id, reason="no connected Stripe account")
+    if not _charges_ready(customer.tenant_id):
+        raise PaymentNotAvailable(
+            tenant_id=customer.tenant_id,
+            reason="the connected Stripe account is not charge-ready (charges_enabled=False)")
+    # A sandbox tenant with no (or a live) STRIPE_TEST_SECRET_KEY raises
+    # StripeNotConfigured itself; an unset live key is the same refusal.
+    api_key = api_key_for_tenant(customer.tenant)
+    if not api_key:
+        raise StripeNotConfigured(
+            "Stripe API key is not configured. "
+            "Set STRIPE_SECRET_KEY in the environment to enable Stripe operations.")
+    return currency, amount_cents, connected_account, api_key
+
+
 def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_url, cancel_url):
     """Create Stripe Checkout session for top-up.
 
@@ -43,22 +102,15 @@ def create_checkout_session(customer, amount_micros, top_up_attempt, *, success_
     wallet ledger or charge the customer more than gets credited. Tax applies
     only where Stripe bills for consumption (subscriptions, usage invoices).
     """
-    validate_amount_micros(amount_micros)
-    # G27's flag, operationally: no new money on a closed rail.
-    refuse_a_rail_operation_while_it_is_closed(customer.tenant)
-    # The currency is the wallet's this top-up credits, never a literal
-    # (#565): refused here, before anything is sent, if that record is not
-    # in UBB's one currency.
-    currency = the_rails_currency(*the_currency_a_top_up_credits(top_up_attempt))
-    amount_cents = micros_to_cents(amount_micros, currency)
+    owner_id = (top_up_attempt.billing_owner_id
+                or top_up_attempt.customer.resolve_billing_owner().id)
+    currency, amount_cents, connected_account, api_key = (
+        refuse_a_checkout_that_cannot_proceed(customer, amount_micros, owner_id=owner_id))
     customer_stripe_id = get_customer_stripe_id(customer.id)
-    connected_account = get_tenant_stripe_account(customer.tenant_id)
-    if not connected_account or not _charges_ready(customer.tenant_id):
-        raise StripeFatalError("connected account is not charge-ready (charges_enabled=False)")
 
     session = stripe_call(
         stripe.checkout.Session.create,
-        api_key=api_key_for_tenant(customer.tenant),
+        api_key=api_key,
         retryable=True,
         idempotency_key=f"checkout-{top_up_attempt.id}",
         customer=customer_stripe_id,

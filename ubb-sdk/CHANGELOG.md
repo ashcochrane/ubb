@@ -4,6 +4,21 @@ All notable changes to `ubb-sdk`. This project follows [semantic versioning](htt
 each release is stamped with the exact committed API-contract revision it was
 generated against (`ubb.__spec_revision__`).
 
+## Unreleased
+
+### Added
+
+- **`PaymentNotAvailableError`** (`ConflictError`, code `payment_not_available`,
+  HTTP 409): a top-up checkout the tenant's payment account cannot presently
+  perform — no connected Stripe account, or one that is not charge-ready
+  (`charges_enabled=False`). Answered BEFORE the attempt is written, so a
+  refused top-up leaves nothing pending; a refusal Stripe itself makes when the
+  Checkout Session is created is answered with the same code and the Stripe
+  detail, with the attempt marked `failed`. Additive: the generated exception
+  hierarchy gains one leaf and no call changes (R10 Stage C1b, F-11, RULED
+  Q2/Q21). The OpenAPI document does not enumerate problem codes, so the
+  contract and the spec revision stamp are unchanged.
+
 ## 4.0.0
 
 **The SDK's first release, cut at the cutover (#190; ADR-0026).** The tree

@@ -177,7 +177,7 @@ class EndpointModeGateTest(TestCase):
         from django.test import RequestFactory
         request = RequestFactory().post(
             "/api/v1/webhooks/stripe", content_type="application/json")
-        with patch("api.v1.webhooks.stripe.Webhook.construct_event",
+        with patch("stripe.Webhook.construct_event",
                    return_value=event):
             return view(request)
 
@@ -224,22 +224,26 @@ class EndpointModeGateTest(TestCase):
         resp = stripe_webhook_test(request)
         self.assertEqual(resp.status_code, 400)
 
-    @override_settings(STRIPE_TEST_WEBHOOK_SECRET="whsec_test_x")
+    @override_settings(STRIPE_TEST_WEBHOOK_SECRET="whsec_test_x",
+                       STRIPE_SUBSCRIPTIONS_TEST_WEBHOOK_SECRET="whsec_test_subs_x")
     def test_subscriptions_test_endpoint_gates(self):
         from apps.subscriptions.api.endpoints import subscriptions_stripe_webhook_test
         from django.test import RequestFactory
 
         request = RequestFactory().post(
             "/api/v1/subscriptions/webhooks/stripe/test", content_type="application/json")
-        with patch("apps.subscriptions.api.endpoints.stripe.Webhook.construct_event",
+        with patch("stripe.Webhook.construct_event",
                    return_value=self._event("evt_lm_5", livemode=True)):
             self.assertEqual(subscriptions_stripe_webhook_test(request).status_code, 400)
-        with patch("apps.subscriptions.api.endpoints.stripe.Webhook.construct_event",
+        with patch("stripe.Webhook.construct_event",
                    return_value=self._event("evt_lm_6", livemode=False)):
             self.assertEqual(subscriptions_stripe_webhook_test(request).status_code, 200)
 
-    @override_settings(STRIPE_TEST_WEBHOOK_SECRET="")
+    @override_settings(STRIPE_TEST_WEBHOOK_SECRET="whsec_test_x",
+                       STRIPE_SUBSCRIPTIONS_TEST_WEBHOOK_SECRET="")
     def test_subscriptions_test_endpoint_400_when_secret_unset(self):
+        """Its OWN test secret unset (C1b): the billing test secret being
+        configured does not open the subscriptions test endpoint."""
         from apps.subscriptions.api.endpoints import subscriptions_stripe_webhook_test
         from django.test import RequestFactory
 
@@ -250,7 +254,8 @@ class EndpointModeGateTest(TestCase):
     def test_test_endpoints_are_routed(self):
         """urls.py mounts both /test endpoints (404 would mean unmounted; an
         unsigned POST is 400)."""
-        with override_settings(STRIPE_TEST_WEBHOOK_SECRET="whsec_test_x"):
+        with override_settings(STRIPE_TEST_WEBHOOK_SECRET="whsec_test_x",
+                               STRIPE_SUBSCRIPTIONS_TEST_WEBHOOK_SECRET="whsec_test_subs_x"):
             resp = self.factory_client.post(
                 "/api/v1/webhooks/stripe/test", data="{}",
                 content_type="application/json")

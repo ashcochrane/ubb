@@ -86,6 +86,12 @@ USAGE_EVENT_NOT_FOUND = "usage_event_not_found"
 USAGE_EVENT_PRICE_UNRESOLVED = "usage_event_price_unresolved"
 IDEMPOTENCY_CONFLICT = "idempotency_conflict"
 GRANT_NOT_FOUND = "grant_not_found"
+#: Stripe's authoritative cumulative refunded amount for a charge is BELOW what
+#: this ledger has already clawed back for it (R10 Stage C1b, RULED Q15/Q19).
+#: Never a claw-back: the cumulative never goes down on `charge.refunded`, so
+#: this is an out-of-order redelivery of an older level (nothing to do) or a
+#: refund that later failed/was cancelled (`charge.refund.updated`, alert-only).
+REFUND_TOTAL_BELOW_APPLIED = "refund_total_below_applied"
 
 
 @dataclass(frozen=True)
@@ -695,44 +701,114 @@ def claw_back_dispute(*, customer_id, tenant, amount_micros, dispute_id,
         description=f"Dispute lost: {charge_id}", attempt_id=attempt_id)
 
 
-def claw_back_stripe_refund(*, customer_id, tenant, amount_micros, refund_id,
-                            attempt_id):
-    """Deduct one Stripe-initiated refund, exactly-once per refund id (partial
-    refunds arrive as separate events), and restore G1 via the cascade."""
-    return _claw_back(
-        customer_id=customer_id, tenant=tenant, amount_micros=amount_micros,
-        key=f"stripe_refund:{refund_id}", txn_type=WALLET_TRANSACTION_TYPE_STRIPE_REFUND,
-        description=f"Stripe refund: {refund_id}", attempt_id=attempt_id)
+def stripe_refund_applied_micros(wallet, attempt_id):
+    """THE APPLIED SUM PER CHARGE (R10 Stage C1b, RULED Q15): how much this
+    wallet has already been debited for Stripe refunds of the top-up attempt
+    (one attempt <-> one Stripe charge), read off the ledger — the
+    ``stripe_refund`` rows carrying ``reference_id=str(attempt_id)``, whose
+    ``amount_micros`` are negative. Derivable, so no column records it; read
+    under the wallet lock by the op below, and read lock-free by the
+    alert-only path, which moves nothing."""
+    from django.db.models import Sum
+    from apps.billing.wallets.models import WalletTransaction
+
+    total = WalletTransaction.objects.filter(
+        wallet=wallet, transaction_type=WALLET_TRANSACTION_TYPE_STRIPE_REFUND,
+        reference_id=str(attempt_id),
+    ).aggregate(total=Sum("amount_micros"))["total"] or 0
+    return -total
 
 
-def _claw_back(*, customer_id, tenant, amount_micros, key, txn_type,
-               description, attempt_id):
+def stripe_refund_applied_micros_for(customer_id, attempt_id):
+    """The applied sum for a billing owner's wallet, lock-free (a read for an
+    operator-facing alert; 0 where the wallet does not exist)."""
+    from apps.billing.wallets.models import Wallet
+
+    wallet = Wallet.objects.filter(customer_id=customer_id).first()
+    return 0 if wallet is None else stripe_refund_applied_micros(wallet, attempt_id)
+
+
+def claw_back_stripe_refund(*, customer_id, tenant, cumulative_micros, key,
+                            charge_id, attempt_id, refund_micros=None):
+    """Claw back EXACTLY THE INCREMENT of a Stripe refund, once (R10 Stage
+    C1b, RULED Q15): the amount this call moves is Stripe's authoritative
+    cumulative ``charge.amount_refunded`` (``cumulative_micros``) less the
+    applied sum already on the ledger for this charge — read under the wallet
+    lock in the same transaction, so two deliveries can never both see the
+    same gap — capped at ``refund_micros`` when the caller is applying one
+    named refund of an expanded list.
+
+    ``key`` is the per-event identity (``stripe_refund:{refund_id}`` when the
+    refund id is known, else ``stripe_refund:{charge_id}:{amount_refunded}``,
+    the cumulative level); the replay probe answers a repeated key before any
+    of this runs. The two key families reconcile against the same applied
+    sum, so they can never double-apply.
+
+    Outcomes: ``applied`` (the increment moved, F4.3 cascade run); ``noop``
+    when the increment is zero (a duplicate or an already-applied level);
+    ``refused`` with ``REFUND_TOTAL_BELOW_APPLIED`` when Stripe's cumulative
+    is below the applied sum — never a claw-back, never a re-credit (Q19).
+    """
     def prepare(wallet, owner):
-        from apps.billing.wallets.grants import GrantLedger
-        from apps.billing.wallets.models import CreditGrant
-
-        def settle(wallet, txn):
-            # F4.3 clawback cascade (winning branch only): void the reversed
-            # top-up's lot first, then consume other lots until G1 holds
-            # again. Only top-up-born lots qualify as the source (an API/other
-            # lot that happens to share the reference must never be voided for
-            # a Stripe charge reversal); created_at order makes the pick
-            # deterministic.
-            source_grant = CreditGrant.objects.filter(
-                wallet=wallet, source_reference=str(attempt_id),
-                source__in=(GRANT_SOURCE_CHECKOUT, GRANT_SOURCE_AUTO_TOP_UP),
-            ).order_by("created_at").first()
-            GrantLedger.clawback(wallet, txn, amount_micros,
-                                 source_grant=source_grant)
-
-        return _Move(txn_type=txn_type, amount_micros=-amount_micros,
-                     description=description, reference_id=str(attempt_id),
-                     settle=settle)
+        applied = stripe_refund_applied_micros(wallet, attempt_id)
+        delta = cumulative_micros - applied
+        if delta < 0:
+            # THE structured ERROR for a decrease (RULED Q15/Q19), emitted once,
+            # here, where the facts are read: the handler does not repeat it.
+            logger.error("billing.stripe_refund_total_below_applied", extra={"data": {
+                "tenant_id": str(tenant.id), "owner_id": str(wallet.customer_id),
+                "attempt_id": str(attempt_id), "charge_id": charge_id,
+                "cumulative_refunded_micros": cumulative_micros,
+                "applied_micros": applied, "key": key}})
+            return OpResult(outcome="refused", balance_micros=wallet.balance_micros,
+                            refusal_code=REFUND_TOTAL_BELOW_APPLIED)
+        increment = delta if refund_micros is None else min(refund_micros, delta)
+        if increment <= 0:
+            return OpResult(outcome="noop", balance_micros=wallet.balance_micros)
+        return _claw_back_move(increment, attempt_id,
+                               txn_type=WALLET_TRANSACTION_TYPE_STRIPE_REFUND,
+                               description=f"Stripe refund: {charge_id} ({key})")
 
     return _execute(customer_id=customer_id, tenant=tenant, key=key,
                     run_expiry=True,  # F4.3: due lots expire before the
                     # clawback reads them.
                     prepare=prepare, on_replay=_replayed)
+
+
+def _claw_back(*, customer_id, tenant, amount_micros, key, txn_type,
+               description, attempt_id):
+    def prepare(wallet, owner):
+        return _claw_back_move(amount_micros, attempt_id,
+                               txn_type=txn_type, description=description)
+
+    return _execute(customer_id=customer_id, tenant=tenant, key=key,
+                    run_expiry=True,  # F4.3: due lots expire before the
+                    # clawback reads them.
+                    prepare=prepare, on_replay=_replayed)
+
+
+def _claw_back_move(amount_micros, attempt_id, *, txn_type, description):
+    """The negative move every Stripe claw-back makes, with the F4.3 cascade."""
+    from apps.billing.wallets.grants import GrantLedger
+    from apps.billing.wallets.models import CreditGrant
+
+    def settle(wallet, txn):
+        # F4.3 clawback cascade (winning branch only): void the reversed
+        # top-up's lot first, then consume other lots until G1 holds
+        # again. Only top-up-born lots qualify as the source (an API/other
+        # lot that happens to share the reference must never be voided for
+        # a Stripe charge reversal); created_at order makes the pick
+        # deterministic.
+        source_grant = CreditGrant.objects.filter(
+            wallet=wallet, source_reference=str(attempt_id),
+            source__in=(GRANT_SOURCE_CHECKOUT, GRANT_SOURCE_AUTO_TOP_UP),
+        ).order_by("created_at").first()
+        GrantLedger.clawback(wallet, txn, amount_micros,
+                             source_grant=source_grant)
+
+    return _Move(txn_type=txn_type, amount_micros=-amount_micros,
+                 description=description, reference_id=str(attempt_id),
+                 settle=settle)
 
 
 # ---------------------------------------------------------------------------
