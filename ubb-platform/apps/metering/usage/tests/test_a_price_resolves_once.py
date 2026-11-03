@@ -518,8 +518,8 @@ class TheRuleIsHeldByASecondTriggerOnThisTableTest(TestCase):
 
     # The rule's reverse — uninstalled, a correction it refuses lands;
     # reinstalled, the same write is refused again — was asserted here against
-    # usage/0039's own installer until the cutover (#190). It is proven for all
-    # 21 rules at once now, through `usage/0002_the_database_rules`, in
+    # usage/0039's own installer until the cutover (#190). It is proven for every
+    # carried rule at once now, through `usage/0002_the_database_rules`, in
     # `apps/platform/tests/test_the_database_rules_are_carried.py`.
 
     def test_the_rule_names_the_status_values_the_registry_declares(self):

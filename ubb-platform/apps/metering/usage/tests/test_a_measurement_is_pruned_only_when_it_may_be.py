@@ -629,8 +629,8 @@ class TheRuleIsHeldByATriggerOnTheChildTableTest(TestCase):
 
     # The rule's reverse — uninstalled, an unreleased record is deleted;
     # reinstalled, the same delete is refused — was asserted here against
-    # usage/0041's own installer until the cutover (#190). It is proven for all
-    # 21 rules at once now, through `usage/0002_the_database_rules`, in
+    # usage/0041's own installer until the cutover (#190). It is proven for every
+    # carried rule at once now, through `usage/0002_the_database_rules`, in
     # `apps/platform/tests/test_the_database_rules_are_carried.py`.
 
 
