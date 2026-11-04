@@ -555,10 +555,11 @@ A top-up that needs SCA (Strong Customer Authentication) before it can complete.
 **Period close**:
 The monthly job pushing each postpaid **billing owner's** prior-month usage to Stripe as invoice
 line items. The owner is `resolve_billing_owner()` — a pooled seat's business, everyone else
-themselves, an allocated seat included — and its invoice sums exactly the postings pinned to it
-(`Posting.billing_owner_id`); since R10 Stage C3 (F-7) there is no second topology rule read off a
-seat's parent. It decides the owner of a NEW invoice; an existing one keeps the owner it was issued
-to. (`apps/billing/invoicing/tasks.py`)
+themselves, an allocated seat included — and a business's invoice sums exactly the postings pinned
+to it (`Posting.billing_owner_id`); since R10 Stage C3 (F-7) nothing reads a seat's parent to decide
+whose usage it is. It decides the owner of a NEW invoice; an existing one keeps the owner it was
+issued to. The owner resolved at close equals the one pinned at record time because no product path
+changes a parent or a topology after creation. (`apps/billing/invoicing/tasks.py`)
 
 **Usage invoice**:
 A postpaid customer's usage for one calendar month, pushed to Stripe as line items; one per

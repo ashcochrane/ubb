@@ -420,8 +420,12 @@ class TestTheClaimSurvivesItsFirstFailure:
             mock.assert_not_called()
 
     def test_the_monthly_close_leaves_a_failed_period_for_the_reconcile(self):
-        """Through the task that owns the month: the close catches and logs the
-        raise, and the period it addressed is still there to retry."""
+        """Through the task that owns the month, on the REAL raise
+        `aggregate_lines` documents: a stored invoice-line grouping word that
+        is no longer one of the tenant's axes. The close catches and logs it,
+        the period it addressed is still there, and once the word is corrected
+        the hourly reconcile bills the month."""
+        from apps.billing.invoicing.models import PostpaidUsageConfig
         from apps.metering.usage.models import Posting
         from apps.billing.invoicing.tasks import (
             _prior_month, close_postpaid_usage_periods, reconcile_postpaid_usage)
@@ -433,11 +437,17 @@ class TestTheClaimSurvivesItsFirstFailure:
                        billed_cost_micros=1_000_000)
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
-        with _stripe(), patch.object(PostpaidUsageService, "aggregate_lines",
-                                     side_effect=RuntimeError("boom")):
+        config = PostpaidUsageConfig.objects.create(
+            tenant=t, invoice_line_grouping="field:no_longer_declared")
+        with _stripe() as m:
             close_postpaid_usage_periods()
         rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=start)
         assert rec.status == "failed" and rec.push_attempts == 1
+        assert rec.last_attempt_error.startswith("ValueError(")
+        assert rec.line_snapshot == [] and rec.carry_in_micros is None
+        m.create.assert_not_called()
+        config.invoice_line_grouping = ""
+        config.save(update_fields=["invoice_line_grouping"])
         with _stripe() as m:
             reconcile_postpaid_usage()
         rec.refresh_from_db()
@@ -647,6 +657,20 @@ class TestOwnerFirstKeying:
             rec = PostpaidUsageService.push_customer_period(t, seat, PS, PE)
         stray.refresh_from_db()
         assert stray.status == "skipped" and stray.skip_reason == "seat_superseded"
+        assert rec.customer_id == biz.id and rec.status == "pushed"
+
+    def test_a_seat_row_carried_below_one_minor_unit_is_never_relabelled(self):
+        """R10 Stage C3, F-9: the supersede belt leaves a month whose carry has
+        moved exactly as it is — `below_minor_unit` is terminal, and the reason
+        is the record that its carry moved."""
+        t = _charge_ready_tenant()
+        biz, seat = _pooled_business(t)
+        carried = _row(t, seat, status="skipped", skip_reason="below_minor_unit",
+                       total_billed_micros=4_000, carry_in_micros=0, residual_micros=4_000)
+        with _stripe(), _agg():
+            rec = PostpaidUsageService.push_customer_period(t, seat, PS, PE)
+        carried.refresh_from_db()
+        assert (carried.status, carried.skip_reason) == ("skipped", "below_minor_unit")
         assert rec.customer_id == biz.id and rec.status == "pushed"
 
     def test_close_task_then_direct_seat_push_one_row_per_owner_period(self):

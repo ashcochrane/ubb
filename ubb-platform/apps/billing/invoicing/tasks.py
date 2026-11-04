@@ -89,25 +89,32 @@ def close_postpaid_usage_periods():
     """Monthly: push each canonical billing owner's prior-month usage to Stripe.
 
     ⚠ **THE TARGET IS `resolve_billing_owner()`, THE SAME LOOP THE HOURLY
-    OWNER PASS RUNS** (`gating/tasks.py`, R10 Stage C3, F-7): a POOLED seat's
-    usage is its business's, and every other customer — an ALLOCATED seat
-    included — is its own billing owner. This keyed any seat with a parent on
-    that parent until C3, so an allocated seat's month was invoiced to its
-    business and no row existed for the seat that owed it (Stage B step 14).
-    The owner's invoice then sums the postings pinned to that owner
+    OWNER PASS RUNS** (`apps.billing.accounts.billing_owner_ids`, R10 Stage C3,
+    F-7): a POOLED seat's usage is its business's, and every other customer —
+    an ALLOCATED seat included — is its own billing owner. This keyed any seat
+    with a parent on that parent until C3, so an allocated seat's month was
+    invoiced to its business and no row existed for the seat that owed it
+    (Stage B step 14). The owner's invoice then sums its usage
     (`PostpaidUsageService.aggregate_lines`). This decides the owner of a NEW
     invoice only; an existing row keeps the owner it was issued to (I5, and
-    C2's historical-owner rule)."""
+    C2's historical-owner rule).
+
+    It resolves the owner at close, which equals the owner every posting was
+    pinned to at record time because no product path changes a customer's
+    parent or a business's topology after creation. A change made outside
+    every product path mid-month (the Django admin's default form) is not
+    modelled here; the C3 PR body states what it would do."""
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from apps.metering.queries import get_customer_ids_with_postings
+    from apps.billing.accounts import billing_owner_ids
     from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService
 
     start, end = _prior_month()
     for tenant in Tenant.objects.filter(billing_mode="postpaid", is_active=True):
         cust_ids = get_customer_ids_with_postings(tenant.id, start, end)
-        targets = {c.resolve_billing_owner().id
-                   for c in Customer.all_objects.filter(id__in=list(cust_ids))}
+        targets = billing_owner_ids(Customer.all_objects.filter(
+            id__in=list(cust_ids)).select_related("parent"))
         for target in Customer.all_objects.filter(id__in=list(targets)):
             try:
                 PostpaidUsageService.push_customer_period(tenant, target, start, end)

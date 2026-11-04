@@ -62,14 +62,41 @@ def _warn_if_incomplete(tenant, customer, period_start, unpriced_events):
 @contextlib.contextmanager
 def _a_raise_counts_an_attempt(rec_id):
     """Wrap stage 2 of a push (R10 Stage C3, F-8): whatever it raises is
-    recorded on the already-committed row as one failed attempt
-    (``PostpaidUsageService._record_failed_claim``), then re-raised unchanged
-    for the caller to log. Entered OUTSIDE stage 2's atomic, so the record is
-    written after the rollback, never inside it."""
+    recorded on the already-committed row as ONE failed attempt with its error,
+    then re-raised unchanged for the caller to log. The row stays in the retry
+    lane as ``failed``: ``reconcile_postpaid_usage`` retries it, and the
+    attempts/age caps at the top of stage 2 park it ``failed_permanent`` with
+    its alert.
+
+    Entered OUTSIDE stage 2's atomic, so the record is written after the
+    rollback, never inside it — and stage 2 rolled back, so the row holds
+    exactly what stage 1 committed (or an earlier attempt left): nothing here
+    touches the snapshot, the carry or a pointer. Guarded on the two statuses a
+    counted attempt starts from, so a row another worker has moved on since is
+    never clobbered; a skipped row whose re-evaluation raised stays skipped
+    (the hourly recovery re-queues a recoverable one as ``pending``). Never
+    masks the caller's exception: a failure to record is logged."""
     try:
         yield
     except Exception as exc:
-        PostpaidUsageService._record_failed_claim(rec_id, exc)
+        from django.db.models import F, Value
+        from django.db.models.functions import Coalesce
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+
+        now = timezone.now()
+        try:
+            CustomerUsageInvoice.objects.filter(
+                id=rec_id,
+                status__in=[USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED],
+            ).update(
+                status=USAGE_INVOICE_STATUS_FAILED,
+                push_attempts=F("push_attempts") + 1,
+                first_attempted_at=Coalesce(F("first_attempted_at"), Value(now)),
+                last_attempt_error=repr(exc)[:500],
+                updated_at=now)
+        except Exception:
+            logger.exception("postpaid.claim_failure_unrecorded", extra={"data": {
+                "usage_invoice_id": str(rec_id)}})
         raise
 
 
@@ -92,8 +119,10 @@ class PostpaidUsageService:
         It summed every seat by `parent=` until C3, so an ALLOCATED business —
         whose seats are each their own billing owner — was invoiced for usage
         its seats owed. The pin is `Posting.billing_owner_id`, written by the
-        recording path from `Customer.resolve_billing_owner()`; there is no
-        second topology rule here to disagree with it.
+        recording path from `Customer.resolve_billing_owner()` — the same
+        resolver the close picks its owners with, so the two agree for as long
+        as a customer's parent and its business's topology stay as created,
+        which every product path guarantees. Nothing here reads `parent`.
 
         ⚠ **THE GROUPING IS AN AXIS OF THE ONE VOCABULARY** (#503, slice 7 §11),
         not a key — `PostpaidUsageConfig.invoice_line_grouping` holds a word the
@@ -217,39 +246,6 @@ class PostpaidUsageService:
         return True
 
     @staticmethod
-    def _record_failed_claim(rec_id, exc):
-        """Stage 2 raised (R10 Stage C3, F-8): count ONE attempt and keep the
-        error on the row, which stays in the retry lane as ``failed`` —
-        ``reconcile_postpaid_usage`` retries it, and the attempts/age caps at
-        the top of stage 2 park it ``failed_permanent`` with its alert.
-
-        Stage 2 rolled back, so the row holds exactly what stage 1 committed
-        (or what an earlier attempt left): nothing here touches the snapshot,
-        the carry or any pointer. Guarded on the two statuses a counted attempt
-        starts from, so a row another worker has moved on since is never
-        clobbered; a skipped row whose re-evaluation raised stays skipped (the
-        hourly recovery re-queues a recoverable one as ``pending``). Never
-        masks the caller's exception: a failure to record is logged."""
-        from django.db.models import F, Value
-        from django.db.models.functions import Coalesce
-        from apps.billing.invoicing.models import CustomerUsageInvoice
-
-        now = timezone.now()
-        try:
-            CustomerUsageInvoice.objects.filter(
-                id=rec_id,
-                status__in=[USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED],
-            ).update(
-                status=USAGE_INVOICE_STATUS_FAILED,
-                push_attempts=F("push_attempts") + 1,
-                first_attempted_at=Coalesce(F("first_attempted_at"), Value(now)),
-                last_attempt_error=repr(exc)[:500],
-                updated_at=now)
-        except Exception:
-            logger.exception("postpaid.claim_failure_unrecorded", extra={"data": {
-                "usage_invoice_id": str(rec_id)}})
-
-    @staticmethod
     def push_customer_period(tenant, customer, period_start, period_end):
         """Push one billing owner's usage for one calendar month to Stripe.
 
@@ -269,7 +265,7 @@ class PostpaidUsageService:
           the caps, the snapshot and its tripwire, the aggregation, the skips,
           the carry reservation and the flip to ``pushing``. A raise anywhere
           in it rolls all of that back and leaves the row ``failed`` with the
-          error and one attempt counted (``_record_failed_claim``) — the
+          error and one attempt counted (``_a_raise_counts_an_attempt``) — the
           tripwire's live re-aggregation on a resumed row included.
         - **Phase 2** — Stripe, no transaction held. **Phase 3** — record.
         """
@@ -299,16 +295,19 @@ class PostpaidUsageService:
             if passed_customer.id != customer.id:
                 # A row keyed on the seat itself can never be transitioned by this
                 # owner-first service — supersede it so reconcile stops retrying it.
+                # A month carried below one minor unit is left as it is: it is
+                # already terminal, and its reason is the record that its carry
+                # moved (F-9).
                 CustomerUsageInvoice.objects.filter(
                     tenant=tenant, customer=passed_customer, period_start=period_start,
                     status__in=[USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED, USAGE_INVOICE_STATUS_SKIPPED],
-                ).update(status=USAGE_INVOICE_STATUS_SKIPPED, skip_reason=SKIP_REASON_SEAT_SUPERSEDED)
+                ).exclude(skip_reason=SKIP_REASON_BELOW_MINOR_UNIT).update(
+                    status=USAGE_INVOICE_STATUS_SKIPPED, skip_reason=SKIP_REASON_SEAT_SUPERSEDED)
             if rec.status in (USAGE_INVOICE_STATUS_PUSHED, USAGE_INVOICE_STATUS_PUSHING):
                 return rec
             if rec.status == USAGE_INVOICE_STATUS_FAILED_PERMANENT:
                 return rec  # idempotent, no re-alert
-            if (rec.status == USAGE_INVOICE_STATUS_SKIPPED
-                    and rec.skip_reason == SKIP_REASON_BELOW_MINOR_UNIT):
+            if rec.carried_below_minor_unit:
                 # F-9 (RULED Q5): this period's carry has already moved —
                 # consumed and deposited once — so it is terminal. Re-running
                 # it would move the carry a second time.

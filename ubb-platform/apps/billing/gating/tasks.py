@@ -48,6 +48,7 @@ def _per_owner_reconcile(tenant):
     balance check over the floor-suspended owners (R10 Stage C2, F-1).
     Never raises; returns the flag-realignment count (#44 §C.2)."""
     from apps.platform.customers.models import ACCOUNT_TYPE_SEAT, Customer
+    from apps.billing.accounts import billing_owner_ids
     from apps.billing.wallets.models import Wallet
     from apps.billing.gating.services.live_counter import LiveCounter
     from apps.billing.gating.services.customer_spend_pool_service import _period
@@ -95,8 +96,8 @@ def _per_owner_reconcile(tenant):
         if not holds_a_wallet(tenant):
             _label, start, end = _period()
             cust_ids = list(get_customer_ids_with_postings(tenant.id, start, end))
-            owners = {c.resolve_billing_owner().id
-                      for c in Customer.all_objects.filter(id__in=cust_ids)}
+            owners = billing_owner_ids(Customer.all_objects.filter(
+                id__in=cust_ids).select_related("parent"))
         else:
             owners = set(Wallet.objects.filter(
                 customer__tenant=tenant).values_list("customer_id", flat=True))

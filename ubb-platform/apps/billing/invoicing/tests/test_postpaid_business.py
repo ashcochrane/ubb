@@ -265,7 +265,7 @@ def test_an_allocated_seat_whose_usage_priced_at_nothing_is_nothing_to_bill():
 def test_the_business_aggregation_takes_only_postings_pinned_to_it():
     """A posting on a seat that names another billing owner is that owner's,
     whatever the seat's parent is: the business sums only what is pinned to
-    it, and never a second topology rule read off `parent`."""
+    it, and never reads `parent` to decide."""
     t = Tenant.objects.create(name="T", billing_mode="postpaid", products=["metering", "billing"])
     biz = _business(t, "biz", "pooled")
     s1 = _seat(t, biz, "s1")

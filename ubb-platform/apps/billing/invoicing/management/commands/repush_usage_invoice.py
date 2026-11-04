@@ -3,7 +3,6 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.billing.invoicing.models import CustomerUsageInvoice
 from core.vocabulary import (
-    SKIP_REASON_BELOW_MINOR_UNIT,
     USAGE_INVOICE_STATUS_FAILED,
     USAGE_INVOICE_STATUS_FAILED_PERMANENT,
     USAGE_INVOICE_STATUS_PENDING,
@@ -42,8 +41,7 @@ class Command(BaseCommand):
                 "are retried automatically; a pushed row is already billed."
             )
 
-        if (rec.status == USAGE_INVOICE_STATUS_SKIPPED
-                and rec.skip_reason == SKIP_REASON_BELOW_MINOR_UNIT):
+        if rec.carried_below_minor_unit:
             # R10 Stage C3, F-9 (RULED Q5): the period's carry has already
             # moved — the carry-in consumed and the residual deposited — so a
             # reset would move it a second time. There is nothing to bill.

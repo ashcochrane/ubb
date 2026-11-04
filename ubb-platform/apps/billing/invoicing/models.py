@@ -161,6 +161,15 @@ class CustomerUsageInvoice(BaseModel):
         ]
 
     @property
+    def carried_below_minor_unit(self):
+        """Whether this month reached no minor unit and its carry has MOVED —
+        the carry-in consumed and the residual deposited (R10 Stage C3, F-9,
+        RULED Q5). Terminal: nothing re-pushes it, repush refuses it and no
+        supersede relabels it, because each would move or hide that carry."""
+        return (self.status == USAGE_INVOICE_STATUS_SKIPPED
+                and self.skip_reason == SKIP_REASON_BELOW_MINOR_UNIT)
+
+    @property
     def historical_billing_owner_id(self):
         """The billing owner this invoice was issued to — its own `customer`,
         because the claim keys the row on the billing owner of that moment
