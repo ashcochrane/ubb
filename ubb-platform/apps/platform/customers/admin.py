@@ -23,9 +23,10 @@ class CustomerAdmin(admin.ModelAdmin):
     list_filter = ("status", "tenant")
     search_fields = ("external_id",)
 
-    #: Set at creation, read-only on an existing customer.
-    TOPOLOGY = ("account_type", "parent", "billing_topology")
+    #: The fields that decide the billing owner: set at creation, read-only on
+    #: an existing customer.
+    TOPOLOGY_FIELDS = ("account_type", "parent", "billing_topology")
 
     def get_readonly_fields(self, request, obj=None):
         readonly = tuple(super().get_readonly_fields(request, obj))
-        return readonly + self.TOPOLOGY if obj is not None else readonly
+        return readonly + self.TOPOLOGY_FIELDS if obj is not None else readonly

@@ -129,7 +129,7 @@ class CustomerModelTest(TestCase):
 
 
 #: What decides a customer's billing owner (`Customer.resolve_billing_owner`).
-TOPOLOGY = {"account_type", "parent", "billing_topology"}
+TOPOLOGY_FIELDS = {"account_type", "parent", "billing_topology"}
 
 
 class TopologyIsDeclaredAtCreationTest(TestCase):
@@ -197,16 +197,16 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
         return set(response.context["adminform"].form.fields)
 
     def test_an_existing_seats_parent_is_read_only_in_the_admin(self):
-        self.assertTrue(TOPOLOGY <= set(
+        self.assertTrue(TOPOLOGY_FIELDS <= set(
             self.model_admin.get_readonly_fields(self.request, self.seat)))
-        self.assertFalse(TOPOLOGY & self._change_form_fields(self.seat))
+        self.assertFalse(TOPOLOGY_FIELDS & self._change_form_fields(self.seat))
 
     def test_an_existing_businesss_billing_topology_is_read_only_in_the_admin(self):
         for business in (self.pooled, self.allocated):
             with self.subTest(business=business.external_id):
-                self.assertTrue(TOPOLOGY <= set(
+                self.assertTrue(TOPOLOGY_FIELDS <= set(
                     self.model_admin.get_readonly_fields(self.request, business)))
-                self.assertFalse(TOPOLOGY & self._change_form_fields(business))
+                self.assertFalse(TOPOLOGY_FIELDS & self._change_form_fields(business))
 
     def test_a_tampered_change_form_moves_no_topology_fact(self):
         """The form is VALID and saves (302) — the topology values posted
@@ -244,7 +244,7 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
 
     def test_the_add_form_still_declares_topology_at_creation(self):
         from django.urls import reverse
-        self.assertFalse(TOPOLOGY & set(
+        self.assertFalse(TOPOLOGY_FIELDS & set(
             self.model_admin.get_readonly_fields(self.request, None)))
         response = self.http.post(reverse("admin:customers_customer_add"), {
             "tenant": str(self.tenant.pk), "external_id": "seat-2",
