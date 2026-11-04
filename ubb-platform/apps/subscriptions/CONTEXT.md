@@ -85,9 +85,10 @@ _Avoid_: pushing deltas — always full state.
 **Seat quantity convergence**:
 The guarantee that a business's billed seat quantity comes to equal its live roster with no further
 roster change and no operator: an hourly pass pushes the live count wherever it differs from the
-mirrored seat item, under one idempotency key per **divergence episode** — an unresolved mismatch
-retried replays one key, and the same count recurring after another quantity landed is a new request
-(R10 Stage C4, RULED Q8; owner/consultant ruling 2026-11-05).
+mirrored seat item, under one idempotency key per **divergence episode** — identified by the seat
+item's last successful write — so an unresolved mismatch retried replays one key, and the same count
+recurring after another quantity landed is a new request (R10 Stage C4, RULED Q8; owner/consultant
+ruling 2026-11-05).
 (`apps/subscriptions/tasks.py:reconcile_subscription_seat_quantities`)
 _Avoid_: relying on the next roster change to repair a failed push.
 

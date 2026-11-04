@@ -19,9 +19,8 @@ A business's billed seat quantity must equal its live active-seat roster
    ``apps.subscriptions.tasks.reconcile_subscription_seat_quantities``)
    recomputes the live count for every business with an active seat
    subscription and, where it differs from the mirrored seat item's
-   quantity, pushes it with a deterministic change id per DIVERGENCE EPISODE,
-   ``reconcile-{stripe_subscription_item_id}-{episode}-{count}`` (see
-   ``reconcile_change_id``). Every pass that finds the same unresolved
+   quantity, pushes it with a deterministic change id per DIVERGENCE EPISODE
+   (``reconcile_change_id`` holds the shape). Every pass that finds the same unresolved
    difference replays ONE Stripe idempotency key, so the correction is
    applied once however many passes it takes to land; a later recurrence of
    the same count, after another quantity was applied, is a new episode and a
@@ -222,10 +221,15 @@ def reconcile_change_id(seat_item, count):
       replayed the first N's cached answer: Stripe stayed at M while the
       mirror recorded N, and no later pass noticed.
 
-    The other writers of the item (UBB's own subscribe replaying, a plan-price
-    migration) move it too; that can only start a fresh request carrying the
-    same full-state count, which is harmless. No column, no state machine and
-    no clock reading per pass: the token is a durable fact the row already has.
+    The item's other writers move the token too. A plan-price migration only
+    starts a fresh request carrying the same full-state count, which is
+    harmless. UBB's own subscribe, replayed inside Stripe's window, writes the
+    item from Stripe's CACHED create answer — its create-time quantity — which
+    is the A-1 observation that the create key ignores ``seats``, not a key
+    reuse: the next pass compares the live count with that quantity and
+    corrects under a new key wherever they differ. No column, no state machine
+    and no clock reading per pass: the token is a durable fact the row already
+    has.
     """
     episode = seat_item.updated_at.astimezone(dt_timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     return f"reconcile-{seat_item.stripe_subscription_item_id}-{episode}-{count}"

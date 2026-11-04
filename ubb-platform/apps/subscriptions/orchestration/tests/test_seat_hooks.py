@@ -54,13 +54,17 @@ def _business_with_sub(seats=2, status="active", *, topology="pooled", key="",
     return t, biz, plan, existing
 
 
-def _episode_key(item, count, *, prefix="seat-qty-si_s-"):
+def _episode_key(item, count):
     """The Stripe idempotency key the reconciler sends to correct ``item`` to
-    ``count``: one per divergence episode, the episode being the seat item's
-    last successful write (PLAN §7 item 40). Stated here, not imported, so the
-    tests pin the design rather than echo the implementation."""
+    ``count`` (``set_seats`` prefixes the change id with ``seat-qty-{item}-``):
+    one per divergence episode, the episode being the seat item's last
+    successful write (PLAN §7 item 40). Stated here, not imported, so the tests
+    pin the ruled shape rather than echo the implementation; the invariant
+    itself (one key per episode, a new key on recurrence) is asserted by the
+    tests that use it."""
+    si = item.stripe_subscription_item_id
     episode = item.updated_at.astimezone(dt_timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
-    return f"{prefix}reconcile-{item.stripe_subscription_item_id}-{episode}-{count}"
+    return f"seat-qty-{si}-reconcile-{si}-{episode}-{count}"
 
 
 class _StripeSeatQuantity:
@@ -319,6 +323,7 @@ class TestSeatQuantityConverges(TestCase):
             with self.captureOnCommitCallbacks(execute=True):
                 assert _create_seat(t, "seat-n").status_code == 201
             stripe_side.failing = False
+            assert stripe_side.requests[-1][1:] == (3, "failed")       # the immediate push
             assert reconcile_subscription_seat_quantities() == {"pushed": 1}
             first_correction = stripe_side.requests[-1]
             assert (first_correction[1:], stripe_side.quantity) == ((3, "applied"), 3)
@@ -333,6 +338,7 @@ class TestSeatQuantityConverges(TestCase):
             with self.captureOnCommitCallbacks(execute=True):
                 Customer.objects.get(tenant=t, external_id="seat-m").soft_delete()
             stripe_side.failing = False
+            assert stripe_side.requests[-1][1:] == (3, "failed")       # the immediate push
             assert seat_count(biz) == 3
             assert (stripe_side.quantity, mirrored()) == (4, (4, 4))   # still M everywhere
 
