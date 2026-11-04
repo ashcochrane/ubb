@@ -50,6 +50,7 @@ BOUND = "bound"
 UNRESOLVED = "unresolved"
 AMBIGUOUS = "ambiguous"
 
+
 class AmbiguousMirrorOwner(ObjectDoesNotExist):
     """No ONE customer holds the subscription's Stripe customer id in its
     namespace: several do. Nothing is bound. It is an ``ObjectDoesNotExist``

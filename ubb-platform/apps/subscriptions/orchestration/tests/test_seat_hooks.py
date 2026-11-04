@@ -282,6 +282,38 @@ class TestSeatQuantityConverges(TestCase):
         assert [(r.levelno, r.data["reason"]) for r in refused] == [
             (logging.WARNING, "rail_closed")]
 
+    def test_a_failed_read_on_either_side_of_the_commit_never_fails_the_change(self):
+        """The listener's own reads: before the commit (in a savepoint, so the
+        roster change still commits) and after it (re-resolving the roster).
+        A failure in either is logged and left to the reconciler."""
+        seats_module = "apps.subscriptions.orchestration.seats"
+        resolve = f"{seats_module}._resolve_seat_subscription"
+        from apps.subscriptions.orchestration import seats as seats_mod
+        real_resolve = seats_mod._resolve_seat_subscription
+        calls = []
+
+        def fail_once_after_commit(business):
+            calls.append(business.id)
+            if len(calls) == 2:              # the post-commit re-read
+                raise RuntimeError("read lost after commit")
+            return real_resolve(business)
+
+        cases = (("before", {"side_effect": RuntimeError("read lost before commit")}),
+                 ("after", {"side_effect": fail_once_after_commit}))
+        for key, failure in cases:
+            with self.subTest(key):
+                calls.clear()
+                t, biz, _plan, _seats = _business_with_sub(seats=2, key=key)
+                with _seat_log() as log, patch(resolve, **failure), patch(SET_SEATS) as spy, \
+                        self.captureOnCommitCallbacks(execute=True):
+                    resp = _create_seat(t, "seat-new")
+                assert resp.status_code == 201
+                assert Customer.objects.filter(tenant=t, external_id="seat-new").exists()
+                spy.assert_not_called()
+                failed = [r for r in log.records if r.getMessage() == "seat.qty_push_failed"]
+                assert [(r.data["business_id"], r.data["reason"]) for r in failed] == [
+                    (str(biz.id), "RuntimeError")]
+
     def test_a_closed_rail_after_commit_is_logged_by_the_listener_and_answers_no_500(self):
         from apps.platform.tenants.models import PaymentRailClosed
         t, biz, _plan, _seats = _business_with_sub(seats=2)

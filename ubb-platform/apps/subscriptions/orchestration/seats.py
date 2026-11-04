@@ -118,8 +118,9 @@ def _push(business, plan, count, *, change_event_id, failure_log):
     except Exception as exc:
         # The ruled three — StripeFatalError, StripeTransientError,
         # OrchestrationError — and anything else: none is the caller's to
-        # answer for, because the roster change committed, and the hourly
-        # reconciler converges the quantity whatever stopped this push.
+        # answer for. On the listener's path the roster change has already
+        # committed; on either path the hourly reconciler converges the
+        # quantity whatever stopped this push.
         logger.exception(failure_log, extra={"data": {**data, "reason": type(exc).__name__}})
         return FAILED
 
@@ -132,7 +133,9 @@ def sync_seat_quantity_on_commit(business, *, change_event_id=None):
     Safe to call from any roster mutation; must run inside a transaction so the
     push is bound to the same commit as the roster change. It never fails the
     roster change: the read it makes now runs in its own savepoint, and a
-    failure there is logged and left to the hourly reconciler.
+    failure there is logged and left to the hourly reconciler (logged before
+    the change is known to commit; a change that then rolls back needs no
+    push, and the reconciler finds nothing to do).
     """
     if business is None or business.account_type != "business":
         return
@@ -157,14 +160,22 @@ def sync_seat_quantity_on_commit(business, *, change_event_id=None):
     def _push_after_commit():
         from apps.platform.customers.models import Customer
 
-        biz = Customer.objects.filter(id=business_id).first()
-        if biz is None:
+        # Re-resolve at commit time: roster + subscription state may have
+        # moved. These reads run after the commit too, so a failure in them
+        # is logged and left to the reconciler, never raised.
+        try:
+            biz = Customer.objects.filter(id=business_id).first()
+            if biz is None:
+                return
+            live_plan, _ = _resolve_seat_subscription(biz)
+            if live_plan is None:
+                return
+            count = seat_count(biz)
+        except Exception as exc:
+            logger.exception("seat.qty_push_failed", extra={"data": {
+                "business_id": str(business_id), "reason": type(exc).__name__}})
             return
-        # Re-resolve at commit time: roster + subscription state may have moved.
-        live_plan, _ = _resolve_seat_subscription(biz)
-        if live_plan is None:
-            return
-        _push(biz, live_plan, seat_count(biz), change_event_id=event_id,
+        _push(biz, live_plan, count, change_event_id=event_id,
               failure_log="seat.qty_push_failed")
 
     _push_after_commit.seat_roster_business_id = business_id
