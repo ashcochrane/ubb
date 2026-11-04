@@ -16,7 +16,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import SubscriptionInvoice
+from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from apps.billing.invoicing.models import CustomerUsageInvoice
 
 from api.v1.webhooks import (
@@ -302,9 +302,14 @@ class TestSubscriptionInvoiceReconcile:
         assert row.amount_paid_micros == 49_000_000
 
     def test_account_mismatch_no_row(self):
+        # On another account the subscription has no bound mirror, so the
+        # invoice is not acknowledged as processed (R10 Stage C4, PLAN §7
+        # item 36): it raises for the receiver to record retryably, and no
+        # row is written on the mismatched account (C-2).
         tenant, customer, sub = self._fixtures()
-        handle_invoice_finalized(_event(
-            "acct_DIFFERENT", obj=_sub_inv_obj("in_sub_3", "sub_ar_1")))
+        with pytest.raises(StripeSubscription.DoesNotExist):
+            handle_invoice_finalized(_event(
+                "acct_DIFFERENT", obj=_sub_inv_obj("in_sub_3", "sub_ar_1")))
         assert not SubscriptionInvoice.objects.filter(stripe_invoice_id="in_sub_3").exists()
 
     def test_void_and_uncollectible(self):

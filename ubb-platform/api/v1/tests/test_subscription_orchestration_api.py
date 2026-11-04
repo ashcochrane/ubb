@@ -280,3 +280,172 @@ class TestSubscriptionOrchestrationAPI:
         for path in ("cancel", "pause", "resume"):
             resp = self._post(f"/api/v1/subscriptions/customers/ghost/subscription/{path}", {})
             assert resp.status_code == 404, path
+
+
+# ---- A-1: subscribe is one outcome (R10 Stage C4, RULED Q7) ----
+
+PLAN_ASSIGNED = "plan.assigned"
+SUBSCRIPTION_CREATED = "subscription.created"
+
+
+@pytest.mark.django_db
+class TestSubscribeIsOneOutcome:
+    """At the anchor the route committed the plan assignment and its audit
+    record BEFORE the Stripe branch, so a 422 or 503 answered an error while
+    the customer had already moved to the new plan (Stage B finding A-1).
+    Now the assignment commits with the mirror, after Stripe opened the
+    subscription, or not at all."""
+
+    # The API client setup above, borrowed rather than inherited: inheriting
+    # the class would collect every one of its tests a second time.
+    setup_method = TestSubscriptionOrchestrationAPI.setup_method
+    _post = TestSubscriptionOrchestrationAPI._post
+    _make_plan = TestSubscriptionOrchestrationAPI._make_plan
+    _make_customer = TestSubscriptionOrchestrationAPI._make_customer
+
+    def _subscribe(self, plan_key="pro", seats=10):
+        return self._post("/api/v1/subscriptions/customers/biz/subscribe",
+                          {"plan_key": plan_key, "seats": seats})
+
+    @contextlib.contextmanager
+    def _stripe(self, **create):
+        """Provisioning answers by axis; ``Subscription.create`` answers as told."""
+        svc = "apps.subscriptions.orchestration.service.stripe"
+
+        def by_axis(prefix):
+            return lambda **kw: MagicMock(
+                id=f"{prefix}_{'a' if 'access' in kw['idempotency_key'] else 's'}")
+
+        with patch(f"{svc}.Product.create", side_effect=by_axis("prod")), \
+             patch(f"{svc}.Price.create", side_effect=by_axis("price")), \
+             patch(f"{svc}.Subscription.create", **create) as created, \
+             patch("apps.billing.stripe.services.stripe_service._backoff"):
+            yield created
+
+    def _assignment(self):
+        from apps.platform.plans.models import CustomerPlanAssignment
+        row = CustomerPlanAssignment.objects.filter(
+            tenant=self.tenant, customer__external_id="biz").select_related("plan").first()
+        return row.plan.key if row else None
+
+    def _audits(self, action):
+        from apps.platform.audit.models import AuditRecord
+        return AuditRecord.objects.filter(tenant_id=self.tenant.id, action=action).count()
+
+    def _nothing_committed(self):
+        assert self._assignment() is None
+        assert self._audits(PLAN_ASSIGNED) == 0
+        assert self._audits(SUBSCRIPTION_CREATED) == 0
+        assert not StripeSubscription.objects.filter(tenant=self.tenant).exists()
+
+    def test_a_tenant_that_is_not_charge_ready_is_refused_before_any_write(self):
+        Tenant.objects.filter(id=self.tenant.id).update(charges_enabled=False)
+        self._make_plan()
+        self._make_customer("biz")
+        with self._stripe(return_value=_fake_sub()) as created:
+            resp = self._subscribe()
+        assert resp.status_code == 422
+        created.assert_not_called()
+        self._nothing_committed()
+
+    def test_a_transient_stripe_failure_is_503_and_assigns_nothing(self):
+        import stripe
+        self._make_plan()
+        self._make_customer("biz")
+        with self._stripe(side_effect=stripe.error.APIConnectionError("lost")):
+            resp = self._subscribe()
+        assert resp.status_code == 503
+        assert resp.json()["code"] == "service_unavailable"
+        self._nothing_committed()
+
+    def test_a_payment_failure_is_422_and_assigns_nothing(self):
+        import stripe
+        self._make_plan()
+        self._make_customer("biz")
+        declined = stripe.error.CardError("Your card was declined.", None, "card_declined")
+        with self._stripe(side_effect=declined):
+            resp = self._subscribe()
+        assert resp.status_code == 422
+        assert resp.json()["code"] == "validation_error"
+        self._nothing_committed()
+
+    def test_a_mirror_that_cannot_be_written_assigns_nothing(self):
+        """Stripe answers in a currency UBB never priced: ``_persist_mirror``
+        refuses it (422), and the assignment goes with it."""
+        self._make_plan()
+        self._make_customer("biz")
+        import stripe
+        foreign = stripe.Subscription.construct_from(
+            {**_fake_sub().to_dict(), "currency": "eur"}, "sk_test_sentinel")
+        with self._stripe(return_value=foreign):
+            resp = self._subscribe()
+        assert resp.status_code == 422
+        self._nothing_committed()
+
+    def test_a_prior_assignment_survives_a_failed_subscribe(self):
+        import stripe
+        self._make_plan("pro")
+        self._post("/api/v1/plans", {"key": "basic", "name": "Basic",
+                                     "access_fee_micros": 0, "per_seat_micros": 0,
+                                     "interval": "month"})
+        self._make_customer("biz")
+        assert self._post("/api/v1/customers/biz/plan", {"plan_key": "basic"}).status_code == 200
+        with self._stripe(side_effect=stripe.error.APIConnectionError("lost")):
+            assert self._subscribe("pro").status_code == 503
+        assert self._assignment() == "basic"
+        assert self._audits(PLAN_ASSIGNED) == 1          # the basic one only
+
+    def test_a_retry_after_stripe_opened_it_converges_on_one_of_everything(self):
+        """The first answer is lost on the way back (a 503): Stripe opened the
+        subscription, UBB wrote nothing. The retry replays the same create key,
+        Stripe answers the same subscription, and the mirror and the
+        assignment are written once."""
+        import stripe
+        self._make_plan()
+        biz = self._make_customer("biz")
+        lost = stripe.error.APIConnectionError("response lost")
+        with self._stripe(side_effect=[lost, lost, lost, _fake_sub()]) as created:
+            assert self._subscribe().status_code == 503
+            self._nothing_committed()
+            assert self._subscribe().status_code == 200
+        keys = {c.kwargs["idempotency_key"] for c in created.call_args_list}
+        plan = Plan.objects.get(tenant=self.tenant, key="pro")
+        assert keys == {f"sub-create-{biz.id}-{plan.id}"}
+        assert StripeSubscription.objects.filter(stripe_subscription_id="sub_1").count() == 1
+        assert self._assignment() == "pro"
+        assert (self._audits(PLAN_ASSIGNED), self._audits(SUBSCRIPTION_CREATED)) == (1, 1)
+
+    def test_the_assignment_commits_with_the_mirror_or_not_at_all(self):
+        """A failure after the mirror is written but before its transaction
+        commits (here: the subscription's own audit record) takes the mirror,
+        the assignment and both records with it; the retry converges."""
+        from apps.platform.audit.ledger import record
+        self._make_plan()
+        self._make_customer("biz")
+
+        def refuse_the_subscription_record(**kwargs):
+            if kwargs["action"] == SUBSCRIPTION_CREATED:
+                raise RuntimeError("audit ledger unavailable")
+            return record(**kwargs)
+
+        with self._stripe(return_value=_fake_sub()):
+            with patch("apps.subscriptions.api.endpoints.audit_record",
+                       side_effect=refuse_the_subscription_record):
+                assert self._subscribe().status_code == 500
+            self._nothing_committed()
+            assert self._subscribe().status_code == 200
+        assert self._assignment() == "pro"
+        assert (self._audits(PLAN_ASSIGNED), self._audits(SUBSCRIPTION_CREATED)) == (1, 1)
+
+    def test_a_markup_only_plan_assigns_directly(self):
+        self._post("/api/v1/plans", {"key": "markup", "name": "Markup",
+                                     "access_fee_micros": 0, "per_seat_micros": 0,
+                                     "interval": "month"})
+        self._make_customer("biz")
+        with self._stripe(return_value=_fake_sub()) as created:
+            resp = self._subscribe("markup")
+        assert resp.status_code == 200
+        assert resp.json() == {"subscription_id": None, "amount_micros": 0, "quantity": 0}
+        created.assert_not_called()
+        assert self._assignment() == "markup"
+        assert (self._audits(PLAN_ASSIGNED), self._audits(SUBSCRIPTION_CREATED)) == (1, 0)

@@ -726,6 +726,7 @@ class LiveCounter:
         from django.db import transaction
         from apps.billing.gating.services.stop_signal_service import announced_balance
         from apps.billing.queries import a_payment_failure_remains_for
+        from apps.platform.customers.hooks import notify_if_a_seat
         from apps.platform.customers.models import Customer
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import CustomerReactivated
@@ -751,6 +752,9 @@ class LiveCounter:
                     tenant_id=str(owner.tenant_id), customer_id=str(owner.id),
                     reason_code=left,
                     balance_micros=announced_balance(owner.id, owner.tenant)))
+                # A reactivated seat rejoins its business's active roster
+                # (R10 Stage C4, A-2): notified inside this transaction.
+                notify_if_a_seat(owner)
                 return True
         except Exception:
             logger.warning("live_counter.unsuspend_failed",

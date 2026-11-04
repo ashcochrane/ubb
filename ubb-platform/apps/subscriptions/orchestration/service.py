@@ -18,7 +18,7 @@ import calendar
 from datetime import datetime, timezone as dt_timezone
 
 import stripe
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import (
@@ -181,12 +181,21 @@ class SubscriptionOrchestrator:
         return plan
 
     @classmethod
-    def subscribe(cls, customer, plan: Plan, seats: int) -> StripeSubscription | None:
+    def subscribe(cls, customer, plan: Plan, seats: int, *,
+                  on_bound=None) -> StripeSubscription | None:
         """Create the Stripe Subscription on the connected account + mirror it.
 
         Routes money through the billing OWNER (pooled seat -> business). Ensures
         the owner has a Stripe Customer on the connected account first, provisions
         the plan, then creates a subscription with one item per non-zero axis.
+
+        Every refusal it can make without Stripe — charge-readiness, the rail
+        (G27), the tenant's currency — is made before anything is written
+        (R10 Stage C4, A-1). ``on_bound(mirror)`` runs in the mirror's own
+        transaction, after Stripe opened the subscription; a failure anywhere
+        before it leaves nothing of the caller's committed. The create is
+        keyed ``sub-create-{owner}-{plan}``, so a retry after a Stripe-side
+        success replays the same subscription and writes the mirror then.
 
         Returns None without touching Stripe for a markup-only plan (both
         Stripe axes zero) — see the guard below.
@@ -204,13 +213,6 @@ class SubscriptionOrchestrator:
         _require_charge_ready(tenant)
         refuse_a_rail_operation_while_it_is_closed(tenant)  # G27's flag
 
-        owner = customer.resolve_billing_owner()
-        connected = get_tenant_stripe_account(tenant.id)
-        api_key = api_key_for_tenant(tenant)
-
-        cls._ensure_stripe_customer(owner, connected, api_key)
-        cls.ensure_plan_provisioned(plan)
-
         # Plan prices are created in the tenant currency (see ensure_plan_provisioned).
         # Guard the invariant that the tenant currency is well-defined at subscribe
         # time; an empty/whitespace currency would silently default prices to usd and
@@ -218,12 +220,21 @@ class SubscriptionOrchestrator:
         # We do not store the provisioned price currency on the plan, so a full
         # cross-check of the already-created price currency vs. the current tenant
         # currency is deferred (would require new storage / a migration).
+        # Checked BEFORE the owner's Stripe customer or the plan's prices are
+        # written: a refusal UBB can make alone is made before any write.
         tenant_currency = (tenant.default_currency or "").strip().lower()
         if not tenant_currency:
             raise StripeFatalError(
                 f"Tenant {tenant.id} has no default_currency; cannot subscribe "
                 f"with a well-defined plan currency."
             )
+
+        owner = customer.resolve_billing_owner()
+        connected = get_tenant_stripe_account(tenant.id)
+        api_key = api_key_for_tenant(tenant)
+
+        cls._ensure_stripe_customer(owner, connected, api_key)
+        cls.ensure_plan_provisioned(plan)
 
         items = []
         if plan.access_fee_micros > 0 and plan.stripe_access_price_id:
@@ -252,7 +263,7 @@ class SubscriptionOrchestrator:
             **extra,
         )
 
-        return cls._persist_mirror(tenant, owner, plan, sub)
+        return cls._persist_mirror(tenant, owner, plan, sub, on_bound=on_bound)
 
     @classmethod
     def set_seats(cls, business, plan: Plan, new_seats: int, *, change_event_id):
@@ -563,8 +574,46 @@ class SubscriptionOrchestrator:
         return cust.id
 
     @classmethod
+    def _bind_explicit_owner(cls, tenant, owner, sub_id, facts) -> StripeSubscription:
+        """Create the mirror bound to ``owner`` / ``tenant``, or confirm the
+        existing one already is (R10 Stage C4, PLAN §7 item 33).
+
+        UBB opened this subscription for ``owner``, so ``owner`` is its
+        identity, whoever else holds the Stripe customer id. A mirror that
+        already exists keeps its binding: when it names this owner and
+        tenant, only the mutable facts are written; when it names anyone
+        else it is refused, never overwritten. Runs inside
+        ``_persist_mirror``'s transaction, with the row locked.
+        """
+        mirror = (StripeSubscription.objects.select_for_update()
+                  .filter(stripe_subscription_id=sub_id).first())
+        if mirror is None:
+            try:
+                with transaction.atomic():
+                    return StripeSubscription.objects.create(
+                        stripe_subscription_id=sub_id, tenant=tenant, customer=owner,
+                        **facts)
+            except IntegrityError:
+                # Bound by the webhook or the sync between the read above
+                # and the create: confirm that binding below.
+                mirror = (StripeSubscription.objects.select_for_update()
+                          .filter(stripe_subscription_id=sub_id).first())
+                if mirror is None:
+                    raise
+        if mirror.customer_id != owner.id or mirror.tenant_id != tenant.id:
+            raise OrchestrationError(
+                f"subscription {sub_id} is mirrored for customer "
+                f"{mirror.customer_id} of tenant {mirror.tenant_id}, not for "
+                f"customer {owner.id} of tenant {tenant.id} that UBB opened it "
+                f"for; a mirror's binding is never rewritten")
+        for name, value in facts.items():
+            setattr(mirror, name, value)
+        mirror.save(update_fields=[*facts, "updated_at"])
+        return mirror
+
+    @classmethod
     @transaction.atomic
-    def _persist_mirror(cls, tenant, owner, plan, sub) -> StripeSubscription:
+    def _persist_mirror(cls, tenant, owner, plan, sub, *, on_bound=None) -> StripeSubscription:
         """The mirror of a subscription UBB just provisioned, from Stripe's own
         answer — read through `mirrored_amounts`, as every mirror writer is.
 
@@ -572,6 +621,12 @@ class SubscriptionOrchestrator:
         returned: a StripeObject, read by attribute through ``field`` (F-3b).
         A dict-style read here crashed AFTER Stripe had opened the
         subscription, leaving it billing with no mirror.
+
+        The mirror binds the EXPLICIT owner (``_bind_explicit_owner``). Then
+        ``on_bound(mirror)``, when given, runs in this SAME transaction: the
+        subscribe route writes the plan assignment and both audit records
+        there (R10 Stage C4, A-1), so they commit with the mirror or not at
+        all.
         """
         money = mirrored_amounts(sub)
         sub_id = field(sub, "id")
@@ -586,23 +641,19 @@ class SubscriptionOrchestrator:
         start = _period_start(sub) or timezone.now()
         end = _period_end(sub) or _period_fallback_end(start, money.interval)
 
-        mirror, _ = StripeSubscription.objects.update_or_create(
-            stripe_subscription_id=sub_id,
-            defaults={
-                "tenant": tenant,
-                "customer": owner,
-                "stripe_product_name": _product_name(sub) or plan.name,
-                "status": field(sub, "status", "active"),
-                "amount_micros": money.amount_micros,
-                "currency": money.currency,
-                "source_amount_minor": money.source_amount_minor,
-                "interval": money.interval,
-                "quantity": money.seat_qty,
-                "current_period_start": start,
-                "current_period_end": end,
-                "last_synced_at": timezone.now(),
-            },
-        )
+        facts = {
+            "stripe_product_name": _product_name(sub) or plan.name,
+            "status": field(sub, "status", "active"),
+            "amount_micros": money.amount_micros,
+            "currency": money.currency,
+            "source_amount_minor": money.source_amount_minor,
+            "interval": money.interval,
+            "quantity": money.seat_qty,
+            "current_period_start": start,
+            "current_period_end": end,
+            "last_synced_at": timezone.now(),
+        }
+        mirror = cls._bind_explicit_owner(tenant, owner, sub_id, facts)
 
         access_price = plan.stripe_access_price_id
         seat_price = plan.stripe_seat_price_id
@@ -643,4 +694,6 @@ class SubscriptionOrchestrator:
                 },
             )
 
+        if on_bound is not None:
+            on_bound(mirror)
         return mirror

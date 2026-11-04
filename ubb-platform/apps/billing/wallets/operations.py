@@ -640,6 +640,10 @@ def _drawdown_tail(tenant, trigger_source):
             write_event(CustomerSuspended(
                 tenant_id=str(tenant.id), customer_id=str(owner.id),
                 reason=reasons.HARD_FLOOR, balance_micros=new_balance))
+            # A suspended seat leaves its business's active roster (R10
+            # Stage C4, A-2): notified inside this drawdown's transaction.
+            from apps.platform.customers.hooks import notify_if_a_seat
+            notify_if_a_seat(owner)
         try:
             config = AutoTopUpConfig.objects.get(customer=owner, is_enabled=True)
         except AutoTopUpConfig.DoesNotExist:

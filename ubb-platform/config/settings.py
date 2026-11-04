@@ -262,6 +262,13 @@ CELERY_BEAT_SCHEDULE = {
         # reconcile-usage-drawdowns (:40).
         "schedule": crontab(minute=35),
     },
+    "reconcile-subscription-seat-quantities": {
+        "task": "apps.subscriptions.tasks.reconcile_subscription_seat_quantities",
+        # hourly at :47 — AFTER reconcile-subscription-mirrors (:35) has
+        # fanned out its per-tenant syncs, so the subscription status it reads
+        # is the hour's fresh one (R10 Stage C4, A-2).
+        "schedule": crontab(minute=47),
+    },
     "close-postpaid-usage-periods": {
         "task": "apps.billing.invoicing.tasks.close_postpaid_usage_periods",
         # 1st 00:05 UTC — INSIDE the renewal-draft window (F5.5 consolidation):

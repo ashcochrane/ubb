@@ -245,6 +245,25 @@ def _task_with_a_live_import():
     from apps.platform.work.models import Task  # noqa: F401
 
 
+def test_the_seat_quantity_reconciler_runs_hourly_after_the_mirror_reconciler():
+    """R10 Stage C4 (A-2, RULED Q8): the pass that converges every billed seat
+    quantity on its live roster reads the subscription mirror's status, so it
+    is scheduled every hour, AFTER the mirror reconciler has refreshed it, and
+    rides the subscriptions queue. A schedule fact, read by name: no product
+    code is imported here."""
+    schedule = settings.CELERY_BEAT_SCHEDULE
+    seats = schedule["reconcile-subscription-seat-quantities"]
+    mirrors = schedule["reconcile-subscription-mirrors"]
+    assert seats["task"] == "apps.subscriptions.tasks.reconcile_subscription_seat_quantities"
+    for entry in (seats, mirrors):
+        assert entry["schedule"].hour == set(range(24))      # every hour
+        assert len(entry["schedule"].minute) == 1             # once in it
+    assert min(seats["schedule"].minute) > min(mirrors["schedule"].minute)
+    task, reason = resolve_task(seats["task"])
+    assert task is not None, reason
+    assert task.queue == "ubb_subscriptions"
+
+
 def test_a_dotted_path_that_does_not_resolve_is_caught():
     for dotted, fragment in (
         ("apps.platform.work.no_such_module.some_task", "importing"),

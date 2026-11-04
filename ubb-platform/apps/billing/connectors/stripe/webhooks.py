@@ -4,7 +4,7 @@ import stripe
 from django.db import transaction
 from django.utils import timezone
 
-from apps.platform.customers.hooks import notify_seat_roster_changed
+from apps.platform.customers.hooks import notify_if_a_seat
 from apps.platform.customers.models import Customer
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
@@ -220,8 +220,7 @@ def _suspend_with_cause(owner, reason, *, measured=None):
     write_event(CustomerSuspended(
         tenant_id=str(owner.tenant_id), customer_id=str(owner.id), reason=reason,
         balance_micros=announced_balance(owner.id, owner.tenant, measured=measured)))
-    if owner.account_type == "seat" and owner.parent_id:
-        notify_seat_roster_changed(owner.parent)
+    notify_if_a_seat(owner)
 
 
 def _mark_invoice_payment_failed(event):

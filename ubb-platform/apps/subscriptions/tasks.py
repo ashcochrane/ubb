@@ -286,3 +286,44 @@ def reconcile_subscription_mirrors():
     ).values_list("id", flat=True)
     for tenant_id in tenant_ids:
         sync_tenant_subscriptions_task.delay(str(tenant_id))
+
+
+@shared_task(queue="ubb_subscriptions")
+def reconcile_subscription_seat_quantities():
+    """Hourly convergence of every billed seat quantity on its live roster
+    (R10 Stage C4, A-2, RULED Q8).
+
+    A roster change pushes the new count immediately, but a Stripe failure
+    after the roster committed would otherwise leave the subscription billing
+    the wrong number of seats until some later roster change. This pass needs
+    no such change and no operator: for every business with an active seat
+    subscription it recomputes the live count and, where it differs from the
+    mirrored seat item, pushes it under the deterministic change id
+    ``reconcile-{stripe_subscription_item_id}-{count}``, so repeated passes
+    replay one Stripe idempotency key (``orchestration/seats.py``). Scheduled
+    after ``reconcile-subscription-mirrors`` so the mirror's status is fresh.
+    A failure for one business is logged and the pass goes on.
+    """
+    from apps.platform.customers.models import Customer
+    from apps.subscriptions.models import CustomerSubscriptionItem
+    from apps.subscriptions.orchestration.seats import (
+        _ACTIVE_SUB_STATUSES, reconcile_seat_quantity)
+
+    business_ids = (
+        CustomerSubscriptionItem.objects.filter(
+            axis="seat", stripe_subscription__status__in=_ACTIVE_SUB_STATUSES,
+            customer__account_type="business")
+        .values_list("customer_id", flat=True).distinct()
+    )
+    outcomes = {}
+    for business in Customer.objects.filter(id__in=list(business_ids)).order_by("id"):
+        try:
+            outcome = reconcile_seat_quantity(business)
+        except Exception:
+            logger.exception("seat.qty_reconcile_failed",
+                             extra={"data": {"business_id": str(business.id)}})
+            outcome = "failed"
+        outcomes[outcome] = outcomes.get(outcome, 0) + 1
+    if outcomes:
+        logger.info("seat.qty_reconcile_pass", extra={"data": outcomes})
+    return outcomes

@@ -292,6 +292,7 @@ class StopSignalService:
         ``announced_balance``'s answer for it — null where the customer holds
         no wallet balance (#610).
         """
+        from apps.platform.customers.hooks import notify_if_a_seat
         from apps.platform.customers.models import Customer
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import CustomerStopped, CustomerSuspended
@@ -325,6 +326,9 @@ class StopSignalService:
                     reason=owner.suspension_reason,
                     balance_micros=announced_balance(
                         owner.id, tenant, measured=balance_micros)))
+                # A suspended seat leaves its business's active roster (R10
+                # Stage C4, A-2): notified inside the stop's transaction.
+                notify_if_a_seat(owner)
             if line == LINE_CUSTOMER_SPEND_POOL:
                 from apps.billing.gating.services.customer_spend_pool_service import (
                     CustomerSpendPoolService)

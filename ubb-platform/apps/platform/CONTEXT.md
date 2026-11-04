@@ -122,8 +122,9 @@ and relationships across the tenant boundary. Changing any of them requires a fu
 designed workflow with defined economic cutover semantics. (`apps/platform/customers/admin.py:CustomerAdmin`)
 
 **Seat roster**:
-The live set of seats under a business; adding/removing a seat is a roster change, broadcast
-synchronously to registered listeners. (`apps/platform/customers/hooks.py`)
+The live set of active seats under a business. A seat created, soft-deleted, suspended or reactivated
+is a roster change, broadcast once to registered listeners inside the transaction that made it
+(R10 Stage C4). (`apps/platform/customers/hooks.py`)
 
 **Customer status**:
 `active`, `suspended`, or `closed`. `suspension_reason` says why (a `reason_code` word: `hard_floor`,

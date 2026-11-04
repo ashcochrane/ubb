@@ -703,7 +703,10 @@ The one dedup table for both webhook receivers, keyed **per receiver**: unique b
 `(receiver, stripe_event_id)`, so a Stripe event delivered to both endpoints is processed by the
 receiver that owns its type and recorded `skipped` by the other, independently; a redelivery to
 one receiver is deduplicated there; a retryable failure on one is never buried by the other's row.
-`reprocess_webhook --receiver <name> <event id>` resets one receiver's failed row.
+`reprocess_webhook --receiver <name> --tenant <id> <event id>` re-runs one receiver's failed,
+retryable row now: it retrieves the Event from Stripe under the tenant's key and connected account,
+refuses one that disagrees with the row or the tenant, and runs it through the same receiver core
+and the same row a delivery would (R10 Stage C4). Stripe keeps an Event for 30 days.
 (`apps/billing/stripe/models.py`)
 
 **AR transition table**:

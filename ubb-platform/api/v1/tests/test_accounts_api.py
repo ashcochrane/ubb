@@ -54,15 +54,17 @@ class TestAccountsAPI:
         assert seat.parent_id == biz.id
 
     def test_create_seat_triggers_roster_sync(self):
-        # The endpoint, not just the model layer, must push the seat-quantity
-        # sync — the lazy import inside create_customer is the wire-up under test.
+        # The endpoint, not just the model layer, must tell the roster's
+        # listeners — through the platform roster hook every roster change
+        # uses, not a direct product import (ADR-001's recorded cleanup,
+        # R10 Stage C4 A-2). The hook is the wire-up under test.
         from unittest.mock import patch
 
         self._post(
             {"external_id": "biz", "account_type": "business", "billing_topology": "pooled"}
         )
         with patch(
-            "apps.subscriptions.orchestration.seats.sync_seat_quantity_on_commit"
+            "api.v1.platform_endpoints.notify_seat_roster_changed"
         ) as spy:
             resp = self._post(
                 {"external_id": "s2", "account_type": "seat", "parent_external_id": "biz"}

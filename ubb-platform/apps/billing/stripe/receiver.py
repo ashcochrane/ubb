@@ -32,6 +32,18 @@ get-or-create dedup with the IntegrityError race fallback, the CAS retry
 of retryable failures and stale ``processing`` rows, dispatch, and the
 error classification that decides whether Stripe retries — is identical by
 construction, because it is one function.
+
+THE SAME CORE SERVES THE OPERATOR (R10 Stage C4, PLAN §7 item 36). Once an
+event is authenticated, ``process_stripe_event`` does steps 2-4 on its
+receiver-scoped ``StripeWebhookEvent`` row and answers an outcome; the HTTP
+view turns the outcome into the response Stripe reads. The
+``reprocess_webhook`` command runs the SAME function on the SAME row with
+the Event it retrieved from Stripe, so a delivery and an operator re-run are
+arbitrated by one CAS and dispatched by one handler map. That map lives with
+each endpoint, and the billing one in the composition layer, which no
+product module may import (ADR-001). So each endpoint module REGISTERS its
+receiver here as it loads (``register_receiver``), and the command reads the
+registry rather than importing the endpoint.
 """
 import logging
 from datetime import timedelta
@@ -52,6 +64,43 @@ logger = logging.getLogger(__name__)
 #: A ``processing`` row older than this is presumed abandoned (a crashed
 #: worker) and may be re-claimed by the next delivery through the CAS below.
 PROCESSING_TTL_MINUTES = 30
+
+#: What processing one authenticated event came to. The HTTP view answers
+#: each as Stripe expects (``_ANSWERS``); the operator command reports it.
+OUTCOME_ALREADY_RECEIVED = "already_received"
+OUTCOME_ALREADY_PROCESSING = "already_processing"
+OUTCOME_ALREADY_PROCESSED = "already_processed"
+OUTCOME_SKIPPED = "skipped"
+OUTCOME_SUCCEEDED = "succeeded"
+OUTCOME_FAILED_RETRYABLE = "failed_retryable"
+OUTCOME_FAILED = "failed"
+
+#: The registered receivers: name -> (a zero-argument callable answering the
+#: handler map, whether a wallet-subject refusal is a named outcome there).
+_RECEIVERS = {}
+
+
+def register_receiver(receiver, *, handlers, refuses_without_a_wallet_subject):
+    """Declare how ``receiver`` dispatches, for callers that hold an Event
+    but not the endpoint (the ``reprocess_webhook`` command).
+
+    Called by each endpoint module as it loads. ``handlers`` is a callable
+    returning that module's handler map, read at call time as the view reads
+    it. Re-registering replaces the entry (a module may be reloaded).
+    """
+    if receiver not in WEBHOOK_RECEIVERS:
+        raise ValueError(f"unknown Stripe webhook receiver {receiver!r}")
+    _RECEIVERS[receiver] = (handlers, refuses_without_a_wallet_subject)
+
+
+def registered_receiver(receiver):
+    """``(handler map, refuses_without_a_wallet_subject)`` for ``receiver``,
+    or None when no endpoint module in this process registered it."""
+    entry = _RECEIVERS.get(receiver)
+    if entry is None:
+        return None
+    handlers, refuses = entry
+    return handlers(), refuses
 
 
 def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoint,
@@ -81,6 +130,26 @@ def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoin
     if reject_for_mode(event, is_test_endpoint=is_test_endpoint):
         return HttpResponse(status=400)
 
+    return _ANSWERS[process_stripe_event(
+        event, receiver=receiver, handlers=handlers,
+        refuses_without_a_wallet_subject=refuses_without_a_wallet_subject)]()
+
+
+def process_stripe_event(event, *, receiver, handlers, refuses_without_a_wallet_subject):
+    """Steps 2-4 for one AUTHENTICATED event: claim its receiver-scoped row
+    (dedup + CAS), dispatch it to ``handlers``, record the result on that row,
+    and answer the ``OUTCOME_*`` it came to.
+
+    The webhook view calls this after verifying the signature; the
+    ``reprocess_webhook`` command calls it with the Event it retrieved from
+    Stripe. Both meet the same row and the same CAS, so a redelivery racing
+    an operator re-run applies the business effect once: whichever claims
+    the row first runs the handler, and the other is answered
+    ``already_processing`` or ``already_processed``.
+    """
+    if receiver not in WEBHOOK_RECEIVERS:
+        raise ValueError(f"unknown Stripe webhook receiver {receiver!r}")
+
     # 2. Event-level dedup, scoped to the receiver, with IntegrityError handling
     scoped = StripeWebhookEvent.objects.filter(
         receiver=receiver, stripe_event_id=event.id)
@@ -96,7 +165,7 @@ def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoin
             last_seen_at=timezone.now(),
             updated_at=timezone.now(),
         )
-        return JsonResponse({"status": "already_received"})
+        return OUTCOME_ALREADY_RECEIVED
 
     if not created:
         processing_ttl = timezone.now() - timedelta(minutes=PROCESSING_TTL_MINUTES)
@@ -121,7 +190,7 @@ def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoin
                 updated_at=timezone.now(),
             )
             if rows_updated == 0:
-                return JsonResponse({"status": "already_processing"})
+                return OUTCOME_ALREADY_PROCESSING
             # Won CAS — fall through to handler
         else:
             scoped.update(
@@ -129,7 +198,7 @@ def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoin
                 last_seen_at=timezone.now(),
                 updated_at=timezone.now(),
             )
-            return JsonResponse({"status": "already_processed"})
+            return OUTCOME_ALREADY_PROCESSED
 
     # 3. Dispatch — this receiver's map only. A type it does not own is
     # recorded `skipped` HERE and only here; the owning receiver's row is a
@@ -138,7 +207,7 @@ def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoin
     if not handler:
         webhook_event.status = "skipped"
         webhook_event.save(update_fields=["status", "updated_at"])
-        return JsonResponse({"status": "ok"})
+        return OUTCOME_SKIPPED
 
     log = {"receiver": receiver, "event_id": event.id, "event_type": event.type}
 
@@ -154,14 +223,14 @@ def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoin
             extra={"data": {**log, "error": str(e)}},
         )
         _record_failure(webhook_event, e, retryable=True)
-        return HttpResponse(status=500)  # Stripe retries
+        return OUTCOME_FAILED_RETRYABLE  # Stripe retries
     except StripeFatalError as e:
         logger.error(
             "Webhook handler fatal error",
             extra={"data": {**log, "error": str(e)}},
         )
         _record_failure(webhook_event, e, retryable=False)
-        return JsonResponse({"status": "failed"})  # 200 — no Stripe retry
+        return OUTCOME_FAILED  # 200 — no Stripe retry
     except NoWalletSubjectError as e:
         if not refuses_without_a_wallet_subject:
             raise  # not an outcome this receiver names; see the generic arm
@@ -177,16 +246,29 @@ def receive_stripe_event(request, *, receiver, handlers, secret, is_test_endpoin
             extra={"data": {**log, "error": str(e), "billing_mode": e.billing_mode}},
         )
         _record_failure(webhook_event, e, retryable=False)
-        return JsonResponse({"status": "failed"})  # 200 — no Stripe retry
+        return OUTCOME_FAILED  # 200 — no Stripe retry
     except Exception as e:
         logger.exception(
             "Webhook handler transient error",
             extra={"data": log},
         )
         _record_failure(webhook_event, e, retryable=True)
-        return HttpResponse(status=500)  # Stripe retries
+        return OUTCOME_FAILED_RETRYABLE  # Stripe retries
 
-    return JsonResponse({"status": "ok"})
+    return OUTCOME_SUCCEEDED
+
+
+#: The HTTP answer for each outcome — what Stripe reads: a 500 is retried,
+#: every 200 is final for that delivery.
+_ANSWERS = {
+    OUTCOME_ALREADY_RECEIVED: lambda: JsonResponse({"status": "already_received"}),
+    OUTCOME_ALREADY_PROCESSING: lambda: JsonResponse({"status": "already_processing"}),
+    OUTCOME_ALREADY_PROCESSED: lambda: JsonResponse({"status": "already_processed"}),
+    OUTCOME_SKIPPED: lambda: JsonResponse({"status": "ok"}),
+    OUTCOME_SUCCEEDED: lambda: JsonResponse({"status": "ok"}),
+    OUTCOME_FAILED_RETRYABLE: lambda: HttpResponse(status=500),
+    OUTCOME_FAILED: lambda: JsonResponse({"status": "failed"}),
+}
 
 
 def _record_failure(webhook_event, exc, *, retryable):

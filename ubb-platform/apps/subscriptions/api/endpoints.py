@@ -10,7 +10,7 @@ from django.views.decorators.http import require_POST
 from ninja import Router
 
 from apps.billing.stripe.models import WEBHOOK_RECEIVER_SUBSCRIPTIONS
-from apps.billing.stripe.receiver import receive_stripe_event
+from apps.billing.stripe.receiver import receive_stripe_event, register_receiver
 from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 
@@ -194,14 +194,25 @@ def subscriptions_stripe_webhook_test(request):
     return _subscriptions_stripe_webhook(request, secret=secret, is_test_endpoint=True)
 
 
+#: This receiver never moves wallet money, so a wallet-subject refusal here is
+#: not a named outcome: it takes the core's generic arm.
+_REFUSES_WITHOUT_A_WALLET_SUBJECT = False
+
+
 def _subscriptions_stripe_webhook(request, *, secret, is_test_endpoint):
     return receive_stripe_event(
         request, receiver=WEBHOOK_RECEIVER_SUBSCRIPTIONS,
         handlers=SUBSCRIPTIONS_WEBHOOK_HANDLERS, secret=secret,
         is_test_endpoint=is_test_endpoint,
-        # This receiver never moves wallet money, so a wallet-subject refusal
-        # here is not a named outcome: it takes the core's generic arm.
-        refuses_without_a_wallet_subject=False)
+        refuses_without_a_wallet_subject=_REFUSES_WITHOUT_A_WALLET_SUBJECT)
+
+
+# This receiver's dispatch, declared to the receiver core for the
+# `reprocess_webhook` command (R10 Stage C4, PLAN §7 item 36), as the billing
+# receiver declares its own.
+register_receiver(
+    WEBHOOK_RECEIVER_SUBSCRIPTIONS, handlers=lambda: SUBSCRIPTIONS_WEBHOOK_HANDLERS,
+    refuses_without_a_wallet_subject=_REFUSES_WITHOUT_A_WALLET_SUBJECT)
 
 
 # ---------- Lifecycle (moved from platform_router, design doc §6) ----------
@@ -263,11 +274,23 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     A markup-only plan assigns and returns subscription_id=None — there is
     nothing for Stripe to bill.
     """
+    # ONE OUTCOME, NOT TWO (R10 Stage C4, A-1, RULED Q7). (A comment, not the
+    # docstring: the docstring above is the published operation description.)
+    # For a plan with fee axes the assignment is part of the subscription,
+    # not a step before it. Everything UBB can refuse alone — the plan,
+    # charge-readiness, the rail — is refused before anything is written. The
+    # `CustomerPlanAssignment` and its `plan.assigned` audit record then commit
+    # in the mirror's own transaction with the `subscription.created` record,
+    # after Stripe has opened the subscription. So a refused or failed attempt
+    # (422, 503, a mirror that could not be written) leaves no new assignment,
+    # and the customer's previous plan stands. A retry after Stripe succeeded
+    # replays the same subscription (the create is keyed on owner and plan)
+    # and writes the mirror and the assignment then.
     from apps.platform.plans.services import PlanService
     from apps.subscriptions.orchestration.service import (
         OrchestrationError, SubscriptionOrchestrator,
     )
-    from core.exceptions import StripeFatalError
+    from core.exceptions import StripeFatalError, StripePaymentError, StripeTransientError
 
     _product_check(request)
     tenant = request.auth.tenant
@@ -279,39 +302,47 @@ def subscribe_customer(request, external_id: str, payload: SubscribeIn):
     if plan is None or plan.archived_at is not None:
         raise Problem("not_found", f"plan with key '{payload.plan_key}' not found")
 
-    # PlanService.assign is a pure-DB operation (no Stripe call): commit it and
-    # its audit entry together, before the Stripe branch runs (mirrors
-    # POST /plans/customers/{external_id}/plan). The assignment's fate must
-    # never depend on what the Stripe call below does next — a subscribe
-    # failure below must not silently drop this already-durable change from
-    # the audit trail.
-    with transaction.atomic():
+    def assign_the_plan():
+        # PlanService.assign is a pure-DB operation (no Stripe call), as on
+        # POST /customers/{external_id}/plan; its audit entry rides with it.
         PlanService.assign(tenant, customer, plan)
         audit_record(
             action=AUDIT_ACTION_PLAN_ASSIGNED, tenant_id=tenant.id,
             resource_type=AUDIT_RESOURCE_TYPE_CUSTOMER, resource_id=customer.external_id,
             metadata={"external_id": customer.external_id, "plan_key": plan.key})
 
+    if not plan.has_stripe_axes:
+        # Markup-only plan: nothing for Stripe to bill, so there is no Stripe
+        # object to start or audit — the assignment is the whole change.
+        with transaction.atomic():
+            assign_the_plan()
+        return 200, {"subscription_id": None, "amount_micros": 0, "quantity": 0}
+
+    def assign_with_the_mirror(mirror):
+        # Runs inside `_persist_mirror`'s transaction, after Stripe opened
+        # the subscription: the assignment, its audit record and the
+        # subscription's commit together or not at all.
+        assign_the_plan()
+        audit_record(
+            action=AUDIT_ACTION_SUBSCRIPTION_CREATED, tenant_id=tenant.id,
+            resource_type=AUDIT_RESOURCE_TYPE_SUBSCRIPTION,
+            resource_id=mirror.stripe_subscription_id,
+            metadata={"external_id": customer.external_id, "plan_key": plan.key,
+                      "seats": payload.seats, "quantity": mirror.quantity,
+                      "amount_micros": mirror.amount_micros})
+
     try:
-        mirror = SubscriptionOrchestrator.subscribe(customer, plan, payload.seats)
+        mirror = SubscriptionOrchestrator.subscribe(
+            customer, plan, payload.seats, on_bound=assign_with_the_mirror)
     except PaymentRailClosed:
         raise  # G27, answered by name (`problems.py`)
+    except StripeTransientError:
+        raise  # 503 service_unavailable, retry with the same request (`problems.py`)
+    except StripePaymentError as e:
+        raise Problem("validation_error", str(e))
     except (OrchestrationError, StripeFatalError) as e:
         raise Problem("validation_error", str(e))
 
-    if mirror is None:
-        # Markup-only plan: nothing for Stripe to bill, so there is no Stripe
-        # object to audit — the assignment above already recorded the change.
-        return 200, {"subscription_id": None, "amount_micros": 0, "quantity": 0}
-
-    # Recorded after the orchestrator commits (it owns its transaction + a
-    # Stripe call — a DB transaction can't wrap the external call).
-    audit_record(
-        action=AUDIT_ACTION_SUBSCRIPTION_CREATED, tenant_id=tenant.id,
-        resource_type=AUDIT_RESOURCE_TYPE_SUBSCRIPTION, resource_id=mirror.stripe_subscription_id,
-        metadata={"external_id": customer.external_id, "plan_key": plan.key,
-                  "seats": payload.seats, "quantity": mirror.quantity,
-                  "amount_micros": mirror.amount_micros})
     return 200, {
         "subscription_id": mirror.stripe_subscription_id,
         "amount_micros": mirror.amount_micros,

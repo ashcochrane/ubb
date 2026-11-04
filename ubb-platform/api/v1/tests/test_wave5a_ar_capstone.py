@@ -25,7 +25,7 @@ from django.utils import timezone
 
 from apps.platform.tenants.models import Tenant
 from apps.platform.customers.models import Customer
-from apps.subscriptions.models import SubscriptionInvoice
+from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 from apps.billing.invoicing.models import CustomerUsageInvoice
 from core.widget_auth import create_widget_token
 
@@ -234,8 +234,12 @@ class TestWave5aARCapstone(TestCase):
         self.assertEqual(self.usage_inv.hosted_invoice_url, "")
 
     def test_account_mismatch_no_row_subscription(self):
-        handle_invoice_finalized(_event(
-            "acct_WRONG", obj=_sub_obj("in_sub_mismatch", "sub_capstone")))
+        # No mirror is bound on the wrong account, so the invoice is not
+        # acknowledged as processed (R10 Stage C4, PLAN §7 item 36): it raises
+        # for the receiver to record retryably, and writes no row there.
+        with self.assertRaises(StripeSubscription.DoesNotExist):
+            handle_invoice_finalized(_event(
+                "acct_WRONG", obj=_sub_obj("in_sub_mismatch", "sub_capstone")))
         self.assertFalse(
             SubscriptionInvoice.objects.filter(stripe_invoice_id="in_sub_mismatch").exists())
 
@@ -826,7 +830,10 @@ class TestPaymentFailedSuspensionClearsFromDurableTruth(TestCase):
             status="suspended", suspension_reason=reasons.PAYMENT_FAILED)
         row = self._usage_row(self.owner, "in_c2_ours", payment_failed_at=timezone.now())
         self._void(_usage_obj("in_nobody_holds_this"))
-        self._void(_sub_obj("in_nobody_holds_this_sub", "sub_nobody_holds"))
+        # A subscription invoice whose subscription has no mirror is retried,
+        # not acknowledged (R10 Stage C4, PLAN §7 item 36), and settles nothing.
+        with self.assertRaises(StripeSubscription.DoesNotExist):
+            self._void(_sub_obj("in_nobody_holds_this_sub", "sub_nobody_holds"))
         row.refresh_from_db()
         self.assertIsNotNone(row.payment_failed_at)
         self.assertEqual(self._standing(self.owner), ("suspended", reasons.PAYMENT_FAILED))
@@ -1043,7 +1050,9 @@ class TestAnInvoiceKeepsItsHistoricalBillingOwner(TestCase):
         row.refresh_from_db()
         self.assertEqual((row.customer_id, row.billing_owner_id), (seat.id, seat.id))
 
-        # The REAL sync re-points the mirror to the business's Stripe customer...
+        # The REAL sync, listing the subscription under the business's Stripe
+        # customer, refreshes the mirror's facts and keeps its binding: an
+        # existing mirror is never rebound (R10 Stage C4, PLAN §7 item 33)...
         page = stripe.ListObject.construct_from(
             {"object": "list", "has_more": False, "url": "/v1/subscriptions",
              "data": [a_subscription_dict("sub_seat_r", "cus_biz_r", "active",
@@ -1053,7 +1062,7 @@ class TestAnInvoiceKeepsItsHistoricalBillingOwner(TestCase):
             synced = sync_subscriptions(self.tenant)
         self.assertEqual(synced["synced"], 1)
         self.assertEqual(StripeSubscription.objects.get(
-            stripe_subscription_id="sub_seat_r").customer_id, biz.id)
+            stripe_subscription_id="sub_seat_r").customer_id, seat.id)
         # ...and a later delivery for the existing invoice still changes nothing.
         self._deliver(handle_invoice_finalized, "in_seat_r", "sub_seat_r")
         row.refresh_from_db()
