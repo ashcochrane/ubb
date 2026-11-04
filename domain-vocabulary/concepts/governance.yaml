@@ -30,6 +30,14 @@ audit_action:
     - member.removed
     # Tenant governance and configuration.
     - tenant.config_changed
+    # The Stripe customer UBB invoices the tenant's platform fee to (R10 Stage
+    # C3, F-10, RULED Q6). Set by a UBB operator through the one supported
+    # path, the `set_platform_billing_customer` management command, which
+    # records this under the operator actor; no tenant route and no admin form
+    # writes it. Its own act rather than `tenant.config_changed`, because a
+    # governance reader asking who pointed the platform fee at which Stripe
+    # customer must not have to read metadata to find out.
+    - tenant.platform_billing_customer_set
     - sandbox.created
     - sandbox.reset
     - connect.started

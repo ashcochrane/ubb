@@ -85,6 +85,12 @@ tenant's sandbox at mint time. (`apps/platform/tenants/models.py:TenantApiKey`)
 **Customer**:
 A tenant's end-user — the entity that incurs usage and, for billing tenants, holds a wallet; keyed
 by tenant-scoped `external_id` and soft-deletable. (`apps/platform/customers/models.py:Customer`)
+Customer creation is performed through the product customer-creation API, `POST /customers`
+(`api/v1/platform_endpoints.py:create_customer`) — the one creation path in v1, and the deliberate
+product boundary: it validates the facts that decide the billing owner and does what creating a
+customer entails (the seat-quantity sync, the `customer.created` audit record). Django admin is not a
+Customer creation surface; it inspects and maintains existing customers (R10 Stage C3;
+owner/consultant ruling 2026-11-04).
 
 **external_id**:
 The tenant's own identifier for a customer, unique per tenant — UBB's public handle for it.
@@ -103,6 +109,17 @@ _Avoid_: "payer", "account holder".
 **billing_topology**:
 On a business customer, whether its seats draw from a shared wallet (`pooled`) or self-fund
 (`allocated`). (`apps/platform/customers/models.py:BILLING_TOPOLOGY_CHOICES`)
+
+**Tenant and topology are declared at creation**:
+A customer's tenant, and its account type, its parent and a business's billing topology — together
+what decides its **billing owner** — are set when the customer is created through `POST /customers`
+(see **Customer**) and are not editable afterwards in v1: the customer admin shows all four
+read-only on an existing customer (R10 Stage C3, F-7; owner/consultant rulings 2026-11-04). Every
+posting carries the owner it was recorded under and the postpaid close bills a new invoice to the
+owner the topology names, so a mid-period topology change would bill recorded usage twice, not at
+all, or to another owner; and a customer moved between tenants would carry its ownership, history
+and relationships across the tenant boundary. Changing any of them requires a future, explicitly
+designed workflow with defined economic cutover semantics. (`apps/platform/customers/admin.py:CustomerAdmin`)
 
 **Seat roster**:
 The live set of seats under a business; adding/removing a seat is a roster change, broadcast

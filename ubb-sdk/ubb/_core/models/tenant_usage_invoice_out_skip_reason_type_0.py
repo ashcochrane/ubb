@@ -1,6 +1,7 @@
 from enum import Enum
 
 class TenantUsageInvoiceOutSkipReasonType0(str, Enum):
+    BELOW_MINOR_UNIT = "below_minor_unit"
     NOTHING_TO_BILL = "nothing_to_bill"
     NOT_CHARGE_READY = "not_charge_ready"
     NO_STRIPE_CUSTOMER = "no_stripe_customer"

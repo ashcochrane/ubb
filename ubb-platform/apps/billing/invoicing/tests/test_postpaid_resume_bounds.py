@@ -320,6 +320,141 @@ class TestRetryBounds:
         assert events.first().payload["push_attempts"] == 1
 
 
+def _usage_invoice_events():
+    return OutboxEvent.objects.filter(event_type__startswith="usage_invoice.")
+
+
+@pytest.mark.usefixtures("rail_activated")
+@pytest.mark.django_db
+class TestTheClaimSurvivesItsFirstFailure:
+    """R10 Stage C3, F-8 (PLAN §5.3 and the F-8 clarification under LAUNCHER C3).
+
+    The row is the retry unit, and it now exists before anything can throw.
+    Stage 1 commits the claim — the (owner, period) row as `pending` — and
+    nothing else. Stage 2 is the one atomic holding the supersede, the caps, the
+    snapshot and its tripwire, the aggregation, the skips, the carry
+    reservation and the flip to `pushing`, exactly as before. A raise in stage
+    2 leaves a `failed` row with its error and ONE attempt counted, which
+    `reconcile_postpaid_usage` retries and the caps park `failed_permanent` with
+    its alert. Until C3 the claim was born inside stage 2's atomic, so a raise
+    there rolled it back and the period vanished from retry (Stage B step 7,
+    d9)."""
+
+    def test_stage_b_step_7_d9_an_aggregation_raise_leaves_a_retryable_failed_row(self):
+        from apps.billing.invoicing.models import PostpaidResidualLedger
+        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
+        from apps.billing.queries import is_usage_period_closed
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        PostpaidResidualLedger.objects.create(tenant=t, customer=c, balance_micros=9_000)
+        with _stripe() as m, patch.object(PostpaidUsageService, "aggregate_lines",
+                                          side_effect=RuntimeError("aggregation blew up")):
+            with pytest.raises(RuntimeError):
+                PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=PS)
+        assert rec.status == "failed"
+        assert rec.push_attempts == 1 and rec.first_attempted_at is not None
+        assert "aggregation blew up" in rec.last_attempt_error
+        # Stage 1 is the retry identity and nothing else: no snapshot, no
+        # carry, no total, no pointer, the ledger untouched, no Stripe call, no
+        # event — and the period is not consumed, so a backfill still lands.
+        assert rec.line_snapshot == [] and rec.carry_in_micros is None
+        assert rec.total_billed_micros == 0
+        assert rec.stripe_invoice_id == "" and rec.push_phase == ""
+        assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 9_000
+        for mock in (m.retrieve, m.list, m.create, m.item_create, m.finalize):
+            mock.assert_not_called()
+        assert not _usage_invoice_events().exists()
+        assert is_usage_period_closed(c.id, PS) is False
+        # The hourly reconcile rediscovers the row and bills it.
+        with _stripe() as m, _agg(500_000):
+            reconcile_postpaid_usage()
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.stripe_invoice_id == "in_new"
+        assert rec.push_attempts == 2
+        assert rec.carry_in_micros == 9_000           # reserved once, in stage 2
+        assert m.create.call_count == 1
+
+    def test_a_raise_that_persists_is_parked_after_the_cap_with_one_alert(self, settings):
+        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
+        settings.UBB_POSTPAID_PUSH_MAX_ATTEMPTS = 2
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        with _stripe() as m, patch.object(PostpaidUsageService, "aggregate_lines",
+                                          side_effect=RuntimeError("still broken")):
+            with pytest.raises(RuntimeError):
+                PostpaidUsageService.push_customer_period(t, c, PS, PE)  # attempt 1
+            reconcile_postpaid_usage()                                   # attempt 2
+            reconcile_postpaid_usage()                                   # the cap parks it
+            reconcile_postpaid_usage()                                   # terminal: untouched
+        rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=PS)
+        assert rec.status == "failed_permanent"
+        assert rec.push_attempts == 2
+        assert "still broken" in rec.last_attempt_error
+        for mock in (m.retrieve, m.list, m.create, m.item_create, m.finalize):
+            mock.assert_not_called()
+        events = OutboxEvent.objects.filter(event_type=FAILED_EVENT)
+        assert events.count() == 1
+        assert events.first().payload["push_attempts"] == 2
+        assert "still broken" in events.first().payload["last_error"]
+
+    def test_the_tripwire_raise_on_a_resumed_row_counts_an_attempt(self):
+        """A resumed row re-aggregates live for the F4.2 tripwire; when that
+        raises, the attempt is counted like any other, so the caps can end it.
+        The frozen lines are never touched."""
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        rec = _row(t, c, status="failed", push_attempts=1,
+                   first_attempted_at=timezone.now(),
+                   line_snapshot=[["", 1_000_000]], total_billed_micros=1_000_000)
+        with _stripe() as m, patch.object(PostpaidUsageService, "aggregate_lines",
+                                          side_effect=ValueError("axis retired")):
+            with pytest.raises(ValueError):
+                PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert rec.status == "failed"
+        assert rec.push_attempts == 2
+        assert "axis retired" in rec.last_attempt_error
+        assert rec.line_snapshot == [["", 1_000_000]]
+        for mock in (m.retrieve, m.list, m.create, m.item_create, m.finalize):
+            mock.assert_not_called()
+
+    def test_the_monthly_close_leaves_a_failed_period_for_the_reconcile(self):
+        """Through the task that owns the month, on the REAL raise
+        `aggregate_lines` documents: a stored invoice-line grouping word that
+        is no longer one of the tenant's axes. The close catches and logs it,
+        the period it addressed is still there, and once the word is corrected
+        the hourly reconcile bills the month."""
+        from apps.billing.invoicing.models import PostpaidUsageConfig
+        from apps.metering.usage.models import Posting
+        from apps.billing.invoicing.tasks import (
+            _prior_month, close_postpaid_usage_periods, reconcile_postpaid_usage)
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        start, _end = _prior_month()
+        ev = a_posting(tenant=t, customer=c, billing_owner_id=c.id,
+                       idempotency_key="i1", provider_cost_micros=1,
+                       billed_cost_micros=1_000_000)
+        Posting.objects.filter(id=ev.id).update(
+            effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
+        config = PostpaidUsageConfig.objects.create(
+            tenant=t, invoice_line_grouping="field:no_longer_declared")
+        with _stripe() as m:
+            close_postpaid_usage_periods()
+        rec = CustomerUsageInvoice.objects.get(tenant=t, customer=c, period_start=start)
+        assert rec.status == "failed" and rec.push_attempts == 1
+        assert rec.last_attempt_error.startswith("ValueError(")
+        assert rec.line_snapshot == [] and rec.carry_in_micros is None
+        m.create.assert_not_called()
+        config.invoice_line_grouping = ""
+        config.save(update_fields=["invoice_line_grouping"])
+        with _stripe() as m:
+            reconcile_postpaid_usage()
+        rec.refresh_from_db()
+        assert rec.status == "pushed" and rec.total_billed_micros == 1_000_000
+        assert m.create.call_count == 1
+
+
 @pytest.mark.usefixtures("rail_activated")
 @pytest.mark.django_db
 class TestFrozenLineSnapshot:
@@ -524,13 +659,29 @@ class TestOwnerFirstKeying:
         assert stray.status == "skipped" and stray.skip_reason == "seat_superseded"
         assert rec.customer_id == biz.id and rec.status == "pushed"
 
+    def test_a_seat_row_carried_below_one_minor_unit_is_never_relabelled(self):
+        """R10 Stage C3, F-9: the supersede belt leaves a month whose carry has
+        moved exactly as it is — `below_minor_unit` is terminal, and the reason
+        is the record that its carry moved."""
+        t = _charge_ready_tenant()
+        biz, seat = _pooled_business(t)
+        carried = _row(t, seat, status="skipped", skip_reason="below_minor_unit",
+                       total_billed_micros=4_000, carry_in_micros=0, residual_micros=4_000)
+        with _stripe(), _agg():
+            rec = PostpaidUsageService.push_customer_period(t, seat, PS, PE)
+        carried.refresh_from_db()
+        assert (carried.status, carried.skip_reason) == ("skipped", "below_minor_unit")
+        assert rec.customer_id == biz.id and rec.status == "pushed"
+
     def test_close_task_then_direct_seat_push_one_row_per_owner_period(self):
         from apps.metering.usage.models import Posting
         from apps.billing.invoicing.tasks import close_postpaid_usage_periods, _prior_month
         t = _charge_ready_tenant()
         biz, seat = _pooled_business(t)
         start, end = _prior_month()
-        ev = a_posting(tenant=t, customer=seat,
+        # Pinned to the business, as the recording path pins a pooled seat's
+        # usage (the close sums what is pinned to the owner, R10 Stage C3 F-7).
+        ev = a_posting(tenant=t, customer=seat, billing_owner_id=biz.id,
             idempotency_key="i1", provider_cost_micros=1, billed_cost_micros=1_000_000)
         Posting.objects.filter(id=ev.id).update(
             effective_at=timezone.make_aware(timezone.datetime(start.year, start.month, 15)))
@@ -617,6 +768,23 @@ class TestRepushCommand:
             rec.refresh_from_db()
             assert rec.status == status  # untouched
             assert rec.push_attempts == 1  # counters not reset
+
+    def test_refuses_a_period_carried_below_one_minor_unit(self):
+        """R10 Stage C3, F-9 (RULED Q5): a `below_minor_unit` period has
+        already moved its carry — consumed the carry-in, deposited the
+        residual — so a reset would move it a second time. Nothing to bill."""
+        from apps.billing.invoicing.models import PostpaidResidualLedger
+        t = _charge_ready_tenant()
+        c = _customer(t)
+        with _stripe(), _agg(5_000):
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+        rec.refresh_from_db()
+        assert (rec.status, rec.skip_reason) == ("skipped", "below_minor_unit")
+        with pytest.raises(CommandError, match="below one minor unit"):
+            call_command("repush_usage_invoice", str(rec.id))
+        rec.refresh_from_db()
+        assert (rec.status, rec.skip_reason) == ("skipped", "below_minor_unit")
+        assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 5_000
 
     def test_rebill_void_clears_pointer_and_list_match_skips_the_void_invoice(self):
         t = _charge_ready_tenant()

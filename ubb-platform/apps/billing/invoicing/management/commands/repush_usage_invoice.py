@@ -41,6 +41,16 @@ class Command(BaseCommand):
                 "are retried automatically; a pushed row is already billed."
             )
 
+        if rec.carried_below_minor_unit:
+            # R10 Stage C3, F-9 (RULED Q5): the period's carry has already
+            # moved — the carry-in consumed and the residual deposited — so a
+            # reset would move it a second time. There is nothing to bill.
+            raise CommandError(
+                f"Row {rec.id} was skipped below one minor unit: its usage was "
+                "carried forward to a later invoice and the carry has already "
+                "moved, so there is nothing to bill and a repush would move it "
+                "again.")
+
         owner = rec.customer.resolve_billing_owner()
         if owner.id != rec.customer_id:
             # The owner-first service re-keys every push on the billing owner, so a

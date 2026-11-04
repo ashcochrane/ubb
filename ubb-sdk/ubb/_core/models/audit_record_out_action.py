@@ -60,6 +60,7 @@ class AuditRecordOutAction(str, Enum):
     TENANT_CONFIG_CHANGED = "tenant.config_changed"
     TENANT_DEFAULT_MARKUP_DECLARED = "tenant_default_markup.declared"
     TENANT_DEFAULT_MARKUP_WITHDRAWN = "tenant_default_markup.withdrawn"
+    TENANT_PLATFORM_BILLING_CUSTOMER_SET = "tenant.platform_billing_customer_set"
     TENANT_SUPPLIED_REVENUE_RECORDED = "tenant_supplied_revenue.recorded"
     TOP_UP_REQUESTED = "top_up.requested"
     USAGE_REFUNDED = "usage.refunded"

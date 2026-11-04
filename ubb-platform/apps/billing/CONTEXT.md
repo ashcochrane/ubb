@@ -553,8 +553,14 @@ A top-up that needs SCA (Strong Customer Authentication) before it can complete.
 ## Period close / usage invoicing (postpaid)
 
 **Period close**:
-The monthly job pushing each postpaid customer's prior-month usage to Stripe as invoice line items.
-(`apps/billing/invoicing/tasks.py`)
+The monthly job pushing each postpaid **billing owner's** prior-month usage to Stripe as invoice
+line items. The owner is `resolve_billing_owner()` — a pooled seat's business, everyone else
+themselves, an allocated seat included — and a business's invoice sums exactly the postings pinned
+to it (`Posting.billing_owner_id`); since R10 Stage C3 (F-7) nothing reads a seat's parent to decide
+whose usage it is. It decides the owner of a NEW invoice; an existing one keeps the owner it was
+issued to. The owner resolved at close equals the one pinned at record time because a customer's
+topology is declared at creation and is not editable afterwards in v1 (platform `CONTEXT.md`,
+"Tenant and topology are declared at creation"). (`apps/billing/invoicing/tasks.py`)
 
 **Usage invoice**:
 A postpaid customer's usage for one calendar month, pushed to Stripe as line items; one per
@@ -562,16 +568,25 @@ A postpaid customer's usage for one calendar month, pushed to Stripe as line ite
 _Avoid_: confusing it with a Stripe invoice — UBB pushes the lines; Stripe owns the invoice.
 
 **Skip reason**:
-Why a usage invoice was skipped rather than pushed — the registry's closed `skip_reason`: two
-terminal truths about the period (`no_usage`, `nothing_to_bill`), one supersession
-(`seat_superseded`), and three recoverable states (`no_stripe_customer`, `not_charge_ready`,
-`payment_rail_closed`). Present only on a skipped invoice and STORED as null on every other — since
-R10-W4 the column holds null or one of the six, `ck_usage_invoice_skip_reason_known`
+Why a usage invoice was skipped rather than pushed — the registry's closed `skip_reason`: three
+terminal truths about the period (`no_usage`, `nothing_to_bill`, `below_minor_unit`), one
+supersession (`seat_superseded`), and three recoverable states (`no_stripe_customer`,
+`not_charge_ready`, `payment_rail_closed`). Present only on a skipped invoice and STORED as null on
+every other — the column holds null or one of the seven, `ck_usage_invoice_skip_reason_known`
 refuses anything else, and the read publishes what is stored rather than translating a blank.
+`below_minor_unit` (R10 Stage C3, F-9) is the month whose usage, with the carry it took, reached no
+minor unit: no Stripe invoice, no `usage_invoice.pushed`, and the one skip whose carry MOVES — the
+carry-in consumed and the residual deposited, exactly once. It was recorded `pushed` with no invoice
+id before; `pushed` always means a real Stripe invoice now.
 (`apps/billing/invoicing/models.py:CustomerUsageInvoice.skip_reason`)
 
 **Line-item push**:
 The claim → Stripe → record flow that aggregates usage into lines and finalizes the Stripe invoice.
+The claim is COMMITTED before anything can throw (R10 Stage C3, F-8): stage 1 creates the
+(owner, period) row as `pending` and nothing else; stage 2 is one atomic holding the caps, the
+snapshot and its tripwire, the aggregation, the skips, the carry reservation and the flip to
+`pushing`. A raise in stage 2 leaves the row `failed` with its error and one attempt, which the
+hourly reconcile retries until it bills or the caps park it `failed_permanent`.
 
 **Invoice-line grouping**:
 The one axis a tenant's usage invoice is broken into lines by — a word of the SAME grouping
@@ -637,6 +652,16 @@ had before R10-W4 is a retired alias of the measure in `economics.yaml`.
 UBB's own charge to the tenant, computed per-product at the tenant's own period close. The
 per-product amounts are summed in exact micros and reach the currency's minor unit exactly once,
 at close (R3). (`apps/billing/tenant_billing/`)
+
+**Platform billing customer**:
+The Stripe customer, on UBB's own Stripe account, that a tenant's platform fee is invoiced to
+(`BillingTenantConfig.stripe_customer_id`). ONE supported writer (R10 Stage C3, F-10): a UBB operator
+running `manage.py set_platform_billing_customer`, which checks the id's shape, can `--verify` it
+with Stripe under UBB's own key (refused by name where that key is unset), and records
+`tenant.platform_billing_customer_set` under the operator actor. A tenant without a usable one has
+its fee periods left `closed` and is reported once per run as `platform_invoice.no_platform_customer`.
+_Avoid_: `Tenant.stripe_customer_id`, a duplicate column nothing reads for the fee; and any tenant
+route or admin form — neither writes it.
 
 **Platform fee carry**:
 The sub-minor-unit remainder a period's fee could not bill, banked against the tenant and applied

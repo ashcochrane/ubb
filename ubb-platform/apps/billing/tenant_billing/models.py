@@ -1,3 +1,5 @@
+import re
+
 from django.db import models
 
 from core.currency_policy import usd_only_check
@@ -204,10 +206,32 @@ class PlatformFeeCarry(BaseModel):
         return f"PlatformFeeCarry({self.tenant.name}: {self.carried_out_micros})"
 
 
+#: A Stripe customer id in the shape Stripe issues one: ``cus_`` and an
+#: alphanumeric suffix, within the column's 255 characters.
+STRIPE_CUSTOMER_ID = re.compile(r"cus_[A-Za-z0-9]{1,251}")
+
+
+def is_a_stripe_customer_id(value):
+    """Whether ``value`` has the shape of a Stripe customer id — the local check
+    the operator command applies before it writes the platform billing
+    customer, and the monthly invoice job before it claims a period (R10
+    Stage C3, F-10). Only Stripe can say the customer exists
+    (``set_platform_billing_customer --verify``)."""
+    return isinstance(value, str) and STRIPE_CUSTOMER_ID.fullmatch(value) is not None
+
+
 class BillingTenantConfig(BaseModel):
     tenant = models.OneToOneField(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="billing_config"
     )
+    # The Stripe customer UBB invoices this tenant's platform fee to, on UBB's
+    # own Stripe account (`StripeService.create_tenant_platform_invoice`).
+    # Written by ONE supported path: a UBB operator running
+    # `manage.py set_platform_billing_customer` (R10 Stage C3, F-10, RULED Q6),
+    # which validates it, can verify it with Stripe, and records
+    # `tenant.platform_billing_customer_set` under the operator actor. No tenant
+    # route and no admin form writes it. Not `Tenant.stripe_customer_id`, which
+    # nothing reads for the platform fee.
     stripe_customer_id = models.CharField(max_length=255, blank=True, default="")
     platform_fee_percentage = models.DecimalField(
         max_digits=5, decimal_places=2, default=1.00

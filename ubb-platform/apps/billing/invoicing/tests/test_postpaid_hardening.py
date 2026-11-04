@@ -115,7 +115,12 @@ class TestItemsPinnedToDraft:
 
     def test_subcent_only_creates_no_empty_invoice(self):
         """B1 guard: a sub-cent-only period bills nothing, so we must NOT create an
-        empty Stripe invoice — carry the residual and record a no-bill push."""
+        empty Stripe invoice — carry the residual and record the period as
+        SKIPPED below one minor unit (R10 Stage C3, F-9, RULED Q5). It was
+        recorded `pushed` with no invoice identity until C3: `pushed` always
+        means a real Stripe invoice now."""
+        from apps.billing.invoicing.models import PostpaidResidualLedger
+        from apps.platform.events.models import OutboxEvent
         t = _charge_ready_tenant()
         c = _postpaid_customer(t)
 
@@ -129,9 +134,42 @@ class TestItemsPinnedToDraft:
         assert m_inv.call_count == 0   # no empty invoice
         assert m_item.call_count == 0
         assert m_fin.call_count == 0
-        assert rec.status == "pushed"
-        assert rec.stripe_invoice_id == ""
+        assert rec.status == "skipped"
+        assert rec.skip_reason == "below_minor_unit"
+        assert rec.stripe_invoice_id == "" and rec.pushed_at is None
         assert rec.residual_micros == 5_000
+        assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 5_000
+        assert not OutboxEvent.objects.filter(event_type="usage_invoice.pushed").exists()
+
+    def test_stage_b_step_7_d8_a_sub_cent_period_is_skipped_and_its_month_closed(self):
+        """Stage B step 7 (d8), end to end from a recorded posting: half a cent
+        of usage in the month is carried, the period is `skipped` /
+        `below_minor_unit` with no Stripe invoice and no `usage_invoice.pushed`,
+        and the month is closed to backfill — its usage is in the carry."""
+        from apps.billing.invoicing.models import CustomerUsageInvoice, PostpaidResidualLedger
+        from apps.billing.queries import is_usage_period_closed
+        from apps.metering.usage.tests._helpers import a_posting
+        from apps.platform.events.models import OutboxEvent
+        t = _charge_ready_tenant()
+        c = _postpaid_customer(t)
+        a_posting(tenant=t, customer=c, billing_owner_id=c.id, idempotency_key="d8",
+                  provider_cost_micros=1, billed_cost_micros=5_000,
+                  effective_at=timezone.make_aware(timezone.datetime(2026, 6, 15)))
+
+        item_p, inv_p, fin_p, ev_p, list_p = _stripe_mocks(invoice_id="in_localpass_d8")
+        with item_p as m_item, inv_p as m_inv, fin_p, ev_p, list_p as m_list:
+            rec = PostpaidUsageService.push_customer_period(t, c, PS, PE)
+
+        rec.refresh_from_db()
+        assert (rec.status, rec.skip_reason) == ("skipped", "below_minor_unit")
+        assert rec.total_billed_micros == 5_000 and rec.residual_micros == 5_000
+        assert rec.stripe_invoice_id == ""
+        assert m_inv.call_count == 0 and m_item.call_count == 0 and m_list.call_count == 0
+        assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 5_000
+        assert not OutboxEvent.objects.filter(event_type="usage_invoice.pushed").exists()
+        assert not CustomerUsageInvoice.objects.filter(
+            status="pushed", stripe_invoice_id="").exists()
+        assert is_usage_period_closed(c.id, PS) is True
 
 
 @pytest.mark.usefixtures("rail_activated")

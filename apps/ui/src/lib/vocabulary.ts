@@ -236,6 +236,7 @@ export const AUDIT_ACTION_VALUES = [
   "member.role_changed",
   "member.removed",
   "tenant.config_changed",
+  "tenant.platform_billing_customer_set",
   "sandbox.created",
   "sandbox.reset",
   "connect.started",
@@ -310,6 +311,7 @@ export const AUDIT_ACTION_LABEL_KEYS = {
   "member.role_changed": "audit_action.member.role_changed",
   "member.removed": "audit_action.member.removed",
   "tenant.config_changed": "audit_action.tenant.config_changed",
+  "tenant.platform_billing_customer_set": "audit_action.tenant.platform_billing_customer_set",
   "sandbox.created": "audit_action.sandbox.created",
   "sandbox.reset": "audit_action.sandbox.reset",
   "connect.started": "audit_action.connect.started",
@@ -2079,18 +2081,22 @@ export const ROLE_LABEL_KEYS = {
 //
 // closed — UBB owns the whole value set — exactly these values, no more.
 //
-// Why a usage invoice was skipped rather than pushed. Two are terminal truths
-// about the period — nothing was recorded (no_usage), or what was recorded
-// priced at exactly nothing (nothing_to_bill) — one says a newer seat
-// superseded it, and three are recoverable: the customer has no Stripe
-// customer yet, the tenant's account cannot take charges yet, or the payment
-// rail is closed. Present only on a skipped invoice; null on every other one.
+// Why a usage invoice was skipped rather than pushed. Three are terminal
+// truths about the period — nothing was recorded (no_usage), what was recorded
+// priced at exactly nothing (nothing_to_bill), or what was owed, with the
+// sub-cent amount carried in from earlier months, still came to less than one
+// minor unit, so it was carried forward to a later invoice and no invoice was
+// issued (below_minor_unit) — one says a newer seat superseded it, and three
+// are recoverable: the customer has no Stripe customer yet, the tenant's
+// account cannot take charges yet, or the payment rail is closed. Present only
+// on a skipped invoice; null on every other one.
 //
 // Declared in concepts/billing.yaml.
 
 export const SKIP_REASON_VALUES = [
   "no_usage",
   "nothing_to_bill",
+  "below_minor_unit",
   "seat_superseded",
   "no_stripe_customer",
   "not_charge_ready",
@@ -2102,6 +2108,7 @@ export type SkipReason = (typeof SKIP_REASON_VALUES)[number];
 export const SKIP_REASON_LABEL_KEYS = {
   "no_usage": "skip_reason.no_usage",
   "nothing_to_bill": "skip_reason.nothing_to_bill",
+  "below_minor_unit": "skip_reason.below_minor_unit",
   "seat_superseded": "skip_reason.seat_superseded",
   "no_stripe_customer": "skip_reason.no_stripe_customer",
   "not_charge_ready": "skip_reason.not_charge_ready",

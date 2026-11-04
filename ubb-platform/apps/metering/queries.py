@@ -21,7 +21,8 @@ Consumers:
 - apps/billing/gating/tasks.py → get_customer_ids_with_postings()
 - apps/billing/invoicing/tasks.py → get_customer_ids_with_postings()
 - apps/billing/invoicing/services/postpaid_service.py → get_customer_cost_totals(),
-  get_billed_totals_by_customer(), get_customer_billed_breakdown()
+  get_billed_totals_by_customer(), get_customer_billed_breakdown(),
+  billing_owner_recorded_anything()
 - api/v1/billing_endpoints.py → grouping_refusal(), invoice_line_cardinality_warning()
   — the postpaid config's write surface, which validates the invoice-line
   grouping axis against this tenant's own discovery contract and warns on its
@@ -629,9 +630,20 @@ def _carrying_customer_liability(postings):
         pricing_status__in=INVOICE_LINE_STATES_WITH_NO_LIABILITY)
 
 
-def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
+def get_billed_totals_by_customer(tenant_id, billing_owner_id, period_start: date,
                                   period_end: date) -> dict:
-    """Sum(billed_cost_micros) per customer over [period_start, period_end).
+    """Sum(billed_cost_micros) per customer over [period_start, period_end), of
+    the postings pinned to ONE billing owner.
+
+    ⚠ **THE OWNER IS THE POSTING'S OWN `billing_owner_id`, NEVER A PARENT LINK**
+    (R10 Stage C3, F-7). This builds a business's postpaid invoice lines, one
+    per seat, and it used to take the business's seats by `parent=` — so an
+    ALLOCATED business, whose seats are each their own billing owner, summed
+    usage that was never its to pay. The recording path pins every posting to
+    the owner `Customer.resolve_billing_owner()` names (a pooled seat's
+    business, everyone else themselves), and that pin is the one ownership
+    fact this read answers from: the postings pinned to the owner, grouped by
+    the customer that recorded each, the owner's own postings included.
 
     Returns {customer_id: {billed_cost_micros, unpriced_event_count}}; a
     customer with no events in the window is absent (a customer whose events all
@@ -659,7 +671,7 @@ def get_billed_totals_by_customer(tenant_id, customer_ids, period_start: date,
     from apps.metering.usage.models import Posting
 
     rows = (_carrying_customer_liability(Posting.objects.filter(
-        tenant_id=tenant_id, customer_id__in=list(customer_ids),
+        tenant_id=tenant_id, billing_owner_id=billing_owner_id,
         effective_at__gte=utc_day_start(period_start),
         effective_at__lt=utc_day_start(period_end),
     )).values("customer_id").annotate(

@@ -12,6 +12,12 @@
 // page's card and the customer's own section. The skip reason was humanised
 // in both (`g6-humanises-usage-invoices-card`, `-section`); it is a closed
 // concept now, present only on a skipped invoice and null on every other one.
+//
+// `below_minor_unit` (R10 Stage C3, F-9) is the month whose usage, with the
+// sub-cent amount carried in from earlier months, still came to less than one
+// minor unit: no Stripe invoice was issued and the amount was carried forward.
+// Such a month was shown as pushed with no invoice id before; a pushed invoice
+// now always has one. It renders through the same label map as every reason.
 
 import { labelMap } from "@/lib/localisation";
 import {
