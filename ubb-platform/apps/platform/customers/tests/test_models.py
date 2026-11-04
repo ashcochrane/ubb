@@ -321,14 +321,51 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
                 response = self._add(tenant, external_id, account_type,
                                      parent=parent, topology=topology)
                 self.assertEqual(response.status_code, 403)
+        # Django's "save as new" on the change page is the add path too: it
+        # posts to the change URL and is refused, whatever the topology says.
+        response = self.http.post(
+            reverse("admin:customers_customer_change", args=[self.seat.pk]),
+            self._form(self.seat, external_id="seat-copy", tenant=str(elsewhere.pk),
+                       parent=str(elsewhere_pooled.pk), _saveasnew="Save as new"))
+        self.assertEqual(response.status_code, 403)
         self.assertEqual(Customer.all_objects.count(), before)
+
+    def _staff_with_every_customer_permission(self):
+        """A staff user (not a superuser) granted add, change and view on
+        customers — so a refusal to add is the admin's own rule, not a
+        missing permission."""
+        from django.contrib.auth import get_user_model
+        from django.contrib.auth.models import Permission
+        from django.test import Client
+        staff = get_user_model().objects.create_user(
+            username="staff", email="staff@example.com", password="pw", is_staff=True)
+        staff.user_permissions.set(Permission.objects.filter(
+            content_type__app_label="customers", content_type__model="customer"))
+        http = Client()
+        http.force_login(staff)
+        return http
+
+    def test_even_a_user_granted_the_add_permission_cannot_add(self):
+        from django.urls import reverse
+        http = self._staff_with_every_customer_permission()
+        self.assertEqual(http.get(reverse("admin:customers_customer_add")).status_code, 403)
 
     def test_the_changelist_and_an_existing_customers_change_page_remain(self):
         from django.urls import reverse
-        changelist = self.http.get(reverse("admin:customers_customer_changelist"))
-        self.assertEqual(changelist.status_code, 200)
+        staff = self._staff_with_every_customer_permission()
+        for who, http in (("superuser", self.http), ("staff", staff)):
+            with self.subTest(who=who):
+                changelist = http.get(reverse("admin:customers_customer_changelist"))
+                self.assertEqual(changelist.status_code, 200)
+                for customer in (self.seat, self.pooled, self.solo):
+                    self.assertEqual(http.get(reverse(
+                        "admin:customers_customer_change", args=[customer.pk])).status_code, 200)
         for customer in (self.seat, self.pooled, self.solo):
-            with self.subTest(customer=customer.external_id):
-                self.assertTrue(self.model_admin.has_change_permission(self.request, customer))
-                self.assertEqual(self.http.get(reverse(
-                    "admin:customers_customer_change", args=[customer.pk])).status_code, 200)
+            self.assertTrue(self.model_admin.has_change_permission(self.request, customer))
+        # The staff user's ordinary edit saves, as the superuser's does.
+        response = staff.post(
+            reverse("admin:customers_customer_change", args=[self.solo.pk]),
+            self._form(self.solo, stripe_customer_id="cus_Solo1"))
+        self.assertEqual(response.status_code, 302)
+        self.solo.refresh_from_db()
+        self.assertEqual(self.solo.stripe_customer_id, "cus_Solo1")
