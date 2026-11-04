@@ -147,6 +147,34 @@ class TestCustomerSuspendedSchema:
         assert event.reason == reasons.HARD_FLOOR
 
 
+class TestCustomerReactivatedSchema:
+    """R10 Stage C2 (RULED Q3): the state-entered twin of `customer.suspended`,
+    carried by the catalogue and distinct from `customer.stop_cleared`."""
+
+    def test_event_type_is_the_registrys_and_in_the_catalogue(self):
+        from apps.platform.events.catalog import WEBHOOK_EVENT_TYPES
+        from apps.platform.events.schemas import CustomerReactivated, CustomerStopCleared
+        from core.vocabulary import WEBHOOK_EVENT_TYPE_CUSTOMER_REACTIVATED
+        assert CustomerReactivated.EVENT_TYPE == "customer.reactivated"
+        assert CustomerReactivated.EVENT_TYPE is WEBHOOK_EVENT_TYPE_CUSTOMER_REACTIVATED
+        assert CustomerReactivated.EVENT_TYPE in WEBHOOK_EVENT_TYPES
+        assert CustomerReactivated.EVENT_TYPE != CustomerStopCleared.EVENT_TYPE
+
+    def test_fields_follow_the_state_entered_convention(self):
+        from dataclasses import asdict
+        from apps.platform.events.schemas import CustomerReactivated
+        event = CustomerReactivated(
+            tenant_id="t1", customer_id="c1",
+            reason_code=reasons.PAYMENT_FAILED, balance_micros=None)
+        assert asdict(event) == {"tenant_id": "t1", "customer_id": "c1",
+                                 "reason_code": reasons.PAYMENT_FAILED,
+                                 "balance_micros": None}
+        with_wallet = CustomerReactivated(
+            tenant_id="t1", customer_id="c1",
+            reason_code=reasons.HARD_FLOOR, balance_micros=0)
+        assert with_wallet.balance_micros == 0  # 0 is a balance, never "none"
+
+
 class TestMarginEventContracts:
     def test_margin_event_contracts(self):
         from dataclasses import asdict

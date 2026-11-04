@@ -181,6 +181,15 @@ reason_code:
     # the two rows of one expired tree no longer disagree.
     - absolute_deadline
     - parent_expired
+    # R10 Stage C2 (RULED Q4): the two causes a customer SUSPENSION can carry
+    # that no stop line opens — a Stripe invoice for the billing owner failed
+    # payment, or a top-up's dispute was lost and the claw-back left the
+    # wallet past its floor. Neither names a bound a unit of work reached, so
+    # neither ever rides an acknowledgement's `stop_reason` or a terminal
+    # stop event: they travel on `customer.suspended` and, as the reason being
+    # left, on `customer.reactivated`.
+    - payment_failed
+    - dispute_lost
   allow_unknown: true
   label_key_prefix: reason_code
   retired_aliases:

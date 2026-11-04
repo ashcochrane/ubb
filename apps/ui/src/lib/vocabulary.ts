@@ -1817,6 +1817,8 @@ export const REASON_CODE_KNOWN_VALUES = [
   "hard_floor",
   "absolute_deadline",
   "parent_expired",
+  "payment_failed",
+  "dispute_lost",
 ] as const;
 
 export type ReasonCodeKnown = (typeof REASON_CODE_KNOWN_VALUES)[number];
@@ -1834,6 +1836,8 @@ export const REASON_CODE_LABEL_KEYS = {
   "hard_floor": "reason_code.hard_floor",
   "absolute_deadline": "reason_code.absolute_deadline",
   "parent_expired": "reason_code.parent_expired",
+  "payment_failed": "reason_code.payment_failed",
+  "dispute_lost": "reason_code.dispute_lost",
 } as const satisfies Record<ReasonCodeKnown, string>;
 
 
@@ -2711,6 +2715,7 @@ export const WEBHOOK_EVENT_TYPE_VALUES = [
   "customer.stopped",
   "customer.stop_cleared",
   "customer.suspended",
+  "customer.reactivated",
   "customer.deleted",
   "customer.unprofitable",
   "provider.cost_spike",
@@ -2753,6 +2758,7 @@ export const WEBHOOK_EVENT_TYPE_LABEL_KEYS = {
   "customer.stopped": "webhook_event_type.customer.stopped",
   "customer.stop_cleared": "webhook_event_type.customer.stop_cleared",
   "customer.suspended": "webhook_event_type.customer.suspended",
+  "customer.reactivated": "webhook_event_type.customer.reactivated",
   "customer.deleted": "webhook_event_type.customer.deleted",
   "customer.unprofitable": "webhook_event_type.customer.unprofitable",
   "provider.cost_spike": "webhook_event_type.provider.cost_spike",

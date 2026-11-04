@@ -424,7 +424,7 @@ class TheSourceFactsPairTheirAmountWithTheirCurrencyTest(TestCase):
             interval="month", current_period_start=now, current_period_end=now,
             last_synced_at=now)
         self.invoice = SubscriptionInvoice.objects.create(
-            tenant=tenant, customer=customer, stripe_subscription=self.subscription,
+            tenant=tenant, customer=customer, billing_owner=customer, stripe_subscription=self.subscription,
             stripe_invoice_id="in_eur", amount_paid_micros=None,
             source_amount_paid_minor=1999, currency="eur",
             period_start=now, period_end=now, paid_at=now)

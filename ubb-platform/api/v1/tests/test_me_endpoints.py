@@ -374,7 +374,7 @@ def _make_subscription_invoice(tenant, customer):
     )
     return SubscriptionInvoice.objects.create(
         tenant=tenant,
-        customer=customer,
+        customer=customer, billing_owner=customer,
         stripe_subscription=sub,
         stripe_invoice_id="in_sub_test",
         amount_paid_micros=20_000_000,

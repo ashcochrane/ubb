@@ -30,7 +30,8 @@ whole set as ``vocabulary.WEBHOOK_EVENT_TYPE_VALUES``. A subscription's
 :data:`EVENT_SELECTORS` below, and :func:`unpublished_event_types` says
 whether a proposed subscription names only published events before the API
 refuses it with a ``validation_error``. An event's name in a delivered body
-(``payload["event_type"]``) is always one of the 37, never the selector.
+(``payload["event_type"]``) is always one of the published names, never the
+selector.
 """
 from __future__ import annotations
 
@@ -50,7 +51,7 @@ DEFAULT_TOLERANCE = 300  # seconds of clock skew / delivery delay allowed (v2)
 WILDCARD = "*"
 
 #: EVERYTHING A SUBSCRIPTION'S ``event_types`` MAY NAME: the registry's closed
-#: catalogue of 37 events plus the wildcard. Not an alias of the generated set
+#: catalogue of events plus the wildcard. Not an alias of the generated set
 #: — the wildcard is a selector the registry deliberately does not list — and
 #: the reason a subscription is checked against this rather than against
 #: ``vocabulary.WEBHOOK_EVENT_TYPE_VALUES`` directly.

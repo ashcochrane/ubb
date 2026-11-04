@@ -12,9 +12,11 @@ from apps.billing.topups.models import TopUpAttempt
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant, stripe_call
 from apps.billing.connectors.stripe.invoice_routing import (
+    SETTLED_PAYMENT_STATUSES,
     _invoice_subscription_id,
     _refresh_urls,
     ar_transition_allowed,
+    settle_failure_stamp,
 )
 from core.vocabulary import (
     SKIP_REASON_NOT_CHARGE_READY,
@@ -175,11 +177,20 @@ def reconcile_invoice_payment_status():
     transition table the webhook path uses (paid/void final; uncollectible
     remains payable/voidable). A genuinely illegal move Stripe reports (e.g.
     paid -> open) is loud-logged, never applied.
+
+    R10 Stage C2 (F-6, PLAN §7 item 26): the pass first re-decides every owner
+    still suspended for `payment_failed` (`_restore_payment_failed_owners`), so
+    an owner whose last failure was settled never stays suspended because one
+    delivery's decision failed; then a row observed paid or void settles its
+    failure stamp and billing re-decides that row's owner at once.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    from apps.subscriptions.ports import repair_subscription_invoice
+    from apps.billing.gating.services.live_counter import LiveCounter
+    from apps.subscriptions.ports import (
+        repair_subscription_invoice, settle_subscription_invoice_payment_failure)
     from apps.platform.tenants.models import Tenant
 
+    _restore_payment_failed_owners()
     cutoff = int((timezone.now() - timedelta(days=4)).timestamp())
     tenants = (Tenant.objects
                .exclude(stripe_connected_account_id="")
@@ -206,6 +217,15 @@ def reconcile_invoice_payment_status():
                 if _invoice_subscription_id(inv):
                     repaired += repair_subscription_invoice(
                         tenant, stripe_invoice_id, inv, new_status)
+                    if new_status in SETTLED_PAYMENT_STATUSES:
+                        # R10 Stage C2 (F-6, §7 item 26): observing `paid` or
+                        # `void` settles the subscription invoice's failure
+                        # stamp (the port's row), and billing decides the
+                        # owner's clear.
+                        settled = settle_subscription_invoice_payment_failure(
+                            tenant, stripe_invoice_id)
+                        if settled is not None:
+                            LiveCounter.clear_payment_failed_suspension(settled)
                     # F5.5: a CONSOLIDATED usage rec rides this subscription
                     # invoice — repair it along the same transition table.
                     repaired += _repair_usage_invoice(
@@ -224,6 +244,39 @@ def reconcile_invoice_payment_status():
         logger.info("ar.reconcile_repaired", extra={"data": {"repaired": repaired}})
 
 
+def _restore_payment_failed_owners():
+    """The durable bottom line of the AR clear (R10 Stage C2, F-6, PLAN §7
+    item 26): re-run billing's ONE decision —
+    `LiveCounter.clear_payment_failed_suspension`, under the owner's row lock —
+    for every live customer still suspended for `payment_failed`, in every
+    tenant and without asking Stripe anything. Run FIRST in the hourly pass,
+    so the slow Stripe listing that follows (and its time limits) can never
+    keep it from running.
+
+    Not a second recovery mechanism and not a second decision: it picks
+    candidates and triggers the same decision from durable truth. The webhook
+    and the listing settle an invoice's stamp and THEN ask for the decision in
+    its own transaction; a decision that failed there (it logs and returns)
+    left an owner suspended with nothing stamped and nothing left to settle.
+    This pass re-asks, so the owner comes back within the hour. An owner with
+    a qualifying failed or unpaid local invoice still standing is left exactly
+    as it is, and a soft-deleted customer is never a candidate. The decision
+    itself never raises; the candidate query is guarded, so this never does."""
+    from apps.billing.gating.services.live_counter import LiveCounter
+    from apps.platform.customers.models import Customer
+    from apps.platform.work import reasons
+
+    try:
+        suspended = list(Customer.objects.filter(
+            status="suspended", suspension_reason=reasons.PAYMENT_FAILED,
+        ).values_list("id", flat=True))
+    except Exception:
+        logger.exception("ar.payment_failed_restore_failed")
+        return
+    for owner_id in suspended:
+        LiveCounter.clear_payment_failed_suspension(owner_id)
+
+
 def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, refresh_urls,
                           invoice_kind=None):
     """Repair a CustomerUsageInvoice payment_status along the Stripe-legal
@@ -235,9 +288,12 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
     ).exclude(stripe_invoice_id="")
     if invoice_kind is not None:
         qs = qs.filter(invoice_kind=invoice_kind)
+    from apps.billing.gating.services.live_counter import LiveCounter
+
     existing = qs.first()
     if not existing:
         return 0
+    changed = 0
     with transaction.atomic():
         row = model.objects.select_for_update().get(id=existing.id)
         old = row.payment_status
@@ -246,19 +302,27 @@ def _repair_usage_invoice(model, tenant, stripe_invoice_id, inv, new_status, ref
                 logger.error("ar.reconcile_unexpected_regression", extra={"data": {
                     "usage_invoice_id": str(row.id), "stripe_invoice_id": stripe_invoice_id,
                     "local_status": old, "stripe_status": new_status}})
-            else:
-                # Equal-status no-op still refreshes the hosted URLs: the token
-                # rotates on payment_failed, and if that webhook was missed the
-                # hourly pass is the only repair for a lingering open invoice.
-                refresh_urls(row, inv)
-                row.save()
-            return 0
-        row.payment_status = new_status
-        if new_status == "paid" and not row.paid_at:
-            row.paid_at = timezone.now()
-        refresh_urls(row, inv)
+                return 0
+            # Equal-status no-op still refreshes the hosted URLs: the token
+            # rotates on payment_failed, and if that webhook was missed the
+            # hourly pass is the only repair for a lingering open invoice.
+            refresh_urls(row, inv)
+        else:
+            row.payment_status = new_status
+            changed = 1
+            if new_status == "paid" and not row.paid_at:
+                row.paid_at = timezone.now()
+            refresh_urls(row, inv)
+        # R10 Stage C2 (F-6, §7 items 26-27): the poller observing `paid` or
+        # `void` clears THIS row's failure stamp — whether the transition
+        # applied now or a missed webhook already applied it — and billing
+        # then decides, at its one reactivation site, whether the row's
+        # HISTORICAL owner (its own `customer`, I5) comes back.
+        settled_owner_id = settle_failure_stamp(row, row.payment_status)
         row.save()
-    return 1
+    if settled_owner_id is not None:
+        LiveCounter.clear_payment_failed_suspension(settled_owner_id)
+    return changed
 
 
 # Subscription-invoice repair lives in apps.subscriptions.ports

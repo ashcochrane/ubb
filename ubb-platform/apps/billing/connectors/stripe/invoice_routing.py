@@ -86,3 +86,41 @@ def _invoice_subscription_id(inv):
     details = getattr(parent, "subscription_details", None) if parent else None
     s = getattr(details, "subscription", None) if details else None
     return s if isinstance(s, str) else getattr(s, "id", None)
+
+
+# --- the failure stamp on a local invoice row (R10 Stage C2, F-6) ----------
+#
+# AR row state only, beside the transition table above: WHICH statuses settle
+# a stamped invoice, and the one way a settled row's stamp is cleared. Whether
+# the owner then comes back is billing's decision, made at its one
+# reactivation site (`LiveCounter._maybe_unsuspend`) under the owner's row
+# lock — never here, because this module is shared Stripe plumbing and not
+# billing business logic (ADR-001 decision 5).
+
+#: The payment statuses under which a stamped invoice no longer stands as a
+#: payment failure: paid (resolved by payment) and void (RULED 2026-11-03, PLAN
+#: §7 item 26: a resolved AR condition — NOT economically paid, but no longer
+#: an outstanding failure that can keep the owner suspended). An open or
+#: uncollectible invoice — or one with no status yet — that carries
+#: `payment_failed_at` still stands.
+SETTLED_PAYMENT_STATUSES = ("paid", "void")
+
+
+def settle_failure_stamp(row, payment_status):
+    """Clear ``row``'s `payment_failed_at` when ``payment_status`` (the row's
+    applied status — `payment_status` on a usage invoice, `status` on a
+    subscription invoice) is settled: paid, or void (§7 item 26). Call inside
+    the transaction that holds the row's lock, before its save. Returns the
+    row's HISTORICAL billing owner id when a stamp was cleared — its
+    `historical_billing_owner_id`, the stored fact both invoice models answer
+    by one name (a usage invoice's own `customer`, a subscription invoice's
+    `billing_owner`; PLAN §7 item 27) — so the caller asks billing to clear
+    that owner; else None, so a replayed paid/void delivery clears nothing
+    twice. Row state only: it reads a stored column and resolves no owner, so
+    no current topology can enter here. Shared by the webhook fast path and
+    the hourly repair of both invoice tables. Only the stamp moves: a void row
+    gains no `paid_at` and no paid amount."""
+    if payment_status not in SETTLED_PAYMENT_STATUSES or row.payment_failed_at is None:
+        return None
+    row.payment_failed_at = None
+    return row.historical_billing_owner_id

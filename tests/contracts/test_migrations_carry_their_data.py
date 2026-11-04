@@ -93,7 +93,15 @@ FRESH_INITIAL_SET = frozenset({
 #: One since the cutover: `stripe_integration/0002_stripewebhookevent_receiver`
 #: (R10 Stage C1b, F-17 — webhook deduplication scoped per receiver: a column
 #: with a default, a dropped single-column unique, a pair unique and a CHECK).
-MIGRATIONS_SINCE_THE_CUTOVER = 1
+#: Two and three: R10 Stage C2, PLAN §7 item 27 — every subscription invoice
+#: records the historical billing owner UBB resolved for it at creation.
+#: `subscriptions/0002_subscriptioninvoice_billing_owner` adds the column (one
+#: additive, required, RESTRICT foreign key, no data step), and
+#: `subscriptions/0002_the_database_rules` carries the trigger that keeps it
+#: FROZEN (a `RunSQL` with its reverse) — the first rules migration since the
+#: cutover, held here rather than in `FRESH_INITIAL_SET`, which names only the
+#: cutover's own.
+MIGRATIONS_SINCE_THE_CUTOVER = 3
 
 NUMBERED = re.compile(r"^\d{4}_\w+\.py$")
 DROP_OPS = {"RemoveField", "DeleteModel"}

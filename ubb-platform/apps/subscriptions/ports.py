@@ -15,7 +15,8 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
-from apps.billing.connectors.stripe.invoice_routing import _refresh_urls, ar_transition_allowed
+from apps.billing.connectors.stripe.invoice_routing import (
+    SETTLED_PAYMENT_STATUSES, _refresh_urls, ar_transition_allowed, settle_failure_stamp)
 from apps.subscriptions.stripe.items import paid_amounts
 
 logger = logging.getLogger(__name__)
@@ -53,13 +54,23 @@ def get_active_subscription_for_consolidation(tenant, customer):
 def mark_invoice_payment_failed_for_subscription(account, subscription_id, stripe_invoice_id, inv,
                                                  *, livemode=True):
     """Stamp payment_failed_at + refresh hosted url on the SubscriptionInvoice
-    matched by a subscription-linked invoice.payment_failed event.
+    matched by a subscription-linked invoice.payment_failed event, and say
+    whose standing failure it is.
 
     Status-only (no money movement); account-checked via the owning
     StripeSubscription's tenant; idempotent; never touches the status column.
     ``livemode`` binds the event's mode to the tenant's mode (F4.4): a Connect
     acct_ id is identical in test and live, so a livemode=False event may only
-    ever stamp a sandbox tenant's rows. Returns True if a row was stamped.
+    ever stamp a sandbox tenant's rows.
+
+    Returns the id of the HISTORICAL BILLING OWNER the stamped invoice
+    represents (plain data — the row's `billing_owner`, fixed when the invoice
+    entered UBB and never re-derived from today's topology, PLAN §7 item 27)
+    when the row is a STANDING failure: the customer billing's payment-failed
+    suspension targets (R10 Stage C2, RULED Q4 a).
+    None when no local row matched (Q4 c: nobody is suspended), and None for
+    a row already paid or void — a late failure event on a settled invoice is
+    stamped as before but suspends nobody.
     """
     from apps.subscriptions.models import StripeSubscription, SubscriptionInvoice
 
@@ -69,20 +80,63 @@ def mark_invoice_payment_failed_for_subscription(account, subscription_id, strip
         tenant__is_sandbox=not livemode,
     ).first()
     if not sub:
-        return False
+        return None
     with transaction.atomic():
         row = SubscriptionInvoice.objects.select_for_update().filter(
             stripe_invoice_id=stripe_invoice_id,
             tenant=sub.tenant,  # pin to the mode-matched tenant, never a sibling's row
         ).first()
         if not row:
-            return False
+            return None
         row.payment_failed_at = timezone.now()
         _refresh_urls(row, inv)
         row.save(update_fields=[
             "payment_failed_at", "hosted_invoice_url", "invoice_pdf", "updated_at",
         ])
-    return True
+        if row.status in SETTLED_PAYMENT_STATUSES:
+            return None
+        return row.historical_billing_owner_id
+
+
+def has_unsettled_subscription_payment_failure(owner_id) -> bool:
+    """Does a SubscriptionInvoice whose HISTORICAL billing owner is
+    ``owner_id`` still carry `payment_failed_at` while neither paid nor void?
+    The subscriptions half of billing's "no qualifying failed/unpaid local
+    invoice remains" question (R10 Stage C2, F-6; PLAN §7 item 27) — read on
+    `billing_owner`, fixed at the invoice's creation, so no later topology
+    change can add an invoice to an owner or take one away. Plain data."""
+    from apps.subscriptions.models import SubscriptionInvoice
+
+    return (SubscriptionInvoice.objects
+            .filter(billing_owner_id=owner_id, payment_failed_at__isnull=False)
+            .exclude(status__in=SETTLED_PAYMENT_STATUSES)
+            .exists())
+
+
+def settle_subscription_invoice_payment_failure(tenant, stripe_invoice_id):
+    """The hourly AR repair observing a SETTLED status — `paid`, or `void`
+    (PLAN §7 item 26) — on a SubscriptionInvoice clears that row's failure
+    stamp (R10 Stage C2, F-6), whether the status transition applied in this
+    pass or a webhook applied it earlier and the stamp lingered. Returns the
+    row's HISTORICAL billing owner id (`billing_owner`, PLAN §7 item 27) whose
+    `payment_failed` suspension billing should then ask to clear (plain
+    data), or None when the row is not settled or carries no stamp (so a
+    replayed pass clears nothing twice). Billing makes the clear; this port
+    never touches a customer's standing."""
+    from apps.subscriptions.models import SubscriptionInvoice
+
+    existing = SubscriptionInvoice.objects.filter(
+        tenant=tenant, stripe_invoice_id=stripe_invoice_id,
+        status__in=SETTLED_PAYMENT_STATUSES, payment_failed_at__isnull=False,
+    ).first()
+    if not existing:
+        return None
+    with transaction.atomic():
+        row = SubscriptionInvoice.objects.select_for_update().get(id=existing.id)
+        owner_id = settle_failure_stamp(row, row.status)
+        if owner_id is not None:
+            row.save(update_fields=["payment_failed_at", "updated_at"])
+    return owner_id
 
 
 def repair_subscription_invoice(tenant, stripe_invoice_id, inv, new_status):

@@ -40,6 +40,11 @@ webhook_event_type:
     - customer.stopped
     - customer.stop_cleared
     - customer.suspended
+    # The customer's status moved `suspended -> active` (R10 Stage C2, RULED
+    # Q3): a state the customer entered, distinct from `customer.stop_cleared`
+    # (the control layer's clear of one stop line). The reason being LEFT
+    # travels as `reason_code`, never in the name.
+    - customer.reactivated
     - customer.deleted
     - customer.unprofitable
     - provider.cost_spike

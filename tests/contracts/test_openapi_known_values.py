@@ -1170,7 +1170,13 @@ CONCEPTS_IN_THE_CONTRACT = {
     # inherits the acknowledgement's field and its marker.
     # +2 in #551: the unit read (`TaskOut`, `TaskDetailOut`) says why UBB
     # stopped the unit — nullable, so the marker sits on the string member.
-    "reason_code": Published(13, KNOWN_VALUES),
+    # +1 in R10 Stage C2 (RULED Q3): `customer.reactivated`, the customer's
+    # status moving `suspended -> active`, carries the suspension reason it
+    # LEFT under the concept's own name — derived off the payload class, so
+    # the placement rule below needs no edit. The same slice added the two
+    # suspension-only causes (`payment_failed`, `dispute_lost`) to the
+    # concept's known values; no node moved for them.
+    "reason_code": Published(14, KNOWN_VALUES),
     # WHICH CONTROL A STOP CAME FROM (#458, slice 6 §1, §15) — SIX nodes: the
     # four terminal stop events and the customer stop pair, all in the
     # `webhooks` section, because a control's family is a fact about a stop

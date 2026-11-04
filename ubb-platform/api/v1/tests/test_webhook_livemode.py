@@ -150,7 +150,7 @@ class HandlerLivemodeRoutingTest(_SharedAccountFixture):
                 status="active", amount_micros=0, currency="usd", interval="month",
                 current_period_start=now, current_period_end=now, last_synced_at=now)
             SubscriptionInvoice.objects.create(
-                tenant=tenant, customer=customer, stripe_subscription=sub,
+                tenant=tenant, customer=customer, billing_owner=customer, stripe_subscription=sub,
                 stripe_invoice_id=f"in_{sub_id}", amount_paid_micros=0,
                 currency="usd", status="open", period_start=now, period_end=now)
 

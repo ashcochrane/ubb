@@ -50,6 +50,7 @@ from core.vocabulary import (
     WEBHOOK_EVENT_TYPE_CREDIT_GRANT_EXPIRED,
     WEBHOOK_EVENT_TYPE_CREDIT_GRANT_EXPIRING,
     WEBHOOK_EVENT_TYPE_CUSTOMER_DELETED,
+    WEBHOOK_EVENT_TYPE_CUSTOMER_REACTIVATED,
     WEBHOOK_EVENT_TYPE_CUSTOMER_SPEND_POOL_THRESHOLD_REACHED,
     WEBHOOK_EVENT_TYPE_CUSTOMER_STOPPED,
     WEBHOOK_EVENT_TYPE_CUSTOMER_STOP_CLEARED,
@@ -495,6 +496,36 @@ class CustomerSuspended(EventSchema):
     reason: str
     #: Null where the customer holds no wallet balance (#610) — still
     #: required, so every producer says which.
+    balance_micros: WalletBalanceOnAStop
+
+
+@dataclass(frozen=True)
+class CustomerReactivated(EventSchema):
+    """The customer's status moved ``suspended -> active`` (R10 Stage C2,
+    RULED Q3) — the state-entered twin of ``CustomerSuspended``.
+
+    Emitted EXACTLY ONCE, at the single site that performs the transition
+    (``LiveCounter._maybe_unsuspend``) and only when the status actually
+    changes, under ``off`` as under ``enforcing``: the durable wallet balance
+    back at or above the hard floor (``hard_floor``, ``dispute_lost``), the
+    pool's line lifted (``customer_spend_pool``), or every qualifying failed
+    local invoice settled — paid, or voided (``payment_failed``). Distinct from
+    ``CustomerStopCleared``, which is the CONTROL layer's clear of one stop
+    line under ``enforcing``; a recovery there may emit both, each once, and
+    an ``off`` recovery emits only this one.
+
+    reason_code    = the suspension reason being LEFT — the `reason_code`
+                     concept's word the suspension carried — so a subscriber
+                     is told why the customer had been suspended by reading,
+                     never by parsing the name (ADR-0006 §5).
+    balance_micros = the wallet's durable balance at reactivation, or null
+                     where the customer holds no wallet balance (#610), as
+                     ``CustomerSuspended`` carries.
+    """
+    EVENT_TYPE = WEBHOOK_EVENT_TYPE_CUSTOMER_REACTIVATED
+    tenant_id: str
+    customer_id: str
+    reason_code: ReasonCode
     balance_micros: WalletBalanceOnAStop
 
 

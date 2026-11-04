@@ -110,7 +110,7 @@ class TestSubscriptionInvoiceARFields:
 
         inv = SubscriptionInvoice.objects.create(
             tenant=t,
-            customer=c,
+            customer=c, billing_owner=c,
             stripe_subscription=sub,
             stripe_invoice_id="in_sub_ar_001",
             amount_paid_micros=49_000_000,
@@ -138,7 +138,7 @@ class TestSubscriptionInvoiceARFields:
 
         inv = SubscriptionInvoice.objects.create(
             tenant=t,
-            customer=c,
+            customer=c, billing_owner=c,
             stripe_subscription=sub,
             stripe_invoice_id="in_sub_ar_002",
             amount_paid_micros=49_000_000,
@@ -160,7 +160,7 @@ class TestSubscriptionInvoiceARFields:
 
         inv = SubscriptionInvoice.objects.create(
             tenant=t,
-            customer=c,
+            customer=c, billing_owner=c,
             stripe_subscription=sub,
             stripe_invoice_id="in_sub_ar_003",
             amount_paid_micros=10_000_000,

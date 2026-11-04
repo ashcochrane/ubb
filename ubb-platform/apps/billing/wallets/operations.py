@@ -629,9 +629,11 @@ def _drawdown_tail(tenant, trigger_source):
                     logger.warning("billing.soft_floor_transition_failed",
                                    extra={"data": {"owner_id": str(owner.id)}})
         elif past_floor(new_balance, limit) and owner.status == "active":
-            # enforcement off: Tier-1 baseline suspension, byte-for-byte
-            # (no signal suite, no ledger). The suspension records the bound
-            # that was reached — the hard floor's word (slice 6 §9).
+            # enforcement off: Tier-1 baseline suspension — a silent level
+            # test (no signal suite, no ledger, no flag). The suspension
+            # records the bound that was reached — the hard floor's word
+            # (slice 6 §9) — and is lifted by the same durable truth, through
+            # the credit hook / hourly pass (R10 Stage C2, F-1).
             owner.status = "suspended"
             owner.suspension_reason = reasons.HARD_FLOOR  # P6b/D15
             owner.save(update_fields=["status", "suspension_reason", "updated_at"])

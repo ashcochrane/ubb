@@ -21,7 +21,11 @@ row holds and this module does not, so the two cascade reasons name no family
 of their own and asking for one is refused rather than answered with a blank.
 Admission control stops nothing — it refuses a start — so no reason maps to
 it, and the four-value set is held whole by the ledger that declares the
-concept's backend consumer, not here.
+concept's backend consumer, not here. And a SUSPENSION'S cause that no stop
+line opens (R10 Stage C2: an invoice that failed payment, a dispute lost)
+reached no control's bound at all, so it names no family either — held in
+`SUSPENSION_ONLY` below so the map stays complete over the registry's known
+values without pretending a family for a word that never announces a stop.
 
 `ceiling_basis` sits beside the family for the same reason: a Ceiling bounds
 cost or time, and which one a stop reached is a fact about the reason. The
@@ -37,9 +41,11 @@ from core.vocabulary import (
     CONTROL_FAMILY_WALLET_POLICY,
     REASON_CODE_ABSOLUTE_DEADLINE,
     REASON_CODE_CUSTOMER_SPEND_POOL,
+    REASON_CODE_DISPUTE_LOST,
     REASON_CODE_HARD_FLOOR,
     REASON_CODE_PARENT_EXPIRED,
     REASON_CODE_PARENT_KILLED,
+    REASON_CODE_PAYMENT_FAILED,
     REASON_CODE_SILENCE_WINDOW,
     REASON_CODE_TASK_COGS_CEILING,
 )
@@ -58,6 +64,14 @@ FAMILY_BY_REASON = {
 INHERITED_FROM_THE_PARENT = frozenset({
     REASON_CODE_PARENT_KILLED,
     REASON_CODE_PARENT_EXPIRED,
+})
+
+#: The reasons a customer SUSPENSION carries that no stop line opens (R10
+#: Stage C2) — they reached no control's bound, announce no stop, and so name
+#: no family; `control_family` refuses them like any word without one.
+SUSPENSION_ONLY = frozenset({
+    REASON_CODE_PAYMENT_FAILED,
+    REASON_CODE_DISPUTE_LOST,
 })
 
 #: Reason → what the ceiling that fired bounds. Only a ceiling's reasons are

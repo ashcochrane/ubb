@@ -101,6 +101,16 @@ THE_CAUSE_MARKER = "reason_code"
 THE_FAMILY_MARKER = "control_family"
 THE_BASIS_MARKER = "ceiling_basis"
 
+#: And the cause's one carrier that is NOT a stop (R10 Stage C2, RULED Q3):
+#: `customer.reactivated` is the customer's status moving `suspended ->
+#: active`, and its `reason_code` is the SUSPENSION reason being left — which
+#: may be a stop line's word (`hard_floor`, `customer_spend_pool`) or a cause
+#: no stop line opens (`payment_failed`, `dispute_lost`), so no control family
+#: is derived for it and the payload names none. Spelled rather than derived:
+#: the family rule below is "every STOP names the control that fired", and
+#: this is the one event the cause rides that is not a stop.
+THE_CAUSE_WITHOUT_A_FAMILY = {"customer.reactivated"}
+
 #: And the sixth (#603): WHY the price status applies, beside it on the usage
 #: callback — required and nullable wherever `pricing_status` is published.
 #: Spelled, not derived: the event and the field both predate the split and
@@ -216,10 +226,15 @@ def test_the_webhook_block_carries_exactly_the_markers_it_did_before(spec):
     arrived_with_the_family = {
         (event, THE_FAMILY_MARKER) for event
         in events_whose_payload_declares(THE_FAMILY_MARKER)}
+    assert THE_CAUSE_WITHOUT_A_FAMILY <= {event for event, _ in arrived_with_the_cause}, (
+        "the status transition's event no longer carries the reason it left "
+        "(R10 Stage C2), so the exception below excuses nothing — suspect the "
+        "payload or the reader")
     assert {event for event, _ in arrived_with_the_family} == {
-        event for event, _ in arrived_with_the_cause}, (
-        "the family rides exactly the events the cause rides (#458): every "
-        "stop names the control that fired, and nothing else names one")
+        event for event, _ in arrived_with_the_cause} - THE_CAUSE_WITHOUT_A_FAMILY, (
+        "the family rides exactly the STOP events the cause rides (#458): every "
+        "stop names the control that fired, and nothing else names one — the "
+        "one non-stop carrier of the cause is spelled above, with its sentence")
     arrived_with_the_basis = {
         (event, THE_BASIS_MARKER) for event
         in events_whose_payload_declares(THE_BASIS_MARKER)}

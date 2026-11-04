@@ -5,6 +5,7 @@ class WebhookConfigCreateRequestEventTypesItemType0(str, Enum):
     CREDIT_GRANT_EXPIRED = "credit_grant.expired"
     CREDIT_GRANT_EXPIRING = "credit_grant.expiring"
     CUSTOMER_DELETED = "customer.deleted"
+    CUSTOMER_REACTIVATED = "customer.reactivated"
     CUSTOMER_SPEND_POOL_THRESHOLD_REACHED = "customer_spend_pool.threshold_reached"
     CUSTOMER_STOPPED = "customer.stopped"
     CUSTOMER_STOP_CLEARED = "customer.stop_cleared"

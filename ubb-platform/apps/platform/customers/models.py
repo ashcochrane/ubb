@@ -62,8 +62,13 @@ class Customer(SoftDeleteMixin, BaseModel):
     # silently un-suspends an admin/fraud suspension. A monetary reason is the
     # stop that opened the episode, in that stop's own word (slice 6 §9,
     # `reasons.HARD_FLOOR` / `reasons.CUSTOMER_SPEND_POOL`; the pair is
-    # `LiveCounter._MONEY_SUSPEND_REASONS`). "" when active / suspended for an
-    # unrecorded reason.
+    # `LiveCounter._MONEY_SUSPEND_REASONS`). Since R10 Stage C2 two causes no
+    # stop line opens are written too: `reasons.PAYMENT_FAILED` (a local
+    # invoice of the billing owner failed payment — cleared when no such
+    # failure remains) and `reasons.DISPUTE_LOST` (cleared when the durable
+    # balance is back at the floor). Every clear goes through
+    # `LiveCounter._maybe_unsuspend`, which announces `customer.reactivated`.
+    # "" when active / suspended for an unrecorded reason.
     suspension_reason = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:

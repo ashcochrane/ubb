@@ -31,9 +31,16 @@ class TheClientHoldsTheSevenTest(unittest.TestCase):
     def test_the_set_is_the_seven_bounds_plus_the_one_verdict(self):
         """Not an alias of the generated set: what the ACKNOWLEDGEMENT can
         say is the seven bounds plus the verdict on a late event, which the
-        registry deliberately does not list."""
-        bounds = {getattr(vocabulary, n) for n in REASON_CODE_NAMES}
-        self.assertEqual(bounds, vocabulary.REASON_CODE_KNOWN_VALUES)
+        registry deliberately does not list — and not the two causes only a
+        customer SUSPENSION carries (R10 Stage C2), which the registry does
+        list because the suspension webhooks publish them."""
+        known = {getattr(vocabulary, n) for n in REASON_CODE_NAMES}
+        self.assertEqual(known, vocabulary.REASON_CODE_KNOWN_VALUES)
+        self.assertEqual(metering.SUSPENSION_ONLY_REASON_CODES,
+                         {vocabulary.REASON_CODE_PAYMENT_FAILED,
+                          vocabulary.REASON_CODE_DISPUTE_LOST})
+        bounds = known - metering.SUSPENSION_ONLY_REASON_CODES
+        self.assertEqual(len(bounds), 7)
         self.assertEqual(metering.STOP_REASON_CODES,
                          bounds | {metering.TASK_NOT_ACTIVE})
         self.assertNotIn(metering.TASK_NOT_ACTIVE,

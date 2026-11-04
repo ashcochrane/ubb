@@ -1,6 +1,7 @@
 from django.db import models
 from core.currency_policy import ECONOMIC_CURRENCY
 from core.models import BaseModel
+from core.transitions import FROZEN
 
 
 SUBSCRIPTION_STATUS_CHOICES = [
@@ -101,8 +102,30 @@ class SubscriptionInvoice(BaseModel):
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="subscription_invoices"
     )
+    #: The local customer the subscription / Stripe mirror names — for a mirror
+    #: built from Stripe, whichever local customer holds the charged Stripe
+    #: customer id, which can be a seat. NOT the economic owner: that is
+    #: `billing_owner` below, and the two are deliberately distinct.
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="subscription_invoices"
+    )
+    #: THE HISTORICAL BILLING OWNER (R10 Stage C2, PLAN §7 item 27): the owner
+    #: UBB's declared topology resolved for this invoice when it FIRST ENTERED
+    #: UBB — `customer.resolve_billing_owner()` at the one creation site — and
+    #: a fact from then on. A pooled seat holding its own Stripe customer id
+    #: has `customer` = the seat and `billing_owner` = its business. A later
+    #: topology change (pooled <-> allocated, a parent change) never moves it,
+    #: and the payment-failure suspension, its settlement and the
+    #: outstanding-failure question read it and nothing else. Required (NOT
+    #: NULL), and FROZEN after creation — declared below and defended by the
+    #: database (`trg_subscription_invoice_declared_transitions`), never by a
+    #: model-level guard (ADR-0007 §2). `RESTRICT`, not `PROTECT`: the owner
+    #: cannot be deleted from under its invoices, but a delete that removes the
+    #: invoices too — a tenant wipe, a sandbox reset — proceeds, where `PROTECT`
+    #: would refuse it (the precedent `apps/metering/pricing/models.py` records).
+    billing_owner = models.ForeignKey(
+        "customers.Customer", on_delete=models.RESTRICT,
+        related_name="owned_subscription_invoices",
     )
     stripe_subscription = models.ForeignKey(
         StripeSubscription, on_delete=models.CASCADE, related_name="invoices"
@@ -127,6 +150,17 @@ class SubscriptionInvoice(BaseModel):
     invoice_pdf = models.CharField(max_length=1000, blank=True, default="")
     payment_failed_at = models.DateTimeField(null=True, blank=True)
 
+    #: ADR-0007 §2: what may happen to this invoice's economic facts. The
+    #: historical billing owner is FROZEN — set once, at the row's INSERT, and
+    #: refused on any UPDATE that would change it, through `save()`,
+    #: `QuerySet.update()` and raw SQL alike — by the database rule
+    #: `trg_subscription_invoice_declared_transitions`
+    #: (`subscriptions/migrations/0002_the_database_rules.py`; PLAN §7 item
+    #: 27). Declared by its COLUMN, as a trigger names it. G19 judges the
+    #: declaration on the day it is made; the other columns are AR status and
+    #: Stripe-mirror facts this slice does not freeze.
+    transition_classes = {"billing_owner_id": FROZEN}
+
     class Meta:
         db_table = "ubb_subscription_invoice"
         constraints = [
@@ -135,6 +169,16 @@ class SubscriptionInvoice(BaseModel):
                 "amount_paid_micros",
                 "ck_subscription_invoice_economic_amount_only_in_usd"),
         ]
+
+    @property
+    def historical_billing_owner_id(self):
+        """The billing owner this invoice's payment failure counts against —
+        `billing_owner`, fixed when the invoice entered UBB (R10 Stage C2, PLAN
+        §7 item 27). The same name `CustomerUsageInvoice` answers from its own
+        `customer`, so no AR path chooses a column per table, and none reads
+        `customer` here, which is the Stripe mirror's customer and not the
+        owner."""
+        return self.billing_owner_id
 
     def __str__(self):
         return f"SubscriptionInvoice({self.stripe_invoice_id})"

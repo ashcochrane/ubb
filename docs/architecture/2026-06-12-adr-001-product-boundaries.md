@@ -94,7 +94,12 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
      CAS retry, dispatch, error classification), parameterised by receiver, handler map and
      secret (added by R10 Stage C1b);
    - `apps.billing.connectors.stripe.invoice_routing` — the AR state-transition table + invoice
-     URL refresh helpers, which `apps/subscriptions/ports.py` builds on.
+     URL refresh helpers, which `apps/subscriptions/ports.py` builds on; since R10 Stage C2
+     (2026-11) also the AR row state of a failure stamp — which statuses settle a stamped
+     invoice (paid or void), and the one way a settled row's stamp is cleared. Whether the billing owner is then
+     reactivated is billing's decision at its own reactivation site, never the kit's: the port
+     hands billing the invoice's historical owner id (`SubscriptionInvoice.billing_owner`) as
+     plain data, and the kit resolves no owner at all.
    If the products ever split into services, this kit's future home is a real shared package
    (`apps/connectors/`), at which point the exception disappears from the allowlist.
 6. **Dev-only management commands are exempt** via the test's explicit file allowlist. Currently

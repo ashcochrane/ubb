@@ -1418,7 +1418,9 @@
               "silence_window",
               "hard_floor",
               "absolute_deadline",
-              "parent_expired"
+              "parent_expired",
+              "payment_failed",
+              "dispute_lost"
             ]
           },
           "stop_scope": {
@@ -2444,7 +2446,9 @@
               "silence_window",
               "hard_floor",
               "absolute_deadline",
-              "parent_expired"
+              "parent_expired",
+              "payment_failed",
+              "dispute_lost"
             ]
           },
           "spent_after_micros": {
@@ -8273,7 +8277,9 @@
                   "silence_window",
                   "hard_floor",
                   "absolute_deadline",
-                  "parent_expired"
+                  "parent_expired",
+                  "payment_failed",
+                  "dispute_lost"
                 ]
               },
               {
@@ -9975,7 +9981,9 @@
                   "silence_window",
                   "hard_floor",
                   "absolute_deadline",
-                  "parent_expired"
+                  "parent_expired",
+                  "payment_failed",
+                  "dispute_lost"
                 ]
               },
               {
@@ -10230,7 +10238,9 @@
                   "silence_window",
                   "hard_floor",
                   "absolute_deadline",
-                  "parent_expired"
+                  "parent_expired",
+                  "payment_failed",
+                  "dispute_lost"
                 ]
               },
               {
@@ -11967,7 +11977,9 @@
                   "silence_window",
                   "hard_floor",
                   "absolute_deadline",
-                  "parent_expired"
+                  "parent_expired",
+                  "payment_failed",
+                  "dispute_lost"
                 ]
               },
               {
@@ -12961,7 +12973,9 @@
                   "silence_window",
                   "hard_floor",
                   "absolute_deadline",
-                  "parent_expired"
+                  "parent_expired",
+                  "payment_failed",
+                  "dispute_lost"
                 ]
               },
               {
@@ -13064,6 +13078,7 @@
                     "customer.stopped",
                     "customer.stop_cleared",
                     "customer.suspended",
+                    "customer.reactivated",
                     "customer.deleted",
                     "customer.unprofitable",
                     "provider.cost_spike",
@@ -13183,6 +13198,7 @@
                     "customer.stopped",
                     "customer.stop_cleared",
                     "customer.suspended",
+                    "customer.reactivated",
                     "customer.deleted",
                     "customer.unprofitable",
                     "provider.cost_spike",
@@ -13276,6 +13292,7 @@
                         "customer.stopped",
                         "customer.stop_cleared",
                         "customer.suspended",
+                        "customer.reactivated",
                         "customer.deleted",
                         "customer.unprofitable",
                         "provider.cost_spike",
@@ -13406,6 +13423,7 @@
               "customer.stopped",
               "customer.stop_cleared",
               "customer.suspended",
+              "customer.reactivated",
               "customer.deleted",
               "customer.unprofitable",
               "provider.cost_spike",
@@ -23017,6 +23035,135 @@
         "summary": "customer.deleted delivery"
       }
     },
+    "customer.reactivated": {
+      "post": {
+        "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
+        "operationId": "webhook_customer_reactivated",
+        "parameters": [
+          {
+            "description": "`t=<unix-seconds>,v1=<hex>` \u2014 HMAC-SHA256 over `\"{t}.{body}\"` with the endpoint secret. Verify this one; during a secret rotation window multiple `v1=` candidates may be present \u2014 accept the delivery if any candidate matches.",
+            "in": "header",
+            "name": "X-UBB-Signature-V2",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Legacy body-only HMAC-SHA256 hex digest (no timestamp binding). Kept during the v2 deprecation window \u2014 prefer X-UBB-Signature-V2.",
+            "in": "header",
+            "name": "X-UBB-Signature",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "The event type, duplicated from the body for routing.",
+            "in": "header",
+            "name": "X-UBB-Event-Type",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "data": {
+                    "description": "The customer's status moved ``suspended -> active`` (R10 Stage C2,\nRULED Q3) \u2014 the state-entered twin of ``CustomerSuspended``.\n\nEmitted EXACTLY ONCE, at the single site that performs the transition\n(``LiveCounter._maybe_unsuspend``) and only when the status actually\nchanges, under ``off`` as under ``enforcing``: the durable wallet balance\nback at or above the hard floor (``hard_floor``, ``dispute_lost``), the\npool's line lifted (``customer_spend_pool``), or every qualifying failed\nlocal invoice settled \u2014 paid, or voided (``payment_failed``). Distinct from\n``CustomerStopCleared``, which is the CONTROL layer's clear of one stop\nline under ``enforcing``; a recovery there may emit both, each once, and\nan ``off`` recovery emits only this one.\n\nreason_code    = the suspension reason being LEFT \u2014 the `reason_code`\n                 concept's word the suspension carried \u2014 so a subscriber\n                 is told why the customer had been suspended by reading,\n                 never by parsing the name (ADR-0006 \u00a75).\nbalance_micros = the wallet's durable balance at reactivation, or null\n                 where the customer holds no wallet balance (#610), as\n                 ``CustomerSuspended`` carries.",
+                    "properties": {
+                      "balance_micros": {
+                        "anyOf": [
+                          {
+                            "type": "integer"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "description": "The customer's wallet balance, in micros: the balance the lane that announced this measured, or the wallet's own where that lane measured none. Null where the customer holds no wallet balance: its tenant does not hold prepaid wallets, or it is a pooled seat, whose business's wallet funds its spend. 0 is a real balance, never a stand-in for none.",
+                        "title": "Balance Micros"
+                      },
+                      "customer_id": {
+                        "title": "Customer Id",
+                        "type": "string"
+                      },
+                      "reason_code": {
+                        "title": "Reason Code",
+                        "type": "string",
+                        "x-ubb-concept": "reason_code",
+                        "x-ubb-known-values": [
+                          "task_cogs_ceiling",
+                          "customer_spend_pool",
+                          "parent_killed",
+                          "silence_window",
+                          "hard_floor",
+                          "absolute_deadline",
+                          "parent_expired",
+                          "payment_failed",
+                          "dispute_lost"
+                        ]
+                      },
+                      "tenant_id": {
+                        "title": "Tenant Id",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "tenant_id",
+                      "customer_id",
+                      "reason_code",
+                      "balance_micros"
+                    ],
+                    "title": "CustomerReactivated",
+                    "type": "object"
+                  },
+                  "event_id": {
+                    "description": "Unique event id. Delivery is at-least-once per endpoint \u2014 receivers dedupe on it.",
+                    "type": "string"
+                  },
+                  "event_type": {
+                    "const": "customer.reactivated",
+                    "type": "string"
+                  },
+                  "livemode": {
+                    "description": "False when the emitting tenant is a sandbox.",
+                    "type": "boolean"
+                  },
+                  "tenant_id": {
+                    "type": "string"
+                  },
+                  "timestamp": {
+                    "description": "Unix seconds at send time; the same value is bound into X-UBB-Signature-V2.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "data",
+                  "event_id",
+                  "event_type",
+                  "livemode",
+                  "tenant_id",
+                  "timestamp"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges the delivery; anything else (or a timeout) is retried."
+          }
+        },
+        "summary": "customer.reactivated delivery"
+      }
+    },
     "customer.stop_cleared": {
       "post": {
         "description": "Outbound POST to a subscribed webhook endpoint. Payload fields are additive-only (frozen schema): new fields may appear, existing ones never change meaning \u2014 receivers must ignore unknown fields.",
@@ -23110,7 +23257,9 @@
                           "silence_window",
                           "hard_floor",
                           "absolute_deadline",
-                          "parent_expired"
+                          "parent_expired",
+                          "payment_failed",
+                          "dispute_lost"
                         ]
                       },
                       "scope": {
@@ -23263,7 +23412,9 @@
                           "silence_window",
                           "hard_floor",
                           "absolute_deadline",
-                          "parent_expired"
+                          "parent_expired",
+                          "payment_failed",
+                          "dispute_lost"
                         ]
                       },
                       "scope": {
@@ -24942,7 +25093,9 @@
                           "silence_window",
                           "hard_floor",
                           "absolute_deadline",
-                          "parent_expired"
+                          "parent_expired",
+                          "payment_failed",
+                          "dispute_lost"
                         ]
                       },
                       "subtask_id": {
@@ -25157,7 +25310,9 @@
                           "silence_window",
                           "hard_floor",
                           "absolute_deadline",
-                          "parent_expired"
+                          "parent_expired",
+                          "payment_failed",
+                          "dispute_lost"
                         ]
                       },
                       "subtask_id": {
@@ -25367,7 +25522,9 @@
                           "silence_window",
                           "hard_floor",
                           "absolute_deadline",
-                          "parent_expired"
+                          "parent_expired",
+                          "payment_failed",
+                          "dispute_lost"
                         ]
                       },
                       "task_cogs_ceiling_micros": {
@@ -25577,7 +25734,9 @@
                           "silence_window",
                           "hard_floor",
                           "absolute_deadline",
-                          "parent_expired"
+                          "parent_expired",
+                          "payment_failed",
+                          "dispute_lost"
                         ]
                       },
                       "task_cogs_ceiling_micros": {

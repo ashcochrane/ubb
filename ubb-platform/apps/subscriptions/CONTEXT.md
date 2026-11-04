@@ -14,7 +14,15 @@ _Avoid_: treating the mirror as authoritative over Stripe.
 
 **Subscription invoice**:
 A synced row per Stripe subscription invoice, tracked for revenue attribution and AR status.
+It names two customers, deliberately distinct (R10 Stage C2, PLAN §7 item 27): `customer`, the local
+customer the subscription / Stripe mirror names (for a mirror built from Stripe, whichever local
+customer holds the charged Stripe customer id — possibly a seat); and `billing_owner`, the **historical
+billing owner** — what UBB's declared topology resolved when the invoice first entered UBB, required and
+declared FROZEN, kept by the database rule `trg_subscription_invoice_declared_transitions`
+(`migrations/0002_the_database_rules.py`). A pooled seat holding its own Stripe customer id: `customer` = the seat,
+`billing_owner` = its business. Payment-failure suspension and recovery read `billing_owner` only.
 (`apps/subscriptions/models.py:SubscriptionInvoice`)
+_Avoid_: re-deriving an invoice's owner from today's topology or from the Stripe customer holder.
 
 **Quarantined subscription**:
 A mirrored subscription or invoice Stripe holds in a currency UBB does not admit (v1 admits US
