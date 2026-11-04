@@ -154,6 +154,40 @@ def a_stripe_subscription(id, customer, status, *, items, currency="usd", **extr
         a_subscription_dict(id, customer, status, items=items, currency=currency, **extra), SK)
 
 
+class CapturedLog:
+    """Every record one logger emits while open, read directly: ``caplog``
+    cannot see this project's ``apps.*`` loggers (the project's LOGGING sets
+    ``propagate: False`` on them). Use as ``with CapturedLog(name) as log:``."""
+
+    def __init__(self, logger_name):
+        import logging
+
+        class _Handler(logging.Handler):
+            def emit(handler, record):
+                self.records.append(record)
+
+        self.logger = logging.getLogger(logger_name)
+        self.handler = _Handler()
+        self.records = []
+
+    def __enter__(self):
+        import logging
+        self.level = self.logger.level
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(self.handler)
+        return self
+
+    def __exit__(self, *exc):
+        self.logger.removeHandler(self.handler)
+        self.logger.setLevel(self.level)
+
+    def messages(self):
+        return [r.getMessage() for r in self.records]
+
+    def named(self, message):
+        return [r for r in self.records if r.getMessage() == message]
+
+
 def clear_stripe_customer_id_in_the_admin(customer):
     """Clear a customer's Stripe customer id through the Django admin change
     form: the supported maintenance path for it, since no public endpoint

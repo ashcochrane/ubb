@@ -248,8 +248,8 @@ def _task_with_a_live_import():
 def test_the_seat_quantity_reconciler_runs_hourly_after_the_mirror_reconciler():
     """R10 Stage C4 (A-2, RULED Q8): the pass that converges every billed seat
     quantity on its live roster reads the subscription mirror's status, so it
-    is scheduled every hour, AFTER the mirror reconciler has refreshed it, and
-    rides the subscriptions queue. A schedule fact, read by name: no product
+    is scheduled every hour, AFTER the mirror reconciler has fanned out that
+    hour's syncs, and rides the subscriptions queue. A schedule fact, read by name: no product
     code is imported here."""
     schedule = settings.CELERY_BEAT_SCHEDULE
     seats = schedule["reconcile-subscription-seat-quantities"]

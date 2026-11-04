@@ -92,7 +92,15 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
    - `apps.billing.stripe.receiver` — the **one** receiver core both endpoints are built on
      (verification with the receiver's own secret, the mode gate, per-receiver dedup with the
      CAS retry, dispatch, error classification), parameterised by receiver, handler map and
-     secret (added by R10 Stage C1b);
+     secret (added by R10 Stage C1b). Since R10 Stage C4 (2026-11) it also holds the
+     **receiver registry**: each endpoint module, as it loads, registers its receiver's handler
+     map and wallet-subject flag (`register_receiver`), and the billing `reprocess_webhook`
+     command runs a retrieved Event through the same core (`process_stripe_event`) with the map
+     it reads back (`registered_receiver`). That is dependency inversion inside the kit, not a
+     new edge: the billing handler map lives in the composition layer (`api/v1/webhooks.py`),
+     which no product module may import, so the composition layer hands it to the kit. The
+     command composes the deployment by loading the project URLconf (as `manage.py check`
+     does), which imports the endpoint modules that register;
    - `apps.billing.connectors.stripe.invoice_routing` — the AR state-transition table + invoice
      URL refresh helpers, which `apps/subscriptions/ports.py` builds on; since R10 Stage C2
      (2026-11) also the AR row state of a failure stamp — which statuses settle a stamped

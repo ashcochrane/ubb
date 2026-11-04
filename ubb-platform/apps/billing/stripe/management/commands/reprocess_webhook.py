@@ -45,6 +45,20 @@ from apps.platform.tenants.models import Tenant
 from core.exceptions import StripeFatalError, StripeNotConfigured, StripeTransientError
 
 
+def _load_the_deployments_endpoints():
+    """Import the endpoint modules this deployment mounts, so each has
+    registered its receiver with the receiver core.
+
+    The receivers a deployment serves are the endpoints its URLconf mounts,
+    and each endpoint module registers its handler map as it loads
+    (ADR-001 decision 5, the receiver registry). Resolving the URL patterns
+    imports the URLconf and everything it mounts, exactly as
+    ``manage.py check`` does, so this billing module reaches the billing
+    handler map without importing the composition layer.
+    """
+    return get_resolver().url_patterns
+
+
 class Command(BaseCommand):
     help = (
         "Re-run one webhook event that failed retryably, now: retrieve it from "
@@ -150,12 +164,7 @@ class Command(BaseCommand):
 
     @staticmethod
     def _dispatch(receiver):
-        # The receivers this deployment serves are the endpoints its URLconf
-        # mounts; each endpoint module registers its handler map with the
-        # receiver core as it loads. Loading the URLconf here (as
-        # `manage.py check` does) composes them, so this billing module never
-        # imports the composition layer (ADR-001).
-        get_resolver().url_patterns
+        _load_the_deployments_endpoints()
         dispatch = registered_receiver(receiver)
         if dispatch is None:
             raise CommandError(

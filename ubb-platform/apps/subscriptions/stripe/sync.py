@@ -6,7 +6,7 @@ import stripe
 from apps.billing.stripe.services.stripe_service import api_key_for_tenant, field, stripe_call
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.binding import (
-    BOUND, create_bound_mirror, log_unbound, refresh_mutable_facts,
+    BOUND, create_bound_mirror, log_unbound, mutable_facts, refresh_mutable_facts,
     resolve_new_mirror_owner, stripe_customer_id_of)
 from apps.platform.queries import get_tenant_stripe_account
 from core.exceptions import StripeFatalError, StripeTransientError
@@ -126,7 +126,8 @@ def _sync_one(tenant, connected_account, livemode, stripe_sub):
             "holder_tenant_id": resolution.tenant_id}})
         return False
     mirror, created = create_bound_mirror(
-        stripe_sub, customer_id=resolution.customer_id, tenant_id=resolution.tenant_id)
+        sub_id, customer_id=resolution.customer_id, tenant_id=resolution.tenant_id,
+        facts=mutable_facts(stripe_sub))
     if not created:
         # Bound by a concurrent writer between the read above and the
         # create: its binding stands, and only a mirror of this tenant's is

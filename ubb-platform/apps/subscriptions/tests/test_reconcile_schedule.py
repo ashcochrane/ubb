@@ -15,15 +15,6 @@ class TestReconcilerIsScheduled:
         assert entry["task"] == (
             "apps.subscriptions.tasks.reconcile_subscription_mirrors")
 
-    def test_seat_quantity_reconciler_is_in_the_beat_schedule(self):
-        """R10 Stage C4 (A-2, RULED Q8): the billed seat quantity converges on
-        the live roster hourly, with no roster change and no operator."""
-        from apps.subscriptions.tasks import reconcile_subscription_seat_quantities
-        entry = settings.CELERY_BEAT_SCHEDULE["reconcile-subscription-seat-quantities"]
-        assert entry["task"] == (
-            "apps.subscriptions.tasks.reconcile_subscription_seat_quantities")
-        assert reconcile_subscription_seat_quantities.queue == "ubb_subscriptions"
-
 
 @pytest.mark.django_db
 class TestReconcilerFansOut:

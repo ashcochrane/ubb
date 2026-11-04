@@ -8,7 +8,7 @@ from apps.billing.stripe.services.stripe_service import field
 from apps.subscriptions.models import StripeSubscription
 from apps.subscriptions.stripe.binding import (
     AMBIGUOUS, UNRESOLVED, AmbiguousMirrorOwner, create_bound_mirror, log_unbound,
-    resolve_new_mirror_owner, stripe_customer_id_of)
+    mutable_facts, resolve_new_mirror_owner, stripe_customer_id_of)
 from apps.subscriptions.stripe.items import _period_end, _period_start, _product_name, mirrored_amounts
 from apps.platform.customers.models import Customer
 
@@ -59,7 +59,8 @@ def handle_subscription_created(event):
             f"no customer holds Stripe customer {stripe_customer_id} on "
             f"{connected_account}; subscription {sub_id} is not mirrored")
     create_bound_mirror(
-        stripe_sub, customer_id=resolution.customer_id, tenant_id=resolution.tenant_id)
+        sub_id, customer_id=resolution.customer_id, tenant_id=resolution.tenant_id,
+        facts=mutable_facts(stripe_sub))
 
 
 def handle_subscription_updated(event):

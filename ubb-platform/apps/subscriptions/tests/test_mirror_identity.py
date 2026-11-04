@@ -37,7 +37,8 @@ from apps.platform.tenants.models import Tenant
 from apps.subscriptions.models import CustomerSubscriptionItem, StripeSubscription
 from apps.subscriptions.tests._helpers import (
     SK, a_licensed_item, a_mirrored_subscription, a_stripe_subscription,
-    a_subscription_dict, a_subscription_event, clear_stripe_customer_id_in_the_admin)
+    CapturedLog, a_subscription_dict, a_subscription_event,
+    clear_stripe_customer_id_in_the_admin)
 
 SYNC = "apps.subscriptions.stripe.sync"
 BINDING_LOGGER = "apps.subscriptions.stripe.binding"
@@ -111,33 +112,9 @@ def _binding(sub_id):
     return m.customer_id, m.tenant_id
 
 
-class _Capture(logging.Handler):
-    """The binding module's own logger (``caplog`` cannot see ``apps.*``
-    loggers: the project's LOGGING sets ``propagate: False`` on them)."""
-
-    def __init__(self):
-        super().__init__()
-        self.records = []
-
-    def emit(self, record):
-        self.records.append(record)
-
-    def named(self, message):
-        return [r for r in self.records if r.getMessage() == message]
-
-
-@contextlib.contextmanager
 def _captured():
-    logger = logging.getLogger(BINDING_LOGGER)
-    capture = _Capture()
-    old_level = logger.level
-    logger.setLevel(logging.DEBUG)
-    logger.addHandler(capture)
-    try:
-        yield capture
-    finally:
-        logger.removeHandler(capture)
-        logger.setLevel(old_level)
+    """The binding module's own log lines."""
+    return CapturedLog(BINDING_LOGGER)
 
 
 #: The inspection's probe shape (probe A9): the same rows read under two

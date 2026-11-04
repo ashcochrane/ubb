@@ -9,7 +9,7 @@ that moved would freeze a wrong owner for good. Three rules hold it:
 1. **An existing mirror is never rebound.** ``stripe_subscription_id``
    identifies it. The hourly and on-demand sync, a webhook replay and every
    other reconciliation write only the MUTABLE Stripe facts
-   (``MUTABLE_FACT_FIELDS``), never ``customer`` or ``tenant``.
+   (``mutable_facts``), never ``customer`` or ``tenant``.
 2. **A subscription UBB opened binds the owner UBB opened it for.**
    ``SubscriptionOrchestrator._persist_mirror`` holds that owner explicitly,
    creates the mirror with it, or confirms an existing binding equals it and
@@ -49,15 +49,6 @@ logger = logging.getLogger(__name__)
 BOUND = "bound"
 UNRESOLVED = "unresolved"
 AMBIGUOUS = "ambiguous"
-
-#: The columns a sync or a replay may write on an EXISTING mirror: Stripe's
-#: own mutable facts. ``customer`` and ``tenant`` are absent by design.
-MUTABLE_FACT_FIELDS = (
-    "stripe_product_name", "status", "amount_micros", "currency",
-    "source_amount_minor", "interval", "current_period_start",
-    "current_period_end", "last_synced_at", "quantity",
-)
-
 
 class AmbiguousMirrorOwner(ObjectDoesNotExist):
     """No ONE customer holds the subscription's Stripe customer id in its
@@ -123,7 +114,9 @@ def log_unbound(resolution, *, stripe_subscription_id, stripe_customer_id,
 
 
 def mutable_facts(stripe_sub):
-    """The mutable Stripe facts of a subscription, keyed by mirror column."""
+    """The mutable Stripe facts of a subscription, keyed by mirror column: all
+    a sync or a replay may write on an EXISTING mirror. ``customer`` and
+    ``tenant`` are absent by design."""
     money = mirrored_amounts(stripe_sub)
     return {
         "stripe_product_name": _product_name(stripe_sub),
@@ -141,27 +134,30 @@ def mutable_facts(stripe_sub):
 
 def refresh_mutable_facts(mirror, stripe_sub):
     """Write a subscription's mutable facts onto its EXISTING mirror. Only
-    ``MUTABLE_FACT_FIELDS`` are saved, so the binding cannot move here."""
-    for name, value in mutable_facts(stripe_sub).items():
+    those columns are saved, so the binding cannot move here."""
+    facts = mutable_facts(stripe_sub)
+    for name, value in facts.items():
         setattr(mirror, name, value)
-    mirror.save(update_fields=[*MUTABLE_FACT_FIELDS, "updated_at"])
+    mirror.save(update_fields=[*facts, "updated_at"])
     return mirror
 
 
-def create_bound_mirror(stripe_sub, *, customer_id, tenant_id):
-    """Create a NEW mirror bound to ``customer_id`` / ``tenant_id``.
+def create_bound_mirror(sub_id, *, customer_id, tenant_id, facts):
+    """Create a NEW mirror of ``sub_id`` bound to ``customer_id`` /
+    ``tenant_id``, with ``facts`` as its first mutable facts. Every writer
+    that creates a mirror — the sync, the webhook and UBB's own subscribe —
+    creates it here.
 
     Returns ``(mirror, True)`` when this call created it. A writer that bound
     the same subscription first wins: the unique ``stripe_subscription_id``
     refuses the second row, and this returns that existing mirror, untouched,
     as ``(mirror, False)``. Its binding stands either way.
     """
-    sub_id = field(stripe_sub, "id")
     try:
         with transaction.atomic():
             return StripeSubscription.objects.create(
                 stripe_subscription_id=sub_id, customer_id=customer_id,
-                tenant_id=tenant_id, **mutable_facts(stripe_sub)), True
+                tenant_id=tenant_id, **facts), True
     except IntegrityError:
         existing = StripeSubscription.objects.filter(stripe_subscription_id=sub_id).first()
         if existing is None:

@@ -22,7 +22,7 @@ from apps.platform.tenants.models import Tenant
 from apps.platform.tenants.tests._rails import RailActivated
 from apps.subscriptions.models import CustomerSubscriptionItem
 from apps.subscriptions.orchestration.seats import seat_count
-from apps.subscriptions.tests._helpers import a_mirrored_subscription
+from apps.subscriptions.tests._helpers import CapturedLog, a_mirrored_subscription
 
 SET_SEATS = "apps.subscriptions.orchestration.service.SubscriptionOrchestrator.set_seats"
 MODIFY = "apps.subscriptions.orchestration.service.stripe.SubscriptionItem.modify"
@@ -66,25 +66,9 @@ def _create_seat(tenant, external_id, parent="biz"):
         content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {raw}")
 
 
-class _Capture(logging.Handler):
-    """The seat module's logger (``ubb.billing``), read directly."""
-
-    def __init__(self):
-        super().__init__()
-        self.records = []
-
-    def emit(self, record):
-        self.records.append(record)
-
-    def __enter__(self):
-        logging.getLogger("ubb.billing").addHandler(self)
-        return self
-
-    def __exit__(self, *exc):
-        logging.getLogger("ubb.billing").removeHandler(self)
-
-    def messages(self):
-        return [r.getMessage() for r in self.records]
+def _seat_log():
+    """The seat module's own log lines (logger ``ubb.billing``)."""
+    return CapturedLog("ubb.billing")
 
 
 class TestSeatCountHelper(TestCase):
@@ -274,7 +258,7 @@ class TestSeatQuantityConverges(TestCase):
                       stripe.error.InvalidRequestError("No such subscription item", "id")):
             with self.subTest(type(error).__name__):
                 t, biz, _plan, _seats = _business_with_sub(seats=2, key=type(error).__name__)
-                with _Capture() as log, patch(MODIFY, side_effect=error), patch(BACKOFF), \
+                with _seat_log() as log, patch(MODIFY, side_effect=error), patch(BACKOFF), \
                         self.captureOnCommitCallbacks(execute=True):
                     resp = _create_seat(t, "seat-new")
                 assert resp.status_code == 201
@@ -289,12 +273,29 @@ class TestSeatQuantityConverges(TestCase):
         Customer.objects.create(tenant=t, external_id="seat-new", account_type="seat",
                                 parent=biz)
         closed = PaymentRailClosed(tenant_id=t.id, rail="tenant_money", environment="live")
-        with _Capture() as log, patch(MODIFY) as modify, patch(
+        with _seat_log() as log, patch(MODIFY) as modify, patch(
                 "apps.subscriptions.orchestration.service."
                 "refuse_a_rail_operation_while_it_is_closed", side_effect=closed):
             assert reconcile_subscription_seat_quantities() == {"rail_closed": 1}
         modify.assert_not_called()
-        assert "seat.qty_push_refused_rail_closed" in log.messages()
+        refused = [r for r in log.records if r.getMessage() == "seat.qty_reconcile_failed"]
+        assert [(r.levelno, r.data["reason"]) for r in refused] == [
+            (logging.WARNING, "rail_closed")]
+
+    def test_a_closed_rail_after_commit_is_logged_by_the_listener_and_answers_no_500(self):
+        from apps.platform.tenants.models import PaymentRailClosed
+        t, biz, _plan, _seats = _business_with_sub(seats=2)
+        closed = PaymentRailClosed(tenant_id=t.id, rail="tenant_money", environment="live")
+        with _seat_log() as log, patch(MODIFY) as modify, patch(
+                "apps.subscriptions.orchestration.service."
+                "refuse_a_rail_operation_while_it_is_closed", side_effect=closed), \
+                self.captureOnCommitCallbacks(execute=True):
+            resp = _create_seat(t, "seat-new")
+        assert resp.status_code == 201
+        modify.assert_not_called()
+        failed = [r for r in log.records if r.getMessage() == "seat.qty_push_failed"]
+        assert [(r.data["business_id"], r.data["reason"]) for r in failed] == [
+            (str(biz.id), "rail_closed")]
 
     def test_the_reconciler_reads_only_businesses_with_an_active_seat_subscription(self):
         from apps.subscriptions.tasks import reconcile_subscription_seat_quantities

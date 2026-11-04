@@ -301,28 +301,21 @@ def reconcile_subscription_seat_quantities():
     mirrored seat item, pushes it under the deterministic change id
     ``reconcile-{stripe_subscription_item_id}-{count}``, so repeated passes
     replay one Stripe idempotency key (``orchestration/seats.py``). Scheduled
-    after ``reconcile-subscription-mirrors`` so the mirror's status is fresh.
-    A failure for one business is logged and the pass goes on.
+    after ``reconcile-subscription-mirrors`` has fanned out its per-tenant
+    syncs, so it normally reads the mirror's status as that hour's sync left
+    it. A failure for one business is logged and the pass goes on.
     """
-    from apps.platform.customers.models import Customer
-    from apps.subscriptions.models import CustomerSubscriptionItem
     from apps.subscriptions.orchestration.seats import (
-        _ACTIVE_SUB_STATUSES, reconcile_seat_quantity)
+        FAILED, businesses_with_an_active_seat_subscription, reconcile_seat_quantity)
 
-    business_ids = (
-        CustomerSubscriptionItem.objects.filter(
-            axis="seat", stripe_subscription__status__in=_ACTIVE_SUB_STATUSES,
-            customer__account_type="business")
-        .values_list("customer_id", flat=True).distinct()
-    )
     outcomes = {}
-    for business in Customer.objects.filter(id__in=list(business_ids)).order_by("id"):
+    for business in businesses_with_an_active_seat_subscription():
         try:
             outcome = reconcile_seat_quantity(business)
-        except Exception:
-            logger.exception("seat.qty_reconcile_failed",
-                             extra={"data": {"business_id": str(business.id)}})
-            outcome = "failed"
+        except Exception as exc:
+            logger.exception("seat.qty_reconcile_failed", extra={"data": {
+                "business_id": str(business.id), "reason": type(exc).__name__}})
+            outcome = FAILED
         outcomes[outcome] = outcomes.get(outcome, 0) + 1
     if outcomes:
         logger.info("seat.qty_reconcile_pass", extra={"data": outcomes})

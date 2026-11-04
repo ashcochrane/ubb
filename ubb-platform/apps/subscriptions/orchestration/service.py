@@ -18,7 +18,7 @@ import calendar
 from datetime import datetime, timezone as dt_timezone
 
 import stripe
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.utils import timezone
 
 from apps.billing.stripe.services.stripe_service import (
@@ -35,6 +35,7 @@ from apps.subscriptions.models import (
     CustomerSubscriptionItem,
     StripeSubscription,
 )
+from apps.subscriptions.stripe.binding import create_bound_mirror
 from apps.subscriptions.stripe.items import (
     _items,
     _period_end,
@@ -588,18 +589,13 @@ class SubscriptionOrchestrator:
         mirror = (StripeSubscription.objects.select_for_update()
                   .filter(stripe_subscription_id=sub_id).first())
         if mirror is None:
-            try:
-                with transaction.atomic():
-                    return StripeSubscription.objects.create(
-                        stripe_subscription_id=sub_id, tenant=tenant, customer=owner,
-                        **facts)
-            except IntegrityError:
-                # Bound by the webhook or the sync between the read above
-                # and the create: confirm that binding below.
-                mirror = (StripeSubscription.objects.select_for_update()
-                          .filter(stripe_subscription_id=sub_id).first())
-                if mirror is None:
-                    raise
+            mirror, created = create_bound_mirror(
+                sub_id, customer_id=owner.id, tenant_id=tenant.id, facts=facts)
+            if created:
+                return mirror
+            # Bound by the webhook or the sync between the read above and the
+            # create: lock that binding and confirm it below.
+            mirror = StripeSubscription.objects.select_for_update().get(pk=mirror.pk)
         if mirror.customer_id != owner.id or mirror.tenant_id != tenant.id:
             raise OrchestrationError(
                 f"subscription {sub_id} is mirrored for customer "
