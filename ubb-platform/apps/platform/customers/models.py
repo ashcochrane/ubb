@@ -78,7 +78,10 @@ class Customer(SoftDeleteMixin, BaseModel):
     # failure remains) and `reasons.DISPUTE_LOST` (cleared when the durable
     # balance is back at the floor). Every clear goes through
     # `LiveCounter._maybe_unsuspend`, which announces `customer.reactivated`.
-    # "" when active / suspended for an unrecorded reason.
+    # "" when active, and "" on a suspension is the MANUAL HOLD (R10 Stage C4,
+    # PLAN §7 item 41): placed and released only through the operator workflow
+    # (`apps/billing/gating/services/manual_hold.py`), never by an automatic
+    # recovery. Neither this field nor `status` is editable in the admin.
     suspension_reason = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:

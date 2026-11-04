@@ -122,7 +122,7 @@ class TestUnsuspendOnRecovery:
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
         LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())
         c.status = "suspended"
-        c.suspension_reason = "fraud_review"  # admin suspension
+        c.suspension_reason = ""  # a manual hold (R10 Stage C4, PLAN §7 item 41)
         c.save(update_fields=["status", "suspension_reason"])
         LiveCounter.credit(c.id, t, 10_000_000)
         c.refresh_from_db()

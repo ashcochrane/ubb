@@ -519,6 +519,34 @@ class TestEveryRosterMutationNotifies(RailActivated, TestCase):
         spy.assert_called_once()
         assert spy.call_args.args[2] == 3
 
+    def test_a_manual_hold_and_its_release_push_the_count_and_converge(self):
+        """The supported manual hold (R10 Stage C4, PLAN §7 item 41) is a roster
+        change like any suspension: placing it pushes −1, releasing it +1, and a
+        hold whose immediate push fails converges on the hourly pass."""
+        from apps.billing.gating.services import manual_hold
+        from apps.subscriptions.tasks import reconcile_subscription_seat_quantities
+        t, biz, _plan, seats = _business_with_sub(seats=3)
+        seat = seats[0]
+        outbox = "apps.platform.events.tasks.process_single_event"
+        with patch(SET_SEATS) as spy, patch(outbox), self.captureOnCommitCallbacks(execute=True):
+            manual_hold.place_manual_hold(seat.id, operator="op-1")
+        spy.assert_called_once()
+        assert spy.call_args.args[2] == 2
+        with patch(SET_SEATS) as spy, patch(outbox), self.captureOnCommitCallbacks(execute=True):
+            manual_hold.release_manual_hold(seat.id, operator="op-1")
+        spy.assert_called_once()
+        assert spy.call_args.args[2] == 3
+
+        stripe_side = _StripeSeatQuantity(quantity=3)
+        with patch(MODIFY, side_effect=stripe_side.modify), patch(BACKOFF), patch(outbox):
+            stripe_side.failing = True
+            with self.captureOnCommitCallbacks(execute=True):
+                manual_hold.place_manual_hold(seat.id, operator="op-1")
+            stripe_side.failing = False
+            assert stripe_side.requests[-1][1:] == (2, "failed")      # the immediate push
+            assert reconcile_subscription_seat_quantities() == {"pushed": 1}
+            assert (stripe_side.requests[-1][1:], stripe_side.quantity) == ((2, "applied"), 2)
+
     def test_two_creates_in_one_transaction_push_once_with_the_final_count(self):
         from django.db import transaction
         from apps.platform.customers.hooks import notify_seat_roster_changed

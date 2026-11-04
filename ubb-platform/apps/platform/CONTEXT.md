@@ -128,12 +128,23 @@ is a roster change, broadcast once to registered listeners inside the transactio
 
 **Customer status**:
 `active`, `suspended`, or `closed`. `suspension_reason` says why (a `reason_code` word: `hard_floor`,
-`customer_spend_pool`, `payment_failed`, `dispute_lost`, or "" for a manual/unknown suspension).
+`customer_spend_pool`, `payment_failed`, `dispute_lost`, or "" for a **manual hold**).
 Only a suspension whose condition has resolved auto-clears — the durable balance back at the floor,
 the pool's line lifted, every failed invoice paid or voided — through the one reactivation site
 (`LiveCounter._maybe_unsuspend`), which emits `customer.reactivated` exactly once on the real
-`suspended → active` transition; a top-up never silently un-suspends an admin/fraud suspension, and
-a paid or voided invoice never clears a money suspension (R10 Stage C2).
+`suspended → active` transition; a top-up never silently un-suspends a manual hold, and
+a paid or voided invoice never clears a money suspension (R10 Stage C2). Status, reason and
+`deleted_at` are changed only by the workflows that own their side effects — never as raw fields in
+the Django admin, where they are read-only (R10 Stage C4). Closing a customer is not a supported v1
+transition.
+
+**Manual hold**:
+An accountable operator's suspension of one active customer — `suspended` with an empty reason —
+which no automatic recovery lifts. It is placed and released only through `manage.py
+set_customer_manual_hold`, which never overwrites or clears a system cause; a release meeting a
+standing payment failure leaves that failure as the cause (R10 Stage C4).
+(`apps/billing/gating/services/manual_hold.py`)
+_Avoid_: "admin suspension", "fraud suspension" as distinct states; editing `status` to hold a customer.
 
 ## Membership & identity
 

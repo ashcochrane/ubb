@@ -703,8 +703,9 @@ class LiveCounter:
         this decides WHETHER the row actually moves. Serializes on the owner
         Customer row (the same row the suspend paths lock), and the winning
         suspended->active transition guard prevents flip-flop. NEVER
-        un-suspends an admin/fraud suspension (suspension_reason not in the
-        clearable set).
+        un-suspends a reason outside the ``clearable`` set: a manual hold (the
+        empty reason) is lifted only by its own release
+        (``release_manual_hold``), never by an automatic recovery.
 
         ⚠ A STANDING PAYMENT FAILURE HOLDS THE OWNER (RULED Q4, the
         multi-invoice rule). Under the same row lock, before the row moves,
@@ -786,6 +787,24 @@ class LiveCounter:
             return LiveCounter._maybe_unsuspend(
                 owner_id, clearable=LiveCounter.BALANCE_SUSPEND_REASONS)
         return False
+
+    #: THE MANUAL HOLD's reason: none (R10 Stage C4, PLAN §7 item 41). An
+    #: accountable operator's suspension is recorded as ``suspended`` with an
+    #: EMPTY reason — the glossary's manual/unknown suspension — and no
+    #: automatic recovery ever lifts it; only its own release does.
+    MANUAL_HOLD_REASON = ""
+
+    @staticmethod
+    def release_manual_hold(owner_id) -> bool:
+        """An operator's release of a MANUAL HOLD (R10 Stage C4, PLAN §7 item
+        41), through the one reactivation site like every other clear: only a
+        customer suspended with the manual hold's empty reason moves, so a
+        ``hard_floor``, ``customer_spend_pool``, ``payment_failed`` or
+        ``dispute_lost`` suspension is never cleared by it. A standing payment
+        failure still holds the customer and takes over as the cause (RULED
+        Q4). Returns True when the row moved."""
+        return LiveCounter._maybe_unsuspend(
+            owner_id, clearable=(LiveCounter.MANUAL_HOLD_REASON,))
 
     @staticmethod
     def clear_payment_failed_suspension(owner_id) -> bool:

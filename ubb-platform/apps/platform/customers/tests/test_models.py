@@ -134,18 +134,11 @@ TOPOLOGY_FIELDS = {"account_type", "parent", "billing_topology"}
 CREATION_ONLY_FIELDS = TOPOLOGY_FIELDS | {"tenant"}
 
 
-class TopologyIsDeclaredAtCreationTest(TestCase):
-    """A customer's tenant and billing topology are declared when it is created
-    and are not editable afterwards in v1 (R10 Stage C3, F-7; owner/consultant
-    rulings 2026-11-04). The postpaid close bills a NEW invoice to the owner the
-    topology names, and every posting carries the owner it was recorded under,
-    so a mid-period change would bill recorded usage twice or not at all; and a
-    customer moved between tenants would carry its ownership and history across
-    the tenant boundary. The Django admin was the one supported surface that
-    could change them; on an EXISTING customer its tenant, account type, parent
-    and billing topology are read-only there. And the admin creates no
-    customer at all: `POST /customers` is the one creation path, so these
-    facts are only ever declared where they are validated."""
+class _CustomerAdminCase(TestCase):
+    """The Customer admin under an operator's login, with a pooled and an
+    allocated business, a seat and a solo customer, and the change-form
+    helpers. Shared by the creation-only (C3) and lifecycle (C4) tests below;
+    it holds no test of its own."""
 
     def setUp(self):
         from django.contrib import admin
@@ -200,6 +193,20 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
             reverse("admin:customers_customer_change", args=[customer.pk]))
         self.assertEqual(response.status_code, 200)
         return set(response.context["adminform"].form.fields)
+
+
+class TopologyIsDeclaredAtCreationTest(_CustomerAdminCase):
+    """A customer's tenant and billing topology are declared when it is created
+    and are not editable afterwards in v1 (R10 Stage C3, F-7; owner/consultant
+    rulings 2026-11-04). The postpaid close bills a NEW invoice to the owner the
+    topology names, and every posting carries the owner it was recorded under,
+    so a mid-period change would bill recorded usage twice or not at all; and a
+    customer moved between tenants would carry its ownership and history across
+    the tenant boundary. The Django admin was the one supported surface that
+    could change them; on an EXISTING customer its tenant, account type, parent
+    and billing topology are read-only there. And the admin creates no
+    customer at all: `POST /customers` is the one creation path, so these
+    facts are only ever declared where they are validated."""
 
     def test_an_existing_seats_parent_is_read_only_in_the_admin(self):
         self.assertTrue(TOPOLOGY_FIELDS <= set(
@@ -369,3 +376,95 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.solo.refresh_from_db()
         self.assertEqual(self.solo.stripe_customer_id, "cus_Solo1")
+
+
+#: A customer's lifecycle fields: changed only by the workflows that own their
+#: side effects, never as raw fields in the admin (R10 Stage C4, PLAN §7 item 41).
+LIFECYCLE_FIELDS = {"status", "suspension_reason", "deleted_at"}
+
+
+class LifecycleFieldsAreNotAdminControlsTest(_CustomerAdminCase):
+    """``status``, ``suspension_reason`` and ``deleted_at`` are read-only on an
+    existing customer, and the bulk delete action is gone (R10 Stage C4;
+    owner/consultant ruling 2026-11-05, PLAN §7 item 41). Edited raw, they
+    bypassed every lifecycle side effect: a ``status`` edit suspended, lifted
+    or closed a seat with no announcement and no roster notification; a
+    ``deleted_at`` edit soft-deleted one the same way; a ``suspension_reason``
+    edit from ``hard_floor`` to ``payment_failed`` let the AR pass lift a
+    customer still past its floor; and the bulk action HARD-deleted rows. The
+    manual hold has its own workflow (``set_customer_manual_hold``)."""
+
+    def _roster_notifications(self):
+        """Swap the roster's listeners for a recorder, for this test only."""
+        from apps.platform.customers import hooks
+        calls = []
+        saved = list(hooks._listeners)
+        hooks._listeners[:] = [calls.append]
+        self.addCleanup(lambda: hooks._listeners.__setitem__(slice(None), saved))
+        return calls
+
+    def _lifecycle_events(self, customer):
+        return OutboxEvent.objects.filter(
+            event_type__in=("customer.suspended", "customer.reactivated",
+                            "customer.deleted"),
+            payload__customer_id=str(customer.id)).count()
+
+    def test_the_lifecycle_fields_are_read_only_on_an_existing_customer(self):
+        for customer in (self.seat, self.solo, self.pooled):
+            with self.subTest(customer.external_id):
+                self.assertTrue(LIFECYCLE_FIELDS <= set(
+                    self.model_admin.get_readonly_fields(self.request, customer)))
+                self.assertFalse(LIFECYCLE_FIELDS & self._change_form_fields(customer))
+
+    def test_a_tampered_change_form_moves_no_lifecycle_field(self):
+        notified = self._roster_notifications()
+        tampers = {
+            "status": {"status": "suspended"},
+            "status to closed": {"status": "closed"},
+            "suspension_reason": {"suspension_reason": "payment_failed"},
+            "deleted_at": {"deleted_at_0": "2026-11-05", "deleted_at_1": "10:00:00"},
+            "all at once": {"status": "suspended", "suspension_reason": "hard_floor",
+                            "deleted_at_0": "2026-11-05", "deleted_at_1": "10:00:00"},
+        }
+        for name, tampered in tampers.items():
+            with self.subTest(name):
+                response = self._change(self.seat, **tampered)
+                self.assertEqual(response.status_code, 302)
+                self.seat.refresh_from_db()
+                self.assertEqual((self.seat.status, self.seat.suspension_reason,
+                                  self.seat.deleted_at), ("active", "", None))
+                self.assertTrue(Customer.objects.filter(id=self.seat.id).exists())
+        self.assertEqual(self._lifecycle_events(self.seat), 0)
+        self.assertEqual(notified, [])
+
+    def test_a_held_customer_stays_held_through_an_ordinary_edit(self):
+        Customer.objects.filter(id=self.solo.id).update(status="suspended")
+        self.solo.refresh_from_db()
+        response = self._change(self.solo, status="active", metadata='{"note": "kept"}',
+                                stripe_customer_id="cus_kept")
+        self.assertEqual(response.status_code, 302)
+        self.solo.refresh_from_db()
+        self.assertEqual((self.solo.status, self.solo.metadata, self.solo.stripe_customer_id),
+                         ("suspended", {"note": "kept"}, "cus_kept"))
+
+    def test_bulk_delete_is_not_an_admin_action(self):
+        from django.urls import reverse
+        self.assertNotIn("delete_selected", self.model_admin.get_actions(self.request))
+        response = self.http.post(reverse("admin:customers_customer_changelist"), {
+            "action": "delete_selected", "_selected_action": [str(self.solo.pk)],
+            "post": "yes"})
+        self.assertIn(response.status_code, (200, 302))
+        row = Customer.all_objects.get(id=self.solo.id)       # never hard-deleted
+        self.assertIsNone(row.deleted_at)                      # nor deleted at all
+
+    def test_the_single_object_delete_is_the_canonical_soft_delete(self):
+        from django.urls import reverse
+        notified = self._roster_notifications()
+        response = self.http.post(
+            reverse("admin:customers_customer_delete", args=[self.seat.pk]), {"post": "yes"})
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Customer.objects.filter(id=self.seat.id).exists())
+        self.assertIsNotNone(Customer.all_objects.get(id=self.seat.id).deleted_at)
+        self.assertEqual(OutboxEvent.objects.filter(
+            event_type="customer.deleted", payload__customer_id=str(self.seat.id)).count(), 1)
+        self.assertEqual([b.id for b in notified], [self.pooled.id])

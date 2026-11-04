@@ -147,14 +147,14 @@ class TestSuspensionFold:
         assert c.suspension_reason == reasons.CUSTOMER_SPEND_POOL
 
     def test_non_active_owner_gets_the_signal_but_no_status_flip(self):
-        # An admin/fraud suspension is never overwritten by the money path —
-        # the stop signal still fires (the crossing is real).
+        # A manual hold (an empty reason, R10 Stage C4) is never overwritten
+        # by the money path — the stop signal still fires (the crossing is real).
         t = _tenant()
         c = Customer.objects.create(tenant=t, external_id="c1", status="suspended",
-                                    suspension_reason="fraud")
+                                    suspension_reason="")
         assert drive_a_stop(c.id, t) == 1
         c.refresh_from_db()
-        assert c.suspension_reason == "fraud"
+        assert (c.status, c.suspension_reason) == ("suspended", "")
         assert _events(CustomerStopped.EVENT_TYPE, owner_id=c.id).count() == 1
         assert _events("customer.suspended", "customer_id", c.id).count() == 0
 
