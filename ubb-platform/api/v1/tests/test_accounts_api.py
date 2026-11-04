@@ -77,6 +77,37 @@ class TestAccountsAPI:
         resp = self._post({"external_id": "orphan", "account_type": "seat"})
         assert resp.status_code == 422
 
+    def test_a_seat_cannot_name_another_tenants_business_as_its_parent(self):
+        """The one creation path refuses a billing owner in another tenant
+        (R10 Stage C3: the shape the admin add form could create, before the
+        admin stopped creating customers)."""
+        from apps.platform.customers.models import Customer
+        elsewhere = Tenant.objects.create(name="Elsewhere")
+        Customer.objects.create(tenant=elsewhere, external_id="biz",
+                                account_type="business", billing_topology="pooled")
+        resp = self._post(
+            {"external_id": "s1", "account_type": "seat", "parent_external_id": "biz"})
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "parent business not found"
+        assert not Customer.all_objects.filter(tenant=self.tenant).exists()
+
+    def test_a_pooled_owner_that_is_not_a_business_cannot_be_created(self):
+        """The STOP probe's shape — an individual declaring a pooled topology,
+        with a seat under it — cannot arise here: a non-business is created
+        with no topology whatever the body says, and a seat's parent must be a
+        business."""
+        from apps.platform.customers.models import Customer
+        resp = self._post({"external_id": "ind", "account_type": "individual",
+                           "billing_topology": "pooled"})
+        assert resp.status_code == 201
+        individual = Customer.objects.get(tenant=self.tenant, external_id="ind")
+        assert individual.billing_topology == ""
+        resp = self._post(
+            {"external_id": "s1", "account_type": "seat", "parent_external_id": "ind"})
+        assert resp.status_code == 422
+        assert resp.json()["detail"] == "parent business not found"
+        assert not Customer.all_objects.filter(tenant=self.tenant, external_id="s1").exists()
+
     def test_create_individual_backward_compat(self):
         resp = self._post({"external_id": "ind"})
         assert resp.status_code == 201

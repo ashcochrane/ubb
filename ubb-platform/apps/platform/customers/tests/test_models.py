@@ -143,8 +143,9 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
     customer moved between tenants would carry its ownership and history across
     the tenant boundary. The Django admin was the one supported surface that
     could change them; on an EXISTING customer its tenant, account type, parent
-    and billing topology are read-only there, and its add form still declares
-    them at creation."""
+    and billing topology are read-only there. And the admin creates no
+    customer at all: `POST /customers` is the one creation path, so these
+    facts are only ever declared where they are validated."""
 
     def setUp(self):
         from django.contrib import admin
@@ -290,27 +291,44 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
             "suspension_reason": "", "deleted_at_0": "", "deleted_at_1": "",
         })
 
-    def test_the_add_form_still_declares_topology_at_creation(self):
-        self.assertFalse(CREATION_ONLY_FIELDS & set(
-            self.model_admin.get_readonly_fields(self.request, None)))
-        response = self._add(self.tenant, "seat-2", "seat", parent=self.allocated)
-        self.assertEqual(response.status_code, 302)
-        created = Customer.objects.get(tenant=self.tenant, external_id="seat-2")
-        self.assertEqual((created.account_type, created.parent_id),
-                         ("seat", self.allocated.id))
-        self.assertEqual(created.resolve_billing_owner(), created)
+    def test_the_admin_is_not_a_customer_creation_surface(self):
+        """Customers are created through `POST /customers` only (owner/
+        consultant ruling 2026-11-04, R1). The admin's add form was a second
+        creation workflow with other semantics: it could give a seat a billing
+        owner in another tenant, or a pooled owner that is not a business, and
+        it skipped the seat-quantity sync and the creation audit. It is closed:
+        no permission, the add page refused, and nothing created by a POST —
+        a legitimate shape or the corrupt ones alike."""
+        from django.urls import reverse
+        elsewhere = Tenant.objects.create(name="Elsewhere")
+        elsewhere_pooled = Customer.objects.create(
+            tenant=elsewhere, external_id="elsewhere-pooled", account_type="business",
+            billing_topology="pooled", metadata={"note": "elsewhere"})
+        before = Customer.all_objects.count()
+        self.assertFalse(self.model_admin.has_add_permission(self.request))
+        changelist = self.http.get(reverse("admin:customers_customer_changelist"))
+        self.assertFalse(changelist.context["has_add_permission"])  # no "Add" button
+        self.assertEqual(
+            self.http.get(reverse("admin:customers_customer_add")).status_code, 403)
+        attempts = [
+            (self.tenant, "seat-2", "seat", self.pooled, ""),            # legitimate
+            (self.tenant, "seat-x", "seat", elsewhere_pooled, ""),       # owner in another tenant
+            (self.tenant, "indiv-pooled", "individual", None, "pooled"),  # a pooled non-business
+            (self.tenant, "seat-y", "seat", self.solo, ""),              # a non-business parent
+        ]
+        for tenant, external_id, account_type, parent, topology in attempts:
+            with self.subTest(external_id=external_id):
+                response = self._add(tenant, external_id, account_type,
+                                     parent=parent, topology=topology)
+                self.assertEqual(response.status_code, 403)
+        self.assertEqual(Customer.all_objects.count(), before)
 
-    def test_the_add_form_declares_all_four_creation_only_fields(self):
-        """A legitimate creation in ANOTHER tenant: a pooled business and a
-        seat under it, each with its tenant, account type, parent and
-        topology declared on the add form."""
-        other = Tenant.objects.create(name="Other")
-        self.assertEqual(self._add(other, "o-biz", "business", topology="pooled").status_code, 302)
-        biz = Customer.objects.get(tenant=other, external_id="o-biz")
-        self.assertEqual(self._add(other, "o-seat", "seat", parent=biz).status_code, 302)
-        seat = Customer.objects.get(tenant=other, external_id="o-seat")
-        self.assertEqual((biz.tenant_id, biz.account_type, biz.parent_id, biz.billing_topology),
-                         (other.id, "business", None, "pooled"))
-        self.assertEqual((seat.tenant_id, seat.account_type, seat.parent_id),
-                         (other.id, "seat", biz.id))
-        self.assertEqual(seat.resolve_billing_owner(), biz)
+    def test_the_changelist_and_an_existing_customers_change_page_remain(self):
+        from django.urls import reverse
+        changelist = self.http.get(reverse("admin:customers_customer_changelist"))
+        self.assertEqual(changelist.status_code, 200)
+        for customer in (self.seat, self.pooled, self.solo):
+            with self.subTest(customer=customer.external_id):
+                self.assertTrue(self.model_admin.has_change_permission(self.request, customer))
+                self.assertEqual(self.http.get(reverse(
+                    "admin:customers_customer_change", args=[customer.pk])).status_code, 200)
