@@ -101,7 +101,12 @@ FRESH_INITIAL_SET = frozenset({
 #: FROZEN (a `RunSQL` with its reverse) — the first rules migration since the
 #: cutover, held here rather than in `FRESH_INITIAL_SET`, which names only the
 #: cutover's own.
-MIGRATIONS_SINCE_THE_CUTOVER = 3
+#: Four: R10 Stage C3 (F-9, RULED Q5) — `invoicing/0002_skip_reason_below_minor_unit`
+#: admits the new `skip_reason` value `below_minor_unit`: the field's choices
+#: move and `ck_usage_invoice_skip_reason_known` is rebuilt over seven values
+#: (a constraint removed and re-added under its own name; no column, no data
+#: step, nothing dropped).
+MIGRATIONS_SINCE_THE_CUTOVER = 4
 
 NUMBERED = re.compile(r"^\d{4}_\w+\.py$")
 DROP_OPS = {"RemoveField", "DeleteModel"}

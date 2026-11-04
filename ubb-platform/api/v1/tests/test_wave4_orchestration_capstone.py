@@ -218,8 +218,12 @@ def test_wave4_multi_axis_orchestration_one_bill_and_margin(
             (seat1, "u-alice", 4_000_000, 1_000_000),
             (seat2, "u-bob", 3_000_000, 800_000),
         ]:
+            # Pinned to the business, as the recording path pins a pooled
+            # seat's usage: the business's invoice sums what is pinned to it
+            # (R10 Stage C3, F-7).
             ev = a_posting(
                 tenant=tenant, customer=seat, idempotency_key=key,
+                billing_owner_id=business.id,
                 provider_cost_micros=provider, billed_cost_micros=billed)
             Posting.objects.filter(id=ev.id).update(effective_at=USAGE_AT)
 

@@ -207,14 +207,17 @@ class TestPush:
         t = Tenant.objects.create(name="T", products=["metering", "billing"],
                                   billing_mode="postpaid", stripe_connected_account_id="acct_x",
                                   charges_enabled=True)
+        # Two seats on ONE business invoice is the POOLED topology, their usage
+        # pinned to the business as the recording path pins it (R10 Stage C3,
+        # F-7: an allocated seat is its own billing owner and its own invoice).
         biz = Customer.objects.create(tenant=t, external_id="biz", account_type="business",
-                                      billing_topology="allocated", stripe_customer_id="cus_biz")
+                                      billing_topology="pooled", stripe_customer_id="cus_biz")
         # "acme.corp/east" and "acme-corp-east" both fold to "acme_corp_east" under the old slug
         s1 = Customer.objects.create(tenant=t, external_id="acme.corp/east", account_type="seat", parent=biz)
         s2 = Customer.objects.create(tenant=t, external_id="acme-corp-east", account_type="seat", parent=biz)
-        a_posting(tenant=t, customer=s1, idempotency_key="ik1",
+        a_posting(tenant=t, customer=s1, idempotency_key="ik1", billing_owner_id=biz.id,
                      provider_cost_micros=1, billed_cost_micros=400_000, effective_at=MID)
-        a_posting(tenant=t, customer=s2, idempotency_key="ik2",
+        a_posting(tenant=t, customer=s2, idempotency_key="ik2", billing_owner_id=biz.id,
                      provider_cost_micros=1, billed_cost_micros=600_000, effective_at=MID)
 
         # Faithfully model Stripe idempotency: first call for a key is accepted; replay with

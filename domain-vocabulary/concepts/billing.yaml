@@ -138,16 +138,27 @@ usage_invoice_status:
 skip_reason:
   kind: closed
   summary: >-
-    Why a usage invoice was skipped rather than pushed. Two are terminal
-    truths about the period — nothing was recorded (no_usage), or what was
-    recorded priced at exactly nothing (nothing_to_bill) — one says a newer
-    seat superseded it, and three are recoverable: the customer has no Stripe
+    Why a usage invoice was skipped rather than pushed. Three are terminal
+    truths about the period — nothing was recorded (no_usage), what was
+    recorded priced at exactly nothing (nothing_to_bill), or what was owed,
+    with the sub-cent amount carried in from earlier months, still came to
+    less than one minor unit, so it was carried forward to a later invoice
+    and no invoice was issued (below_minor_unit) — one says a newer seat
+    superseded it, and three are recoverable: the customer has no Stripe
     customer yet, the tenant's account cannot take charges yet, or the
     payment rail is closed. Present only on a skipped invoice; null on every
     other one.
+  # `below_minor_unit` ADDED IN R10 Stage C3 (F-9, RULED Q5). Such a period
+  # was recorded `pushed` with no invoice identity and announced as
+  # `usage_invoice.pushed`; it is a skip with a reason now, so `pushed` always
+  # means a real Stripe invoice. The one skip whose carry MOVES — consumed and
+  # deposited exactly once, as the push would have — documented as the
+  # deliberate exception to "a skip reserves no carry". Not a top-level status
+  # of its own.
   values:
     - no_usage
     - nothing_to_bill
+    - below_minor_unit
     - seat_superseded
     - no_stripe_customer
     - not_charge_ready

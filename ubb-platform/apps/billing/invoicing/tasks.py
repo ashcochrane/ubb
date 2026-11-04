@@ -86,7 +86,18 @@ def _prior_month():
 
 @shared_task(queue="ubb_billing")
 def close_postpaid_usage_periods():
-    """Monthly: push each postpaid customer's prior-month usage to Stripe."""
+    """Monthly: push each canonical billing owner's prior-month usage to Stripe.
+
+    ⚠ **THE TARGET IS `resolve_billing_owner()`, THE SAME LOOP THE HOURLY
+    OWNER PASS RUNS** (`gating/tasks.py`, R10 Stage C3, F-7): a POOLED seat's
+    usage is its business's, and every other customer — an ALLOCATED seat
+    included — is its own billing owner. This keyed any seat with a parent on
+    that parent until C3, so an allocated seat's month was invoiced to its
+    business and no row existed for the seat that owed it (Stage B step 14).
+    The owner's invoice then sums the postings pinned to that owner
+    (`PostpaidUsageService.aggregate_lines`). This decides the owner of a NEW
+    invoice only; an existing row keeps the owner it was issued to (I5, and
+    C2's historical-owner rule)."""
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from apps.metering.queries import get_customer_ids_with_postings
@@ -95,9 +106,8 @@ def close_postpaid_usage_periods():
     start, end = _prior_month()
     for tenant in Tenant.objects.filter(billing_mode="postpaid", is_active=True):
         cust_ids = get_customer_ids_with_postings(tenant.id, start, end)
-        targets = set()
-        for c in Customer.all_objects.filter(id__in=list(cust_ids)):
-            targets.add(c.parent_id if (c.account_type == "seat" and c.parent_id) else c.id)
+        targets = {c.resolve_billing_owner().id
+                   for c in Customer.all_objects.filter(id__in=list(cust_ids))}
         for target in Customer.all_objects.filter(id__in=list(targets)):
             try:
                 PostpaidUsageService.push_customer_period(tenant, target, start, end)
@@ -114,8 +124,14 @@ def reconcile_postpaid_usage():
     PostpaidUsageService.push_customer_period and flips a row past the cap to the
     terminal 'failed_permanent' for ALL callers. Also recovers 'skipped' rows whose
     precondition now holds (tenant became charge-ready / owner gained a Stripe
-    customer); 'no_usage', 'nothing_to_bill' (usage all priced at zero, #603)
-    and 'seat_superseded' skips stay terminal.
+    customer); 'no_usage', 'nothing_to_bill' (usage all priced at zero, #603),
+    'below_minor_unit' (carried forward, its carry already moved — R10 Stage
+    C3, F-9) and 'seat_superseded' skips stay terminal.
+
+    A 'failed' row includes one whose CLAIM raised before anything reached
+    Stripe — aggregation, the snapshot tripwire, a skip check: the claim is
+    committed first and the raise counts an attempt on it (R10 Stage C3, F-8),
+    so the month stays here until it bills or the caps park it.
     """
     from apps.billing.invoicing.models import CustomerUsageInvoice
     from apps.billing.invoicing.services.postpaid_service import PostpaidUsageService

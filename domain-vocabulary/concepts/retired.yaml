@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,656 of 2,826 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,660 of 2,830 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -3090,6 +3090,16 @@ measurement_key:
     # its historical billing owner (`subscriptions/0002_subscriptioninvoice_
     # billing_owner`) and the rules migration that keeps that owner FROZEN
     # (`subscriptions/0002_the_database_rules`). Neither names a quantity.
+    #
+    # 2026-11-04, R10 pre-Ash billing readiness Stage C3 (the postpaid and
+    # economic correctness slice): 2,656 of 2,826 -> 2,660 of 2,830 tracked
+    # files (`units` UNMOVED, 46 files / 137 occurrences). Four files arrived,
+    # all swept: the migration that admits the `below_minor_unit` skip reason
+    # (`invoicing/0002_skip_reason_below_minor_unit`), the operator command
+    # that sets a tenant's platform billing customer
+    # (`tenant_billing/management/commands/set_platform_billing_customer.py`)
+    # and the two empty package files its `management/commands` directory
+    # needs. None names a quantity.
 
     - term: units
       retired_as: >-

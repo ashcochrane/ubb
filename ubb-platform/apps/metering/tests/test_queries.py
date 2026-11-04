@@ -315,19 +315,22 @@ class CrossProductReadContractTest(TestCase):
         self.assertEqual(set(single), {self.customer.id, other.id})  # distinct
 
     def test_billed_totals_by_customer_groups_in_sql(self):
+        """Per recording customer, over the postings pinned to ONE billing
+        owner — never the customers a parent link names (R10 Stage C3, F-7)."""
         from apps.metering.queries import get_billed_totals_by_customer
+        owner = Customer.objects.create(tenant=self.tenant, external_id="owner")
         other = Customer.objects.create(tenant=self.tenant, external_id="c2")
         excluded = Customer.objects.create(tenant=self.tenant, external_id="c3")
-        a_posting(tenant=self.tenant, customer=self.customer,
+        a_posting(tenant=self.tenant, customer=self.customer, billing_owner_id=owner.id,
                      idempotency_key="i1", billed_cost_micros=100)
-        a_posting(tenant=self.tenant, customer=self.customer,
+        a_posting(tenant=self.tenant, customer=self.customer, billing_owner_id=owner.id,
                      idempotency_key="i2", billed_cost_micros=200)
-        a_posting(tenant=self.tenant, customer=other,
+        a_posting(tenant=self.tenant, customer=other, billing_owner_id=owner.id,
                      idempotency_key="i3", billed_cost_micros=0)
-        a_posting(tenant=self.tenant, customer=excluded,
+        a_posting(tenant=self.tenant, customer=excluded, billing_owner_id=excluded.id,
                      idempotency_key="i4", billed_cost_micros=7)
         totals = get_billed_totals_by_customer(
-            self.tenant.id, [self.customer.id, other.id], self.start, self.end)
+            self.tenant.id, owner.id, self.start, self.end)
         self.assertEqual(totals, {
             self.customer.id: {"billed_cost_micros": 300,
                                UNPRICED_EVENT_COUNT_KEY: 0},
@@ -341,14 +344,16 @@ class CrossProductReadContractTest(TestCase):
         """
         from apps.metering.queries import get_billed_totals_by_customer
         a_posting(tenant=self.tenant, customer=self.customer,
+                  billing_owner_id=self.customer.id,
                   idempotency_key="i1",
                   billed_cost_micros=100)
         a_posting(tenant=self.tenant, customer=self.customer,
+                  billing_owner_id=self.customer.id,
                   idempotency_key="i2",
                   billed_cost_micros=None,
                   pricing_status=PRICING_STATUS_UNKNOWN)
         totals = get_billed_totals_by_customer(
-            self.tenant.id, [self.customer.id], self.start, self.end)
+            self.tenant.id, self.customer.id, self.start, self.end)
         self.assertEqual(totals[self.customer.id],
                          {"billed_cost_micros": 100,
                           UNPRICED_EVENT_COUNT_KEY: 1})

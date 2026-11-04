@@ -110,20 +110,28 @@ def _ev(t, c, key, billed, **kw):
 @pytest.mark.django_db
 class TestBusinessBranchParity:
     def test_business_three_seats_byte_identical(self):
+        """Parity holds where both readings agree on whose usage it is: a
+        POOLED business, whose seats' postings the recording path pins to it.
+
+        ⚠ The fixture was an ALLOCATED business with unpinned postings until R10
+        Stage C3 (F-7), which held the misbilling in place: an allocated seat is
+        its own billing owner, and the business now sums only the postings
+        pinned to it (`get_billed_totals_by_customer`)."""
         t = Tenant.objects.create(name="T", billing_mode="postpaid",
                                   products=["metering", "billing"])
         biz = Customer.objects.create(tenant=t, external_id="biz",
-                                      account_type="business", billing_topology="allocated")
+                                      account_type="business", billing_topology="pooled")
         alice = Customer.objects.create(tenant=t, external_id="alice", account_type="seat", parent=biz)
         bob = Customer.objects.create(tenant=t, external_id="bob", account_type="seat", parent=biz)
         carol = Customer.objects.create(tenant=t, external_id="carol", account_type="seat", parent=biz)
         solo = Customer.objects.create(tenant=t, external_id="solo")  # NOT a seat
-        _ev(t, alice, "a1", 800_000)
-        _ev(t, alice, "a2", 50_000)            # two events aggregate into one seat line
-        _ev(t, bob, "b1", 300_000)
-        _ev(t, carol, "c1", 300_000)           # ties with bob -> label tiebreak
-        _ev(t, solo, "s1", 999_999)            # excluded: not a seat of biz
-        out = _ev(t, alice, "a3", 777_777)     # excluded: outside the window
+        _ev(t, alice, "a1", 800_000, billing_owner_id=biz.id)
+        _ev(t, alice, "a2", 50_000, billing_owner_id=biz.id)   # two events, one seat line
+        _ev(t, bob, "b1", 300_000, billing_owner_id=biz.id)
+        _ev(t, carol, "c1", 300_000, billing_owner_id=biz.id)  # ties with bob -> label tiebreak
+        _ev(t, solo, "s1", 999_999, billing_owner_id=solo.id)  # excluded: its own owner
+        out = _ev(t, alice, "a3", 777_777,                     # excluded: outside the window
+                  billing_owner_id=biz.id)
         Posting.objects.filter(id=out.id).update(
             effective_at=timezone.make_aware(timezone.datetime(2026, 5, 31, 23, 59)))
 

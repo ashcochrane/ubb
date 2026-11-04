@@ -208,6 +208,7 @@ AUDIT_ACTION_INVITATION_REVOKED = 'invitation.revoked'
 AUDIT_ACTION_MEMBER_ROLE_CHANGED = 'member.role_changed'
 AUDIT_ACTION_MEMBER_REMOVED = 'member.removed'
 AUDIT_ACTION_TENANT_CONFIG_CHANGED = 'tenant.config_changed'
+AUDIT_ACTION_TENANT_PLATFORM_BILLING_CUSTOMER_SET = 'tenant.platform_billing_customer_set'
 AUDIT_ACTION_SANDBOX_CREATED = 'sandbox.created'
 AUDIT_ACTION_SANDBOX_RESET = 'sandbox.reset'
 AUDIT_ACTION_CONNECT_STARTED = 'connect.started'
@@ -279,6 +280,7 @@ AUDIT_ACTION_VALUES = frozenset({
     AUDIT_ACTION_MEMBER_ROLE_CHANGED,
     AUDIT_ACTION_MEMBER_REMOVED,
     AUDIT_ACTION_TENANT_CONFIG_CHANGED,
+    AUDIT_ACTION_TENANT_PLATFORM_BILLING_CUSTOMER_SET,
     AUDIT_ACTION_SANDBOX_CREATED,
     AUDIT_ACTION_SANDBOX_RESET,
     AUDIT_ACTION_CONNECT_STARTED,
@@ -1856,17 +1858,21 @@ ROLE_VALUES = frozenset({
 #
 # closed — UBB owns the whole value set — exactly these values, no more.
 #
-# Why a usage invoice was skipped rather than pushed. Two are terminal truths
-# about the period — nothing was recorded (no_usage), or what was recorded
-# priced at exactly nothing (nothing_to_bill) — one says a newer seat
-# superseded it, and three are recoverable: the customer has no Stripe customer
-# yet, the tenant's account cannot take charges yet, or the payment rail is
-# closed. Present only on a skipped invoice; null on every other one.
+# Why a usage invoice was skipped rather than pushed. Three are terminal truths
+# about the period — nothing was recorded (no_usage), what was recorded priced
+# at exactly nothing (nothing_to_bill), or what was owed, with the sub-cent
+# amount carried in from earlier months, still came to less than one minor
+# unit, so it was carried forward to a later invoice and no invoice was issued
+# (below_minor_unit) — one says a newer seat superseded it, and three are
+# recoverable: the customer has no Stripe customer yet, the tenant's account
+# cannot take charges yet, or the payment rail is closed. Present only on a
+# skipped invoice; null on every other one.
 #
 # Declared in concepts/billing.yaml.
 
 SKIP_REASON_NO_USAGE = 'no_usage'
 SKIP_REASON_NOTHING_TO_BILL = 'nothing_to_bill'
+SKIP_REASON_BELOW_MINOR_UNIT = 'below_minor_unit'
 SKIP_REASON_SEAT_SUPERSEDED = 'seat_superseded'
 SKIP_REASON_NO_STRIPE_CUSTOMER = 'no_stripe_customer'
 SKIP_REASON_NOT_CHARGE_READY = 'not_charge_ready'
@@ -1875,6 +1881,7 @@ SKIP_REASON_PAYMENT_RAIL_CLOSED = 'payment_rail_closed'
 SKIP_REASON_VALUES = frozenset({
     SKIP_REASON_NO_USAGE,
     SKIP_REASON_NOTHING_TO_BILL,
+    SKIP_REASON_BELOW_MINOR_UNIT,
     SKIP_REASON_SEAT_SUPERSEDED,
     SKIP_REASON_NO_STRIPE_CUSTOMER,
     SKIP_REASON_NOT_CHARGE_READY,

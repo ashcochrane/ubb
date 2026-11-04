@@ -1,3 +1,4 @@
+import contextlib
 import logging
 from collections import defaultdict
 from datetime import timedelta
@@ -15,6 +16,7 @@ from core.currency_policy import the_rails_currency
 from core.money import minor_units, to_minor
 from apps.platform.tenants.models import rail_environment_of, the_rail_is_open_in
 from core.vocabulary import (
+    SKIP_REASON_BELOW_MINOR_UNIT,
     SKIP_REASON_NOTHING_TO_BILL,
     SKIP_REASON_NOT_CHARGE_READY,
     SKIP_REASON_NO_STRIPE_CUSTOMER,
@@ -57,6 +59,20 @@ def _warn_if_incomplete(tenant, customer, period_start, unpriced_events):
         "period_start": period_start.isoformat(),
         UNPRICED_EVENT_COUNT_KEY: unpriced_events}})
 
+@contextlib.contextmanager
+def _a_raise_counts_an_attempt(rec_id):
+    """Wrap stage 2 of a push (R10 Stage C3, F-8): whatever it raises is
+    recorded on the already-committed row as one failed attempt
+    (``PostpaidUsageService._record_failed_claim``), then re-raised unchanged
+    for the caller to log. Entered OUTSIDE stage 2's atomic, so the record is
+    written after the rollback, never inside it."""
+    try:
+        yield
+    except Exception as exc:
+        PostpaidUsageService._record_failed_claim(rec_id, exc)
+        raise
+
+
 # F5.5: a renewal draft older than this is too close to Stripe's ~1h
 # auto-finalize to safely pin items into — fall back to standalone.
 CONSOLIDATION_MAX_DRAFT_AGE_SECONDS = 45 * 60
@@ -66,9 +82,18 @@ class PostpaidUsageService:
     @staticmethod
     def aggregate_lines(tenant, customer, period_start, period_end):
         """(total_micros, [(label, amount_micros), ...]); lines ALWAYS sum to total.
-        A BUSINESS aggregates across its seats with one line per seat (external_id).
-        All metering reads go through the apps.metering.queries contract; the
-        seat-label mapping, "(other)"/"(seat)" merge and presentation sort stay here.
+        A BUSINESS aggregates the postings pinned to it as their billing owner,
+        one line per customer that recorded them (external_id) — its pooled
+        seats, and itself if it recorded any. All metering reads go through the
+        apps.metering.queries contract; the seat-label mapping, "(other)"/"(seat)"
+        merge and presentation sort stay here.
+
+        ⚠ **THE BUSINESS SUMS ONLY WHAT IS PINNED TO IT** (R10 Stage C3, F-7).
+        It summed every seat by `parent=` until C3, so an ALLOCATED business —
+        whose seats are each their own billing owner — was invoiced for usage
+        its seats owed. The pin is `Posting.billing_owner_id`, written by the
+        recording path from `Customer.resolve_billing_owner()`; there is no
+        second topology rule here to disagree with it.
 
         ⚠ **THE GROUPING IS AN AXIS OF THE ONE VOCABULARY** (#503, slice 7 §11),
         not a key — `PostpaidUsageConfig.invoice_line_grouping` holds a word the
@@ -86,6 +111,9 @@ class PostpaidUsageService:
         anything else. If it does happen, the failure lands on the path built
         for exactly this — bounded retries, then `failed_permanent` with its
         outbox alert — so an operator is told rather than a customer surprised.
+        (True since R10 Stage C3, F-8: the claim is committed before this runs,
+        and a raise here counts one attempt on it. Until then the raise rolled
+        the claim back with it and the month left the retry lane unannounced.)
 
         **WHICH POSTINGS BECOME LINES IS THE READ CONTRACT'S RULE AND NOT
         THIS METHOD'S.** A waived charge and a metered call under a fixed-price
@@ -97,11 +125,13 @@ class PostpaidUsageService:
         if customer.account_type == "business":
             from apps.platform.customers.models import Customer
             from apps.metering.queries import get_billed_totals_by_customer
-            seats = {s.id: s.external_id for s in Customer.all_objects.filter(parent=customer)}
-            if not seats:
-                return 0, []
             totals = get_billed_totals_by_customer(
-                tenant.id, list(seats.keys()), period_start, period_end)
+                tenant.id, customer.id, period_start, period_end)
+            if not totals:
+                return 0, []
+            # A soft-deleted seat keeps its line: its usage is still owed.
+            seats = dict(Customer.all_objects.filter(
+                id__in=list(totals)).values_list("id", "external_id"))
             agg = defaultdict(int)
             for cid, row in totals.items():
                 # THE READ CONTRACT ANSWERS A PAIR PER SEAT NOW (#351): the
@@ -187,7 +217,62 @@ class PostpaidUsageService:
         return True
 
     @staticmethod
+    def _record_failed_claim(rec_id, exc):
+        """Stage 2 raised (R10 Stage C3, F-8): count ONE attempt and keep the
+        error on the row, which stays in the retry lane as ``failed`` —
+        ``reconcile_postpaid_usage`` retries it, and the attempts/age caps at
+        the top of stage 2 park it ``failed_permanent`` with its alert.
+
+        Stage 2 rolled back, so the row holds exactly what stage 1 committed
+        (or what an earlier attempt left): nothing here touches the snapshot,
+        the carry or any pointer. Guarded on the two statuses a counted attempt
+        starts from, so a row another worker has moved on since is never
+        clobbered; a skipped row whose re-evaluation raised stays skipped (the
+        hourly recovery re-queues a recoverable one as ``pending``). Never
+        masks the caller's exception: a failure to record is logged."""
+        from django.db.models import F, Value
+        from django.db.models.functions import Coalesce
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+
+        now = timezone.now()
+        try:
+            CustomerUsageInvoice.objects.filter(
+                id=rec_id,
+                status__in=[USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED],
+            ).update(
+                status=USAGE_INVOICE_STATUS_FAILED,
+                push_attempts=F("push_attempts") + 1,
+                first_attempted_at=Coalesce(F("first_attempted_at"), Value(now)),
+                last_attempt_error=repr(exc)[:500],
+                updated_at=now)
+        except Exception:
+            logger.exception("postpaid.claim_failure_unrecorded", extra={"data": {
+                "usage_invoice_id": str(rec_id)}})
+
+    @staticmethod
     def push_customer_period(tenant, customer, period_start, period_end):
+        """Push one billing owner's usage for one calendar month to Stripe.
+
+        ⚠ **THE ROW IS THE RETRY UNIT, AND IT EXISTS BEFORE ANYTHING CAN
+        THROW** (R10 Stage C3, F-8). Until C3 the claim was born inside the
+        atomic that aggregates, so a raise there rolled it back and the month
+        vanished from retry: nothing for ``reconcile_postpaid_usage`` to find,
+        and the monthly close only ever addresses the month just ended.
+
+        - **Stage 1 — the claim.** ``get_or_create`` the (owner, period) row as
+          ``pending`` and COMMIT it: the durable retry identity and nothing
+          else. No carry is reserved, nothing is aggregated or posted, Stripe
+          is not called, no event is written, and the period is not consumed —
+          a fresh ``pending`` row with no snapshot leaves it open to backfill
+          (``apps.billing.queries.is_usage_period_closed``).
+        - **Stage 2 — one atomic, exactly as before:** the holding supersede,
+          the caps, the snapshot and its tripwire, the aggregation, the skips,
+          the carry reservation and the flip to ``pushing``. A raise anywhere
+          in it rolls all of that back and leaves the row ``failed`` with the
+          error and one attempt counted (``_record_failed_claim``) — the
+          tripwire's live re-aggregation on a resumed row included.
+        - **Phase 2** — Stripe, no transaction held. **Phase 3** — record.
+        """
         from apps.billing.invoicing.models import (
             CustomerUsageInvoice, PostpaidResidualLedger, UsageInvoiceLineItem)
 
@@ -197,11 +282,20 @@ class PostpaidUsageService:
         passed_customer = customer
         customer = customer.resolve_billing_owner()
 
-        # Phase 1 — claim
+        # Stage 1 — the claim, committed (F-8). Its own short transaction: the
+        # unique (customer, period_start) constraint makes a concurrent claim
+        # of the same period find this row rather than mint a second one.
         with transaction.atomic():
-            rec, _ = CustomerUsageInvoice.objects.select_for_update().get_or_create(
+            rec, _ = CustomerUsageInvoice.objects.get_or_create(
                 tenant=tenant, customer=customer, period_start=period_start,
                 defaults={"period_end": period_end, "currency": tenant.default_currency})
+
+        # Stage 2 — supersede, caps, snapshot/tripwire, aggregation, skips,
+        # carry and the flip to pushing: one atomic under the row lock. A raise
+        # anywhere in it rolls the atomic back FIRST (the inner manager exits
+        # first), and only then counts the attempt on the committed row.
+        with _a_raise_counts_an_attempt(rec.id), transaction.atomic():
+            rec = CustomerUsageInvoice.objects.select_for_update().get(id=rec.id)
             if passed_customer.id != customer.id:
                 # A row keyed on the seat itself can never be transitioned by this
                 # owner-first service — supersede it so reconcile stops retrying it.
@@ -213,6 +307,12 @@ class PostpaidUsageService:
                 return rec
             if rec.status == USAGE_INVOICE_STATUS_FAILED_PERMANENT:
                 return rec  # idempotent, no re-alert
+            if (rec.status == USAGE_INVOICE_STATUS_SKIPPED
+                    and rec.skip_reason == SKIP_REASON_BELOW_MINOR_UNIT):
+                # F-9 (RULED Q5): this period's carry has already moved —
+                # consumed and deposited once — so it is terminal. Re-running
+                # it would move the carry a second time.
+                return rec
             if rec.status in (USAGE_INVOICE_STATUS_PENDING, USAGE_INVOICE_STATUS_FAILED) and (
                 rec.push_attempts >= settings.UBB_POSTPAID_PUSH_MAX_ATTEMPTS
                 or (rec.first_attempted_at
@@ -338,18 +438,36 @@ class PostpaidUsageService:
             # Belt-and-braces: a forced re-record (operator repush of a row that
             # already recorded once) must replace, never duplicate, line items.
             rec.line_items.all().delete()
-            for label, amount, item_id in items:
-                UsageInvoiceLineItem.objects.create(
-                    usage_invoice=rec, grouping_field_value=label,
-                    amount_micros=amount,
-                    stripe_invoice_item_id=item_id)
-            rec.status = USAGE_INVOICE_STATUS_PUSHED
-            rec.stripe_invoice_id = invoice_id or ""
-            rec.residual_micros = residual_out
-            rec.pushed_at = timezone.now()
-            rec.last_attempt_error = ""
-            rec.save(update_fields=["status", "stripe_invoice_id", "residual_micros",
-                                    "pushed_at", "last_attempt_error", "updated_at"])
+            if invoice_id is None:
+                # F-9 (RULED Q5): nothing reached one minor unit, so no Stripe
+                # invoice exists and none was created. The period is SKIPPED
+                # `below_minor_unit` — never `pushed`, which always means a
+                # real Stripe invoice — and no `usage_invoice.pushed` is
+                # written. Its carry still moves, exactly once, as the push
+                # would have moved it: the pinned carry-in is consumed and the
+                # residual deposited below. That is the deliberate exception to
+                # "a skip reserves no carry", and the row is terminal (stage 2
+                # returns early for it, and repush refuses it), so a replay can
+                # never move the carry twice.
+                rec.status = USAGE_INVOICE_STATUS_SKIPPED
+                rec.skip_reason = SKIP_REASON_BELOW_MINOR_UNIT
+                rec.residual_micros = residual_out
+                rec.last_attempt_error = ""
+                rec.save(update_fields=["status", "skip_reason", "residual_micros",
+                                        "last_attempt_error", "updated_at"])
+            else:
+                for label, amount, item_id in items:
+                    UsageInvoiceLineItem.objects.create(
+                        usage_invoice=rec, grouping_field_value=label,
+                        amount_micros=amount,
+                        stripe_invoice_item_id=item_id)
+                rec.status = USAGE_INVOICE_STATUS_PUSHED
+                rec.stripe_invoice_id = invoice_id
+                rec.residual_micros = residual_out
+                rec.pushed_at = timezone.now()
+                rec.last_attempt_error = ""
+                rec.save(update_fields=["status", "stripe_invoice_id", "residual_micros",
+                                        "pushed_at", "last_attempt_error", "updated_at"])
             # F1.1 deposit: bank this push's residual for whichever period
             # reserves next (rec lock held above -> ledger lock: the same
             # rec-then-ledger order as the Phase-1 reservation). The
@@ -367,6 +485,8 @@ class PostpaidUsageService:
                 logger.info("postpaid.residual_carried", extra={"data": {
                     "customer_id": str(customer.id), "period_start": period_start.isoformat(),
                     "carried_in": carry_in, "residual_micros": residual_out}})
+            if invoice_id is None:
+                return rec
             write_event(UsageInvoicePushed(
                 tenant_id=str(tenant.id), customer_id=str(customer.id),
                 period_start=period_start.isoformat(), total_billed_micros=rec.total_billed_micros,
@@ -379,7 +499,6 @@ class PostpaidUsageService:
         from apps.billing.invoicing.models import CustomerUsageInvoice, PostpaidUsageConfig
 
         connected = tenant.stripe_connected_account_id
-        api_key = api_key_for_tenant(tenant)
         # The usage invoice row is the authoritative monetary object: its
         # currency is what every line is floored in and sent in, never the
         # tenant's setting at push time (#565). Refused before any Stripe call.
@@ -416,9 +535,12 @@ class PostpaidUsageService:
                 "usage_invoice_id": str(rec.id), "residual_micros": residual}})
 
         # Sub-cent total: nothing billable this period — carry the residual, create NO
-        # empty invoice (and never strand an unfinalized draft).
+        # empty invoice (and never strand an unfinalized draft). Phase 3 records
+        # the period `skipped` / `below_minor_unit` (F-9, RULED Q5). Nothing
+        # Stripe-side is touched, so the key is not even read until after this.
         if not cent_lines:
             return None, [], residual
+        api_key = api_key_for_tenant(tenant)
 
         # I2: resume-not-recreate. Retrieve the pointer if we have one; otherwise do
         # the I4 metadata lookup (covers a crash between Invoice.create and the

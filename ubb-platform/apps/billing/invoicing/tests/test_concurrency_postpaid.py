@@ -194,8 +194,11 @@ class ConcurrentAdjacentPeriodCarry(RailActivated, TransactionTestCase):
 
         recs = list(CustomerUsageInvoice.objects.filter(tenant=tenant, customer=customer))
         self.assertEqual(len(recs), 2)
-        for rec in recs:
-            self.assertEqual(rec.status, "pushed")
+        # One period reaches a cent and is pushed; the other does not and is
+        # skipped below one minor unit with its carry moved (F-9, RULED Q5) —
+        # which one depends on the interleaving.
+        self.assertEqual(sorted((r.status, r.skip_reason or "") for r in recs),
+                         [("pushed", ""), ("skipped", "below_minor_unit")])
         ledger = PostpaidResidualLedger.objects.get(customer=customer)
 
         # Conservation: cents*10_000 + final ledger == 9_000 seed + 2 * 2_000 usage.
@@ -244,7 +247,9 @@ class TestOutOfOrderCarry:
         s1 = push(P_JUL, P_AUG, 7_000)
         assert s1["amounts"] == []
         rec1 = CustomerUsageInvoice.objects.get(customer=c, period_start=P_JUL)
-        assert rec1.status == "pushed" and rec1.residual_micros == 9_567
+        # Below one minor unit: skipped, the carry moved once (F-9, RULED Q5).
+        assert (rec1.status, rec1.skip_reason) == ("skipped", "below_minor_unit")
+        assert rec1.residual_micros == 9_567 and rec1.stripe_invoice_id == ""
         assert ledger().balance_micros == 9_567
 
         # P3 consumes P1's banked residual: 9_567 + 6_000 -> 1 cent, 5_567 left.
@@ -310,7 +315,40 @@ class TestCarrySurvivesRetryAcrossFetch:
 @pytest.mark.django_db
 class TestSkipPathsReserveNoCarry:
     """The reservation sits AFTER every skip check: a row that never pushes
-    must never take (and strand) the ledger balance."""
+    must never take (and strand) the ledger balance.
+
+    ⚠ ONE DELIBERATE EXCEPTION (R10 Stage C3, F-9, RULED Q5): a period whose
+    usage plus the carry it took still reaches no minor unit is `skipped` /
+    `below_minor_unit`, and its carry MOVES — the carry-in consumed and the
+    residual deposited, exactly once, as the push would have. Below."""
+
+    def test_below_minor_unit_skip_moves_the_carry_exactly_once(self):
+        from apps.billing.invoicing.tasks import reconcile_postpaid_usage
+        from apps.platform.events.models import OutboxEvent
+        t = _charge_ready_tenant()
+        c = _postpaid_customer(t)
+        PostpaidResidualLedger.objects.create(tenant=t, customer=c, balance_micros=3_000)
+        with _stripe() as state, _agg(5_000):
+            rec = PostpaidUsageService.push_customer_period(t, c, P_JUN, P_JUL)
+        rec.refresh_from_db()
+        assert (rec.status, rec.skip_reason) == ("skipped", "below_minor_unit")
+        assert rec.carry_in_micros == 3_000          # the carry-in, consumed once
+        assert rec.residual_micros == 8_000          # 3_000 in + 5_000 usage, carried on
+        assert rec.stripe_invoice_id == "" and rec.pushed_at is None
+        assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 8_000
+        assert state["invoices"] == 0 and state["items"] == 0
+        assert not OutboxEvent.objects.filter(event_type="usage_invoice.pushed").exists()
+        # Replay — a second push of the period, and the hourly reconcile —
+        # never moves the carry again: the row is terminal.
+        with _stripe() as replay, _agg(5_000):
+            again = PostpaidUsageService.push_customer_period(t, c, P_JUN, P_JUL)
+            reconcile_postpaid_usage()
+        again.refresh_from_db()
+        assert (again.status, again.skip_reason) == ("skipped", "below_minor_unit")
+        assert again.residual_micros == 8_000 and again.carry_in_micros == 3_000
+        assert PostpaidResidualLedger.objects.get(customer=c).balance_micros == 8_000
+        assert replay["invoices"] == 0
+        assert not OutboxEvent.objects.filter(event_type="usage_invoice.pushed").exists()
 
     def test_zero_usage_with_banked_carry_skips_and_keeps_ledger(self):
         # Sub-cent residue alone must not mint an invoice: the carry stays
@@ -459,12 +497,14 @@ class ConcurrentUnseededLedgerCreation(RailActivated, TransactionTestCase):
         self.assertEqual(
             PostpaidResidualLedger.objects.filter(customer=customer).count(), 1)
 
-        # Both periods must have been pushed.
+        # June reaches a cent and is pushed; July's 2_000 (plus whatever carry
+        # it took) never does, so it is skipped below one minor unit with its
+        # carry moved (F-9, RULED Q5) — under either commit order.
         recs = list(CustomerUsageInvoice.objects.filter(tenant=tenant, customer=customer))
         self.assertEqual(len(recs), 2)
-        statuses = {r.period_start: r.status for r in recs}
-        self.assertEqual(statuses[P_JUN], "pushed")
-        self.assertEqual(statuses[P_JUL], "pushed")
+        statuses = {r.period_start: (r.status, r.skip_reason) for r in recs}
+        self.assertEqual(statuses[P_JUN], ("pushed", None))
+        self.assertEqual(statuses[P_JUL], ("skipped", "below_minor_unit"))
 
         # Conservation: cents*10_000 + final_ledger == 14_000 (total input micros,
         # no seed). Under any commit order the ledger accumulates exactly all
@@ -472,3 +512,73 @@ class ConcurrentUnseededLedgerCreation(RailActivated, TransactionTestCase):
         ledger = PostpaidResidualLedger.objects.get(customer=customer)
         billed_micros = sum(state["amounts"]) * 10_000
         self.assertEqual(billed_micros + ledger.balance_micros, 14_000)
+
+
+def _committed_row(tenant, customer, period_start):
+    """The row as a SECOND connection reads it — only what was committed."""
+    seen = {}
+
+    def read():
+        try:
+            row = CustomerUsageInvoice.objects.filter(
+                tenant=tenant, customer=customer, period_start=period_start).first()
+            if row is not None:
+                seen.update(status=row.status, push_attempts=row.push_attempts,
+                            last_attempt_error=row.last_attempt_error,
+                            line_snapshot=row.line_snapshot,
+                            carry_in_micros=row.carry_in_micros)
+        finally:
+            connection.close()
+
+    reader = threading.Thread(target=read)
+    reader.start()
+    reader.join()
+    return seen
+
+
+class TheClaimIsCommittedBeforeTheRiskyPhase(RailActivated, TransactionTestCase):
+    """R10 Stage C3, F-8: stage 1 COMMITS the claim before stage 2 can throw,
+    so a raise in stage 2 leaves a durable `failed` row with one attempt —
+    proven here against real transactions, read from a second connection.
+    Until C3 the claim was born inside stage 2's atomic and rolled back with
+    it, leaving nothing for `reconcile_postpaid_usage` to retry."""
+
+    def test_a_stage_two_raise_leaves_a_committed_failed_row(self):
+        tenant = _charge_ready_tenant(name="C3_F8_COMMIT")
+        customer = _postpaid_customer(tenant, external_id="c3_f8_commit")
+        PostpaidResidualLedger.objects.create(
+            tenant=tenant, customer=customer, balance_micros=9_000)
+        with _stripe() as state, patch.object(
+                PostpaidUsageService, "aggregate_lines",
+                side_effect=RuntimeError("aggregation blew up")):
+            with self.assertRaises(RuntimeError):
+                PostpaidUsageService.push_customer_period(tenant, customer, P_JUN, P_JUL)
+        row = _committed_row(tenant, customer, P_JUN)
+        self.assertEqual(row.get("status"), "failed")
+        self.assertEqual(row.get("push_attempts"), 1)
+        self.assertIn("aggregation blew up", row.get("last_attempt_error", ""))
+        # Nothing of stage 2 survived the rollback.
+        self.assertEqual(row.get("line_snapshot"), [])
+        self.assertIsNone(row.get("carry_in_micros"))
+        self.assertEqual(
+            PostpaidResidualLedger.objects.get(customer=customer).balance_micros, 9_000)
+        self.assertEqual(state["invoices"], 0)
+
+    def test_two_workers_failing_one_new_period_leave_one_row_and_two_attempts(self):
+        tenant = _charge_ready_tenant(name="C3_F8_RACE")
+        customer = _postpaid_customer(tenant, external_id="c3_f8_race")
+        with _stripe() as state, patch.object(
+                PostpaidUsageService, "aggregate_lines",
+                side_effect=RuntimeError("aggregation blew up")):
+            errors = _run_workers([
+                lambda: PostpaidUsageService.push_customer_period(tenant, customer, P_JUN, P_JUL),
+                lambda: PostpaidUsageService.push_customer_period(tenant, customer, P_JUN, P_JUL),
+            ])
+        self.assertEqual(len(errors), 2)
+        self.assertTrue(all("aggregation blew up" in e for e in errors))
+        rows = CustomerUsageInvoice.objects.filter(tenant=tenant, customer=customer)
+        self.assertEqual(rows.count(), 1)          # one claim, however many workers
+        row = rows.first()
+        self.assertEqual(row.status, "failed")
+        self.assertEqual(row.push_attempts, 2)     # each failed attempt counted once
+        self.assertEqual(state["invoices"], 0)

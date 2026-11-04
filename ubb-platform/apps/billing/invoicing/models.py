@@ -3,6 +3,7 @@ from django.db import models
 from core.currency_policy import usd_only_check
 from core.models import BaseModel
 from core.vocabulary import (
+    SKIP_REASON_BELOW_MINOR_UNIT,
     SKIP_REASON_NOTHING_TO_BILL,
     SKIP_REASON_NOT_CHARGE_READY,
     SKIP_REASON_NO_STRIPE_CUSTOMER,
@@ -74,9 +75,14 @@ USAGE_INVOICE_STATUS = [
     (USAGE_INVOICE_STATUS_FAILED_PERMANENT, "Failed permanent"),
 ]
 
+#: `below_minor_unit` (R10 Stage C3, F-9, RULED Q5): the month's usage, with
+#: the carry it took, came to less than one minor unit, so no Stripe invoice
+#: was issued and the whole amount was carried forward. It was recorded
+#: `pushed` with no invoice identity until C3.
 USAGE_INVOICE_SKIP_REASONS = [
     (SKIP_REASON_NO_USAGE, "No usage recorded"),
     (SKIP_REASON_NOTHING_TO_BILL, "Nothing to bill"),
+    (SKIP_REASON_BELOW_MINOR_UNIT, "Below one minor unit, carried forward"),
     (SKIP_REASON_SEAT_SUPERSEDED, "Superseded by a newer seat"),
     (SKIP_REASON_NO_STRIPE_CUSTOMER, "No Stripe customer yet"),
     (SKIP_REASON_NOT_CHARGE_READY, "Account cannot take charges yet"),

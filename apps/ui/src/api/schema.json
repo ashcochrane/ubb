@@ -494,6 +494,7 @@
               "member.role_changed",
               "member.removed",
               "tenant.config_changed",
+              "tenant.platform_billing_customer_set",
               "sandbox.created",
               "sandbox.reset",
               "connect.started",
@@ -11244,6 +11245,7 @@
                 "enum": [
                   "no_usage",
                   "nothing_to_bill",
+                  "below_minor_unit",
                   "seat_superseded",
                   "no_stripe_customer",
                   "not_charge_ready",
@@ -12671,6 +12673,7 @@
                 "enum": [
                   "no_usage",
                   "nothing_to_bill",
+                  "below_minor_unit",
                   "seat_superseded",
                   "no_stripe_customer",
                   "not_charge_ready",

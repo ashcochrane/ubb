@@ -5,7 +5,12 @@ from django.db import transaction
 from django.db.utils import InterfaceError, OperationalError
 from django.utils import timezone
 
-from apps.billing.tenant_billing.models import TenantBillingPeriod, TenantInvoice
+from apps.billing.tenant_billing.models import (
+    BillingTenantConfig,
+    TenantBillingPeriod,
+    TenantInvoice,
+    is_a_stripe_customer_id,
+)
 from apps.billing.tenant_billing.services import TenantBillingService
 from apps.platform.event_types.quarantine import PeriodHoldsUnresolvedValues
 from core.vocabulary import (
@@ -112,6 +117,13 @@ def generate_tenant_platform_invoices():
     """Generate Stripe invoices for closed billing periods without invoices.
 
     Also reclaims stale 'invoicing' periods (stuck >30 min) by reverting to 'closed'.
+
+    A tenant with no usable platform billing customer (none set, or not a
+    Stripe customer id) has its fee periods left `closed` — not claimed, not
+    sent to Stripe — and is reported ONCE per run as the structured ERROR
+    `platform_invoice.no_platform_customer` (R10 Stage C3, F-10, RULED Q6).
+    The remedy is the operator command `set_platform_billing_customer`; the
+    first run after it invoices the waiting periods.
     """
     from datetime import timedelta
 
@@ -133,6 +145,12 @@ def generate_tenant_platform_invoices():
         invoice__isnull=True,
     ).select_related("tenant")
 
+    # R10 Stage C3 (F-10, RULED Q6): a tenant with no usable platform billing
+    # customer is decided once per run, its fee periods are left exactly where
+    # they are (`closed`, so the next run picks them up), and it is reported
+    # once below.
+    customer_problem = {}
+    waiting = {}
     for period in periods:
         # A fee of nothing is invoiced by recording it so: there is nothing to
         # send Stripe. Not a sign rule (#603 ruling 9) — the fee is a share of
@@ -141,6 +159,12 @@ def generate_tenant_platform_invoices():
         if period.platform_fee_micros == 0:
             period.status = BILLING_PERIOD_STATUS_INVOICED
             period.save(update_fields=["status", "updated_at"])
+            continue
+
+        if period.tenant_id not in customer_problem:
+            customer_problem[period.tenant_id] = _platform_customer_problem(period.tenant_id)
+        if customer_problem[period.tenant_id] is not None:
+            waiting.setdefault(period.tenant_id, []).append(str(period.id))
             continue
 
         try:
@@ -152,6 +176,42 @@ def generate_tenant_platform_invoices():
                 "Failed to create tenant platform invoice",
                 extra={"data": {"period_id": str(period.id)}},
             )
+
+    for tenant_id, period_ids in waiting.items():
+        # ONE structured ERROR per tenant per run, for operational alerting.
+        # The remedy is the operator command; the periods stay `closed` and
+        # are invoiced by the first run after it.
+        logger.error(
+            "platform_invoice.no_platform_customer",
+            extra={"data": {
+                "tenant_id": str(tenant_id),
+                "reason": customer_problem[tenant_id],
+                "period_ids": period_ids,
+                "remedy": ("manage.py set_platform_billing_customer "
+                           f"--tenant {tenant_id} --stripe-customer-id cus_... --verify"),
+            }},
+        )
+
+
+def _platform_customer_problem(tenant_id):
+    """Why this tenant's platform fee cannot be invoiced yet, or ``None``.
+
+    ``"missing"`` — no platform billing customer is set (no config row, or an
+    empty one); ``"malformed"`` — what is set is not a Stripe customer id.
+    Read without writing (the config row is not created here), and decided
+    before any period is claimed or any Stripe call is made (R10 Stage C3,
+    F-10). Whether Stripe knows the customer is the operator command's
+    ``--verify`` to establish; a refusal from Stripe at invoice time stays on
+    the existing failure path (the period reverts to ``closed``)."""
+    stripe_customer_id = (BillingTenantConfig.objects
+                          .filter(tenant_id=tenant_id)
+                          .values_list("stripe_customer_id", flat=True)
+                          .first())
+    if not stripe_customer_id:
+        return "missing"
+    if not is_a_stripe_customer_id(stripe_customer_id):
+        return "malformed"
+    return None
 
 
 def _create_tenant_invoice(period):
