@@ -100,10 +100,12 @@ def close_postpaid_usage_periods():
     C2's historical-owner rule).
 
     It resolves the owner at close, which equals the owner every posting was
-    pinned to at record time because no product path changes a customer's
-    parent or a business's topology after creation. A change made outside
-    every product path mid-month (the Django admin's default form) is not
-    modelled here; the C3 PR body states what it would do."""
+    pinned to at record time because a customer's topology — account type,
+    parent, billing topology — is declared at creation and is not editable
+    afterwards in v1: the platform API only creates it, and the customer admin
+    shows it read-only on an existing customer (owner/consultant ruling
+    2026-11-04). Changing a topology needs a future, explicitly designed
+    workflow with defined economic cutover semantics."""
     from apps.platform.tenants.models import Tenant
     from apps.platform.customers.models import Customer
     from apps.metering.queries import get_customer_ids_with_postings

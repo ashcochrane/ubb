@@ -120,9 +120,10 @@ class PostpaidUsageService:
         whose seats are each their own billing owner — was invoiced for usage
         its seats owed. The pin is `Posting.billing_owner_id`, written by the
         recording path from `Customer.resolve_billing_owner()` — the same
-        resolver the close picks its owners with, so the two agree for as long
-        as a customer's parent and its business's topology stay as created,
-        which every product path guarantees. Nothing here reads `parent`.
+        resolver the close picks its owners with, and the two agree because a
+        customer's topology is declared at creation and is not editable
+        afterwards in v1 (`apps/platform/customers/admin.py`). Nothing here
+        reads `parent`.
 
         ⚠ **THE GROUPING IS AN AXIS OF THE ONE VOCABULARY** (#503, slice 7 §11),
         not a key — `PostpaidUsageConfig.invoice_line_grouping` holds a word the

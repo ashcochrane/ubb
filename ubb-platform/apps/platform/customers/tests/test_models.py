@@ -126,3 +126,135 @@ class CustomerModelTest(TestCase):
         # Customer should NOT be soft-deleted because the transaction rolled back
         customer.refresh_from_db()
         self.assertFalse(customer.is_deleted)
+
+
+#: What decides a customer's billing owner (`Customer.resolve_billing_owner`).
+TOPOLOGY = {"account_type", "parent", "billing_topology"}
+
+
+class TopologyIsDeclaredAtCreationTest(TestCase):
+    """A customer's billing topology is declared when it is created and is not
+    editable afterwards in v1 (R10 Stage C3, F-7; owner/consultant ruling
+    2026-11-04). The postpaid close bills a NEW invoice to the owner the
+    topology names, and every posting carries the owner it was recorded under,
+    so a mid-period change would bill recorded usage twice or not at all. The
+    Django admin was the one supported surface that could change it; on an
+    EXISTING customer its account type, parent and billing topology are now
+    read-only there, and its add form still declares them at creation."""
+
+    def setUp(self):
+        from django.contrib import admin
+        from django.contrib.auth import get_user_model
+        from django.test import Client, RequestFactory
+
+        self.tenant = Tenant.objects.create(name="Topology")
+        self.pooled = Customer.objects.create(
+            tenant=self.tenant, external_id="pooled-biz", account_type="business",
+            billing_topology="pooled", metadata={"note": "pooled"})
+        self.allocated = Customer.objects.create(
+            tenant=self.tenant, external_id="allocated-biz", account_type="business",
+            billing_topology="allocated", metadata={"note": "allocated"})
+        self.seat = Customer.objects.create(
+            tenant=self.tenant, external_id="seat-1", account_type="seat",
+            parent=self.pooled, metadata={"note": "seat"})
+        self.solo = Customer.objects.create(
+            tenant=self.tenant, external_id="solo", metadata={"note": "solo"})
+        self.operator = get_user_model().objects.create_superuser(
+            username="operator", email="operator@example.com", password="pw")
+        self.http = Client()
+        self.http.force_login(self.operator)
+        self.model_admin = admin.site._registry[Customer]
+        self.request = RequestFactory().get("/")
+        self.request.user = self.operator
+
+    @staticmethod
+    def _form(customer, **overrides):
+        """Every field the change form posts, at the customer's own values."""
+        import json
+        data = {
+            "tenant": str(customer.tenant_id), "external_id": customer.external_id,
+            "stripe_customer_id": customer.stripe_customer_id, "status": customer.status,
+            "metadata": json.dumps(customer.metadata),
+            "account_type": customer.account_type,
+            "parent": str(customer.parent_id) if customer.parent_id else "",
+            "billing_topology": customer.billing_topology,
+            "suspension_reason": customer.suspension_reason,
+            "deleted_at_0": "", "deleted_at_1": "",
+        }
+        data.update(overrides)
+        return data
+
+    def _change(self, customer, **overrides):
+        from django.urls import reverse
+        url = reverse("admin:customers_customer_change", args=[customer.pk])
+        return self.http.post(url, self._form(customer, **overrides))
+
+    def _change_form_fields(self, customer):
+        from django.urls import reverse
+        response = self.http.get(
+            reverse("admin:customers_customer_change", args=[customer.pk]))
+        self.assertEqual(response.status_code, 200)
+        return set(response.context["adminform"].form.fields)
+
+    def test_an_existing_seats_parent_is_read_only_in_the_admin(self):
+        self.assertTrue(TOPOLOGY <= set(
+            self.model_admin.get_readonly_fields(self.request, self.seat)))
+        self.assertFalse(TOPOLOGY & self._change_form_fields(self.seat))
+
+    def test_an_existing_businesss_billing_topology_is_read_only_in_the_admin(self):
+        for business in (self.pooled, self.allocated):
+            with self.subTest(business=business.external_id):
+                self.assertTrue(TOPOLOGY <= set(
+                    self.model_admin.get_readonly_fields(self.request, business)))
+                self.assertFalse(TOPOLOGY & self._change_form_fields(business))
+
+    def test_a_tampered_change_form_moves_no_topology_fact(self):
+        """The form is VALID and saves (302) — the topology values posted
+        beside the ordinary fields are simply not the form's to take."""
+        cases = [
+            (self.seat, {"parent": str(self.allocated.pk)}),
+            (self.seat, {"parent": ""}),
+            (self.seat, {"account_type": "individual", "parent": ""}),
+            (self.pooled, {"billing_topology": "allocated"}),
+            (self.allocated, {"billing_topology": "pooled"}),
+            (self.allocated, {"account_type": "individual", "billing_topology": ""}),
+            (self.solo, {"account_type": "seat", "parent": str(self.pooled.pk)}),
+        ]
+        for customer, tampered in cases:
+            before = (customer.account_type, customer.parent_id, customer.billing_topology)
+            owner_before = customer.resolve_billing_owner().id
+            with self.subTest(customer=customer.external_id, tampered=tampered):
+                response = self._change(customer, **tampered)
+                self.assertEqual(response.status_code, 302)
+                customer.refresh_from_db()
+                self.assertEqual(
+                    (customer.account_type, customer.parent_id, customer.billing_topology),
+                    before)
+                self.assertEqual(customer.resolve_billing_owner().id, owner_before)
+
+    def test_an_ordinary_edit_still_saves(self):
+        response = self._change(
+            self.seat, stripe_customer_id="cus_Seat1", metadata='{"note": "edited"}')
+        self.assertEqual(response.status_code, 302)
+        self.seat.refresh_from_db()
+        self.assertEqual(self.seat.stripe_customer_id, "cus_Seat1")
+        self.assertEqual(self.seat.metadata, {"note": "edited"})
+        self.assertEqual((self.seat.account_type, self.seat.parent_id),
+                         ("seat", self.pooled.id))
+
+    def test_the_add_form_still_declares_topology_at_creation(self):
+        from django.urls import reverse
+        self.assertFalse(TOPOLOGY & set(
+            self.model_admin.get_readonly_fields(self.request, None)))
+        response = self.http.post(reverse("admin:customers_customer_add"), {
+            "tenant": str(self.tenant.pk), "external_id": "seat-2",
+            "stripe_customer_id": "", "status": "active",
+            "metadata": '{"note": "new"}', "account_type": "seat",
+            "parent": str(self.allocated.pk), "billing_topology": "",
+            "suspension_reason": "", "deleted_at_0": "", "deleted_at_1": "",
+        })
+        self.assertEqual(response.status_code, 302)
+        created = Customer.objects.get(tenant=self.tenant, external_id="seat-2")
+        self.assertEqual((created.account_type, created.parent_id),
+                         ("seat", self.allocated.id))
+        self.assertEqual(created.resolve_billing_owner(), created)

@@ -54,6 +54,12 @@ class Customer(SoftDeleteMixin, BaseModel):
     # `apps/metering/pricing/applicability.py`), which is where a reader
     # should look. `tenant_posture` stays DERIVED and unstored (ADR-0006 §4),
     # and gate G10 is what keeps it that way.
+    # THE TOPOLOGY — account type, parent, billing topology — IS DECLARED AT
+    # CREATION IN V1 (R10 Stage C3, F-7; owner/consultant ruling 2026-11-04):
+    # it decides the billing owner every posting is recorded under, so no
+    # supported surface edits it afterwards (the admin shows it read-only on an
+    # existing customer). A change needs a future workflow with defined
+    # economic cutover semantics.
     account_type = models.CharField(max_length=12, choices=ACCOUNT_TYPE_CHOICES, default="individual", db_index=True)
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="seats")
     billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")
