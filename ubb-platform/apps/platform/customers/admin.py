@@ -7,26 +7,33 @@ from apps.platform.customers.models import Customer
 class CustomerAdmin(admin.ModelAdmin):
     """The customer admin.
 
-    ⚠ **A CUSTOMER'S BILLING TOPOLOGY IS DECLARED AT CREATION IN V1, AND IS
-    READ-ONLY HERE AFTERWARDS** (R10 Stage C3, F-7; owner/consultant ruling
-    2026-11-04). Its account type, its parent and — on a business — its billing
-    topology are what `Customer.resolve_billing_owner` reads. The postpaid close
-    bills a NEW invoice to the owner they name, and every posting already
-    carries the owner it was recorded under, so changing them mid-period would
-    bill recorded usage twice, or not at all, or to another owner. The add form
-    still declares them, as the platform API's create does. Changing a
-    customer's topology later needs a future, explicitly designed workflow with
-    defined economic cutover semantics; this form is not one.
+    ⚠ **AN EXISTING CUSTOMER'S TENANT AND BILLING TOPOLOGY ARE DECLARED AT
+    CREATION IN V1, AND ARE READ-ONLY HERE AFTERWARDS** (R10 Stage C3, F-7;
+    owner/consultant rulings 2026-11-04).
+
+    - **The topology** — its account type, its parent and, on a business, its
+      billing topology — is what `Customer.resolve_billing_owner` reads. The
+      postpaid close bills a NEW invoice to the owner it names, and every
+      posting already carries the owner it was recorded under, so changing it
+      mid-period would bill recorded usage twice, or not at all, or to another
+      owner.
+    - **The tenant** is not an ordinary edit: moving a customer between tenants
+      would carry its ownership, its history and every relationship made under
+      the original tenant across the isolation boundary.
+
+    The add form still declares all four, as the platform API's create does.
+    Changing any of them later needs a future, explicitly designed workflow
+    with defined economic cutover semantics; this form is not one.
     """
 
     list_display = ("external_id", "tenant", "status", "created_at")
     list_filter = ("status", "tenant")
     search_fields = ("external_id",)
 
-    #: The fields that decide the billing owner: set at creation, read-only on
-    #: an existing customer.
-    TOPOLOGY_FIELDS = ("account_type", "parent", "billing_topology")
+    #: Set at creation, read-only on an existing customer: its tenant, and the
+    #: fields that decide its billing owner.
+    CREATION_ONLY_FIELDS = ("tenant", "account_type", "parent", "billing_topology")
 
     def get_readonly_fields(self, request, obj=None):
         readonly = tuple(super().get_readonly_fields(request, obj))
-        return readonly + self.TOPOLOGY_FIELDS if obj is not None else readonly
+        return readonly + self.CREATION_ONLY_FIELDS if obj is not None else readonly

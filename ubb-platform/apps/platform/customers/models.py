@@ -32,6 +32,10 @@ BILLING_TOPOLOGY_CHOICES = [("pooled", "Pooled"), ("allocated", "Allocated")]
 
 
 class Customer(SoftDeleteMixin, BaseModel):
+    # Declared at creation in v1, like the topology below (owner/consultant
+    # ruling 2026-11-04): no supported surface moves a customer between tenants
+    # afterwards (the admin shows it read-only on an existing customer). A
+    # transfer needs a future workflow with defined economic cutover semantics.
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="customers"
     )

@@ -130,17 +130,21 @@ class CustomerModelTest(TestCase):
 
 #: What decides a customer's billing owner (`Customer.resolve_billing_owner`).
 TOPOLOGY_FIELDS = {"account_type", "parent", "billing_topology"}
+#: An existing customer's creation-only fields: its tenant and its topology.
+CREATION_ONLY_FIELDS = TOPOLOGY_FIELDS | {"tenant"}
 
 
 class TopologyIsDeclaredAtCreationTest(TestCase):
-    """A customer's billing topology is declared when it is created and is not
-    editable afterwards in v1 (R10 Stage C3, F-7; owner/consultant ruling
-    2026-11-04). The postpaid close bills a NEW invoice to the owner the
+    """A customer's tenant and billing topology are declared when it is created
+    and are not editable afterwards in v1 (R10 Stage C3, F-7; owner/consultant
+    rulings 2026-11-04). The postpaid close bills a NEW invoice to the owner the
     topology names, and every posting carries the owner it was recorded under,
-    so a mid-period change would bill recorded usage twice or not at all. The
-    Django admin was the one supported surface that could change it; on an
-    EXISTING customer its account type, parent and billing topology are now
-    read-only there, and its add form still declares them at creation."""
+    so a mid-period change would bill recorded usage twice or not at all; and a
+    customer moved between tenants would carry its ownership and history across
+    the tenant boundary. The Django admin was the one supported surface that
+    could change them; on an EXISTING customer its tenant, account type, parent
+    and billing topology are read-only there, and its add form still declares
+    them at creation."""
 
     def setUp(self):
         from django.contrib import admin
@@ -232,6 +236,40 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
                     before)
                 self.assertEqual(customer.resolve_billing_owner().id, owner_before)
 
+    def test_an_existing_customers_tenant_is_read_only_in_the_admin(self):
+        for customer in (self.seat, self.pooled, self.solo):
+            with self.subTest(customer=customer.external_id):
+                self.assertIn("tenant", set(
+                    self.model_admin.get_readonly_fields(self.request, customer)))
+                self.assertNotIn("tenant", self._change_form_fields(customer))
+
+    def test_a_tampered_change_form_cannot_move_a_customer_to_another_tenant(self):
+        """The form is VALID and saves (302); the tenant posted beside the
+        ordinary fields is not the form's to take, so nothing crosses."""
+        elsewhere = Tenant.objects.create(name="Elsewhere")
+        for customer in (self.seat, self.pooled, self.solo):
+            with self.subTest(customer=customer.external_id):
+                response = self._change(customer, tenant=str(elsewhere.pk))
+                self.assertEqual(response.status_code, 302)
+                customer.refresh_from_db()
+                self.assertEqual(customer.tenant_id, self.tenant.id)
+        self.assertFalse(Customer.all_objects.filter(tenant=elsewhere).exists())
+
+    def test_a_tampered_change_form_mutates_none_of_the_four_at_once(self):
+        elsewhere = Tenant.objects.create(name="Elsewhere")
+        owner_before = self.seat.resolve_billing_owner().id
+        response = self._change(
+            self.seat, tenant=str(elsewhere.pk), account_type="business",
+            parent="", billing_topology="allocated", stripe_customer_id="cus_Seat9")
+        self.assertEqual(response.status_code, 302)
+        self.seat.refresh_from_db()
+        self.assertEqual(
+            (self.seat.tenant_id, self.seat.account_type, self.seat.parent_id,
+             self.seat.billing_topology),
+            (self.tenant.id, "seat", self.pooled.id, ""))
+        self.assertEqual(self.seat.resolve_billing_owner().id, owner_before)
+        self.assertEqual(self.seat.stripe_customer_id, "cus_Seat9")  # the ordinary field saved
+
     def test_an_ordinary_edit_still_saves(self):
         response = self._change(
             self.seat, stripe_customer_id="cus_Seat1", metadata='{"note": "edited"}')
@@ -242,19 +280,37 @@ class TopologyIsDeclaredAtCreationTest(TestCase):
         self.assertEqual((self.seat.account_type, self.seat.parent_id),
                          ("seat", self.pooled.id))
 
-    def test_the_add_form_still_declares_topology_at_creation(self):
+    def _add(self, tenant, external_id, account_type, parent=None, topology=""):
         from django.urls import reverse
-        self.assertFalse(TOPOLOGY_FIELDS & set(
-            self.model_admin.get_readonly_fields(self.request, None)))
-        response = self.http.post(reverse("admin:customers_customer_add"), {
-            "tenant": str(self.tenant.pk), "external_id": "seat-2",
+        return self.http.post(reverse("admin:customers_customer_add"), {
+            "tenant": str(tenant.pk), "external_id": external_id,
             "stripe_customer_id": "", "status": "active",
-            "metadata": '{"note": "new"}', "account_type": "seat",
-            "parent": str(self.allocated.pk), "billing_topology": "",
+            "metadata": '{"note": "new"}', "account_type": account_type,
+            "parent": str(parent.pk) if parent else "", "billing_topology": topology,
             "suspension_reason": "", "deleted_at_0": "", "deleted_at_1": "",
         })
+
+    def test_the_add_form_still_declares_topology_at_creation(self):
+        self.assertFalse(CREATION_ONLY_FIELDS & set(
+            self.model_admin.get_readonly_fields(self.request, None)))
+        response = self._add(self.tenant, "seat-2", "seat", parent=self.allocated)
         self.assertEqual(response.status_code, 302)
         created = Customer.objects.get(tenant=self.tenant, external_id="seat-2")
         self.assertEqual((created.account_type, created.parent_id),
                          ("seat", self.allocated.id))
         self.assertEqual(created.resolve_billing_owner(), created)
+
+    def test_the_add_form_declares_all_four_creation_only_fields(self):
+        """A legitimate creation in ANOTHER tenant: a pooled business and a
+        seat under it, each with its tenant, account type, parent and
+        topology declared on the add form."""
+        other = Tenant.objects.create(name="Other")
+        self.assertEqual(self._add(other, "o-biz", "business", topology="pooled").status_code, 302)
+        biz = Customer.objects.get(tenant=other, external_id="o-biz")
+        self.assertEqual(self._add(other, "o-seat", "seat", parent=biz).status_code, 302)
+        seat = Customer.objects.get(tenant=other, external_id="o-seat")
+        self.assertEqual((biz.tenant_id, biz.account_type, biz.parent_id, biz.billing_topology),
+                         (other.id, "business", None, "pooled"))
+        self.assertEqual((seat.tenant_id, seat.account_type, seat.parent_id),
+                         (other.id, "seat", biz.id))
+        self.assertEqual(seat.resolve_billing_owner(), biz)

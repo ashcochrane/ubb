@@ -104,15 +104,16 @@ _Avoid_: "payer", "account holder".
 On a business customer, whether its seats draw from a shared wallet (`pooled`) or self-fund
 (`allocated`). (`apps/platform/customers/models.py:BILLING_TOPOLOGY_CHOICES`)
 
-**Topology is declared at creation**:
-A customer's account type, its parent and a business's billing topology — together what decides its
-**billing owner** — are set when the customer is created (the platform API's create, or the admin's
-add form) and are not editable afterwards in v1: the customer admin shows them read-only on an
-existing customer (R10 Stage C3, F-7; owner/consultant ruling 2026-11-04). Every posting carries the
-owner it was recorded under and the postpaid close bills a new invoice to the owner the topology
-names, so a mid-period change would bill recorded usage twice, not at all, or to another owner.
-Changing a customer's topology requires a future, explicitly designed workflow with defined economic
-cutover semantics. (`apps/platform/customers/admin.py:CustomerAdmin`)
+**Tenant and topology are declared at creation**:
+A customer's tenant, and its account type, its parent and a business's billing topology — together
+what decides its **billing owner** — are set when the customer is created (the platform API's create,
+or the admin's add form) and are not editable afterwards in v1: the customer admin shows all four
+read-only on an existing customer (R10 Stage C3, F-7; owner/consultant rulings 2026-11-04). Every
+posting carries the owner it was recorded under and the postpaid close bills a new invoice to the
+owner the topology names, so a mid-period topology change would bill recorded usage twice, not at
+all, or to another owner; and a customer moved between tenants would carry its ownership, history
+and relationships across the tenant boundary. Changing any of them requires a future, explicitly
+designed workflow with defined economic cutover semantics. (`apps/platform/customers/admin.py:CustomerAdmin`)
 
 **Seat roster**:
 The live set of seats under a business; adding/removing a seat is a roster change, broadcast

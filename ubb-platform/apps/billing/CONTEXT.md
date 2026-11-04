@@ -560,7 +560,7 @@ to it (`Posting.billing_owner_id`); since R10 Stage C3 (F-7) nothing reads a sea
 whose usage it is. It decides the owner of a NEW invoice; an existing one keeps the owner it was
 issued to. The owner resolved at close equals the one pinned at record time because a customer's
 topology is declared at creation and is not editable afterwards in v1 (platform `CONTEXT.md`,
-"Topology is declared at creation"). (`apps/billing/invoicing/tasks.py`)
+"Tenant and topology are declared at creation"). (`apps/billing/invoicing/tasks.py`)
 
 **Usage invoice**:
 A postpaid customer's usage for one calendar month, pushed to Stripe as line items; one per
