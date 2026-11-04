@@ -10,6 +10,7 @@ commit, and the hourly reconciler converges a quantity whose push failed.
 """
 import logging
 import uuid
+from datetime import timezone as dt_timezone
 from unittest.mock import patch
 
 import pytest
@@ -51,6 +52,45 @@ def _business_with_sub(seats=2, status="active", *, topology="pooled", key="",
         existing.append(Customer.objects.create(tenant=t, external_id=f"seat{i}",
                         account_type="seat", parent=biz))
     return t, biz, plan, existing
+
+
+def _episode_key(item, count, *, prefix="seat-qty-si_s-"):
+    """The Stripe idempotency key the reconciler sends to correct ``item`` to
+    ``count``: one per divergence episode, the episode being the seat item's
+    last successful write (PLAN §7 item 40). Stated here, not imported, so the
+    tests pin the design rather than echo the implementation."""
+    episode = item.updated_at.astimezone(dt_timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"{prefix}reconcile-{item.stripe_subscription_item_id}-{episode}-{count}"
+
+
+class _StripeSeatQuantity:
+    """Stripe's ``SubscriptionItem.modify``, as far as idempotency matters
+    here. A key Stripe has already answered returns that FIRST answer and
+    applies nothing (the cached replay). A new key applies the quantity and
+    is cached. ``failing`` makes a new request fail before Stripe acts on it
+    (a lost connection), which Stripe does not cache."""
+
+    def __init__(self, quantity):
+        self.quantity = quantity
+        self.failing = False
+        self.cache = {}
+        self.requests = []       # (idempotency_key, quantity, what Stripe did)
+
+    def modify(self, **kw):
+        import stripe
+        key = kw["idempotency_key"]
+        if key in self.cache:
+            self.requests.append((key, kw["quantity"], "replayed"))
+            return self.cache[key]
+        if self.failing:
+            self.requests.append((key, kw["quantity"], "failed"))
+            raise stripe.error.APIConnectionError("Stripe unreachable")
+        self.quantity = kw["quantity"]
+        self.requests.append((key, kw["quantity"], "applied"))
+        self.cache[key] = stripe.SubscriptionItem.construct_from(
+            {"id": kw["id"], "object": "subscription_item", "quantity": kw["quantity"]},
+            "sk_test_sentinel")
+        return self.cache[key]
 
 
 def _create_seat(tenant, external_id, parent="biz"):
@@ -220,13 +260,14 @@ class TestSeatQuantityConverges(TestCase):
         assert item.quantity == 2                           # Stripe never took it
 
         # No further client mutation: the reconciler alone.
+        expected_key = _episode_key(item, 3)
         with patch(MODIFY) as modify:
             reconcile_subscription_seat_quantities()
         modify.assert_called_once()
         kw = modify.call_args.kwargs
         assert (kw["id"], kw["quantity"], kw["proration_behavior"]) == (
             "si_s", 3, "create_prorations")
-        assert kw["idempotency_key"] == "seat-qty-si_s-reconcile-si_s-3"
+        assert kw["idempotency_key"] == expected_key
         item.refresh_from_db()
         mirror = StripeSubscription.objects.get(stripe_subscription_id="sub_1")
         assert (item.quantity, mirror.quantity) == (3, 3)
@@ -242,6 +283,7 @@ class TestSeatQuantityConverges(TestCase):
         t, biz, _plan, _seats = _business_with_sub(seats=2)
         Customer.objects.create(tenant=t, external_id="seat-new", account_type="seat",
                                 parent=biz)            # the roster is 3, Stripe holds 2
+        item = CustomerSubscriptionItem.objects.get(stripe_subscription_item_id="si_s")
         with patch(MODIFY, side_effect=stripe.error.APIConnectionError("down")) as failing, \
                 patch(BACKOFF):
             assert reconcile_subscription_seat_quantities() == {"failed": 1}
@@ -250,7 +292,64 @@ class TestSeatQuantityConverges(TestCase):
             assert reconcile_subscription_seat_quantities() == {"pushed": 1}
         keys = {c.kwargs["idempotency_key"]
                 for c in failing.call_args_list + landing.call_args_list}
-        assert keys == {"seat-qty-si_s-reconcile-si_s-3"}
+        # One unresolved mismatch, one episode: every retry replays one key.
+        assert keys == {_episode_key(item, 3)}
+
+    def test_a_count_that_recurs_after_another_landed_is_corrected_under_a_new_key(self):
+        """N -> M -> N inside one Stripe idempotency window (owner/consultant
+        ruling 2026-11-05, PLAN §7 item 40). With the count alone as the key,
+        the second correction to N replayed the FIRST N's cached answer:
+        Stripe applied nothing and stayed at M, the mirror recorded N, and the
+        next pass saw no difference."""
+        from apps.subscriptions.models import StripeSubscription
+        from apps.subscriptions.tasks import reconcile_subscription_seat_quantities
+        t, biz, _plan, _seats = _business_with_sub(seats=2)
+        stripe_side = _StripeSeatQuantity(quantity=2)
+        item = CustomerSubscriptionItem.objects.get(stripe_subscription_item_id="si_s")
+
+        def mirrored():
+            item.refresh_from_db()
+            return item.quantity, StripeSubscription.objects.get(
+                stripe_subscription_id="sub_1").quantity
+
+        with patch(MODIFY, side_effect=stripe_side.modify), patch(BACKOFF), \
+                patch("apps.platform.events.tasks.process_single_event"):
+            # N = 3: the immediate push fails; the reconciler applies 3.
+            stripe_side.failing = True
+            with self.captureOnCommitCallbacks(execute=True):
+                assert _create_seat(t, "seat-n").status_code == 201
+            stripe_side.failing = False
+            assert reconcile_subscription_seat_quantities() == {"pushed": 1}
+            first_correction = stripe_side.requests[-1]
+            assert (first_correction[1:], stripe_side.quantity) == ((3, "applied"), 3)
+
+            # M = 4: the immediate push lands.
+            with self.captureOnCommitCallbacks(execute=True):
+                assert _create_seat(t, "seat-m").status_code == 201
+            assert (stripe_side.quantity, mirrored()) == (4, (4, 4)), stripe_side.requests
+
+            # Back to N = 3 inside the same window; the immediate push fails.
+            stripe_side.failing = True
+            with self.captureOnCommitCallbacks(execute=True):
+                Customer.objects.get(tenant=t, external_id="seat-m").soft_delete()
+            stripe_side.failing = False
+            assert seat_count(biz) == 3
+            assert (stripe_side.quantity, mirrored()) == (4, (4, 4))   # still M everywhere
+
+            # The reconciler corrects it under a NEW key, and Stripe applies it.
+            assert reconcile_subscription_seat_quantities() == {"pushed": 1}
+            second_correction = stripe_side.requests[-1]
+            # Stripe must APPLY the correction (not replay the first N's cached
+            # answer), and the mirror records N only with it: (what Stripe did,
+            # Stripe's quantity, the mirrored item and subscription).
+            assert (second_correction[1:], stripe_side.quantity, mirrored()) == (
+                (3, "applied"), 3, (3, 3))
+            assert second_correction[0] != first_correction[0]   # a new key
+
+            # A second pass makes no call.
+            calls = len(stripe_side.requests)
+            assert reconcile_subscription_seat_quantities() == {"in_step": 1}
+            assert len(stripe_side.requests) == calls
 
     def test_a_stripe_refusal_after_commit_is_logged_and_answers_no_500(self):
         import stripe

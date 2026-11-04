@@ -19,10 +19,13 @@ A business's billed seat quantity must equal its live active-seat roster
    ``apps.subscriptions.tasks.reconcile_subscription_seat_quantities``)
    recomputes the live count for every business with an active seat
    subscription and, where it differs from the mirrored seat item's
-   quantity, pushes it with the deterministic change id
-   ``reconcile-{stripe_subscription_item_id}-{count}``. Every pass that finds
-   the same difference replays ONE Stripe idempotency key, so the correction
-   is applied once however many passes it takes to land.
+   quantity, pushes it with a deterministic change id per DIVERGENCE EPISODE,
+   ``reconcile-{stripe_subscription_item_id}-{episode}-{count}`` (see
+   ``reconcile_change_id``). Every pass that finds the same unresolved
+   difference replays ONE Stripe idempotency key, so the correction is
+   applied once however many passes it takes to land; a later recurrence of
+   the same count, after another quantity was applied, is a new episode and a
+   new request (owner/consultant ruling 2026-11-05, PLAN §7 item 40).
 
 The outbox is not the vehicle: it dead-letters after five retries
 (``apps/platform/events/tasks.py``), so it could not guarantee convergence.
@@ -30,6 +33,7 @@ The reconciler reads the live count every hour until Stripe agrees.
 """
 import logging
 import uuid
+from datetime import timezone as dt_timezone
 
 from django.db import transaction
 
@@ -160,6 +164,7 @@ def sync_seat_quantity_on_commit(business, *, change_event_id=None):
     def _push_after_commit():
         from apps.platform.customers.models import Customer
 
+        _push_after_commit.has_run = True
         # Re-resolve at commit time: roster + subscription state may have
         # moved. These reads run after the commit too, so a failure in them
         # is logged and left to the reconciler, never raised.
@@ -189,10 +194,41 @@ def _a_push_is_queued_for(business_id):
     shape, held by the rollback test beside the one-push test), which Django
     drops when the savepoint that queued them rolls back, so a rolled-back
     change never leaves a push suppressed. Outside a transaction a callback
-    runs at once and nothing is pending."""
+    runs at once and nothing is pending. A callback that has already run is
+    not waiting: Django clears the list at commit, but a test case's
+    ``captureOnCommitCallbacks`` runs callbacks and leaves them listed."""
     connection = transaction.get_connection()
     return any(getattr(func, "seat_roster_business_id", None) == business_id
+               and not getattr(func, "has_run", False)
                for _sids, func, _robust in connection.run_on_commit)
+
+
+def reconcile_change_id(seat_item, count):
+    """The reconciler's change id for pushing ``count`` onto ``seat_item``:
+    ``reconcile-{stripe_subscription_item_id}-{episode}-{count}``, one per
+    DIVERGENCE EPISODE (owner/consultant ruling 2026-11-05, PLAN §7 item 40).
+
+    The episode is the seat item's last successful write, its ``updated_at``
+    (UTC, to the microsecond). ``set_seats`` saves the item only after Stripe
+    accepted the quantity, so:
+
+    - **While one mismatch is unresolved** nothing writes the item — a failed
+      push saves nothing, and the hourly mirror sync never touches items — so
+      every pass rebuilds the same id and replays ONE Stripe idempotency key.
+    - **Once a quantity lands**, the item's ``updated_at`` moves. A later
+      recurrence of the same count is a new episode and a new request, never a
+      replay of the earlier one. With the count alone as the key (the ruled
+      first shape), quantities N -> M -> N inside Stripe's idempotency window
+      replayed the first N's cached answer: Stripe stayed at M while the
+      mirror recorded N, and no later pass noticed.
+
+    The other writers of the item (UBB's own subscribe replaying, a plan-price
+    migration) move it too; that can only start a fresh request carrying the
+    same full-state count, which is harmless. No column, no state machine and
+    no clock reading per pass: the token is a durable fact the row already has.
+    """
+    episode = seat_item.updated_at.astimezone(dt_timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    return f"reconcile-{seat_item.stripe_subscription_item_id}-{episode}-{count}"
 
 
 def reconcile_seat_quantity(business):
@@ -200,10 +236,10 @@ def reconcile_seat_quantity(business):
 
     Compares the live count with the quantity the mirrored seat item last
     recorded Stripe as holding, and pushes only when they differ, under the
-    deterministic change id ``reconcile-{stripe_subscription_item_id}-{count}``:
-    a pass that finds the same difference again replays the same Stripe
-    idempotency key, and a pass that finds none makes no call. A closed rail
-    is logged and skipped, as the listener does. Answers ``IN_STEP``,
+    episode's deterministic change id (``reconcile_change_id``): a pass that
+    finds the same unresolved difference replays the same Stripe idempotency
+    key, and a pass that finds none makes no call. A closed rail is logged
+    and skipped, as the listener does. Answers ``IN_STEP``,
     ``NO_SEAT_SUBSCRIPTION`` or what ``_push`` answered.
     """
     plan, seat_item = _resolve_seat_subscription(business)
@@ -213,6 +249,5 @@ def reconcile_seat_quantity(business):
     if seat_item.quantity == count:
         return IN_STEP
     return _push(
-        business, plan, count,
-        change_event_id=f"reconcile-{seat_item.stripe_subscription_item_id}-{count}",
+        business, plan, count, change_event_id=reconcile_change_id(seat_item, count),
         failure_log="seat.qty_reconcile_failed")

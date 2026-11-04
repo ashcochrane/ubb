@@ -154,8 +154,10 @@ Both follow-ups recorded here were closed by R10 Stage C4 (A-2, RULED Q8):
   the one reactivation site, each once inside its own transaction.
 - ~~There is no periodic seat-quantity reconciler.~~ `reconcile_subscription_seat_quantities`
   (`apps/subscriptions/tasks.py`, hourly, after the mirror reconciler) pushes the live seat count
-  wherever it differs from the mirrored seat item, under a deterministic idempotency key, so a push
-  that failed after the roster committed converges with no further roster change.
+  wherever it differs from the mirrored seat item, under a deterministic idempotency key per
+  divergence episode (the seat item's last successful write), so a push that failed after the
+  roster committed converges with no further roster change — including when the same count recurs
+  after another quantity landed.
 
 ## Branch decision record (2026-06-12): `feat/ubb-ui-dashboard` status
 

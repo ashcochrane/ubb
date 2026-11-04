@@ -298,9 +298,11 @@ def reconcile_subscription_seat_quantities():
     the wrong number of seats until some later roster change. This pass needs
     no such change and no operator: for every business with an active seat
     subscription it recomputes the live count and, where it differs from the
-    mirrored seat item, pushes it under the deterministic change id
-    ``reconcile-{stripe_subscription_item_id}-{count}``, so repeated passes
-    replay one Stripe idempotency key (``orchestration/seats.py``). Scheduled
+    mirrored seat item, pushes it under a deterministic change id per
+    divergence episode, ``reconcile-{stripe_subscription_item_id}-{episode}-
+    {count}``, so repeated passes over one unresolved mismatch replay one
+    Stripe idempotency key, and a later recurrence of the same count is a new
+    request (``orchestration/seats.py:reconcile_change_id``). Scheduled
     after ``reconcile-subscription-mirrors`` has fanned out its per-tenant
     syncs, so it normally reads the mirror's status as that hour's sync left
     it. A failure for one business is logged and the pass goes on.
