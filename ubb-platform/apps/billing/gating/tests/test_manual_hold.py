@@ -130,6 +130,18 @@ class ReleasingAHoldTest(_ManualHoldCase):
         self.assertEqual(self.events(self.seat, "customer.reactivated"), [])
         self.assertEqual(self.notified, [])
 
+    def test_a_customer_deleted_during_its_release_is_refused_not_failed(self):
+        manual_hold.place_manual_hold(self.solo.id, operator="op-1")
+
+        def deleted_meanwhile(owner_id):
+            Customer.objects.get(id=owner_id).soft_delete()
+            return False          # the reactivation site no longer finds it
+
+        with patch("apps.billing.gating.services.live_counter.LiveCounter.clear_manual_hold",
+                   side_effect=deleted_meanwhile), \
+                self.assertRaisesMessage(manual_hold.ManualHoldRefused, "no live customer"):
+            manual_hold.release_manual_hold(self.solo.id, operator="op-1")
+
     def test_a_standing_payment_failure_keeps_the_customer_suspended_for_it(self):
         """RULED Q4: a qualifying failed invoice holds the owner at any other
         recovery, and the cause hands over to ``payment_failed``."""

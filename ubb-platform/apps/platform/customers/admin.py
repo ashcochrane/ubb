@@ -78,9 +78,9 @@ class CustomerAdmin(admin.ModelAdmin):
 
     def save_model(self, request, obj, form, change):
         # An edit writes ONLY the fields this form changed. Django's default
-        # saves the whole row, read-only fields included, as they were when the
-        # page loaded — so a manual hold, a system suspension or a soft delete
-        # committed meanwhile would be silently written back over.
+        # saves the whole row, read-only fields included, as the submit request
+        # read them — so a manual hold, a system suspension or a soft delete
+        # committed while that request ran would be silently written back over.
         if not change:
             return super().save_model(request, obj, form, change)
         editable = {f.name for f in obj._meta.concrete_fields}

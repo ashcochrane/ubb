@@ -448,9 +448,10 @@ class LifecycleFieldsAreNotAdminControlsTest(_CustomerAdminCase):
                          ("suspended", {"note": "kept"}, "cus_kept"))
 
     def test_an_ordinary_edit_never_writes_back_a_lifecycle_change_made_meanwhile(self):
-        """The admin loads the row, a manual hold commits, then the operator's
-        ordinary edit saves: only the field the form changed is written, so the
-        hold stands (a whole-row save wrote the loaded `active` back over it)."""
+        """The submit request reads the row, a manual hold commits, then the
+        operator's ordinary edit saves: only the field the form changed is
+        written, so the hold stands (a whole-row save wrote the `active` it had
+        read back over it)."""
         loaded = Customer.objects.get(id=self.solo.id)        # the page's copy
         Customer.objects.filter(id=self.solo.id).update(status="suspended")   # meanwhile
         form_class = self.model_admin.get_form(self.request, loaded, change=True)

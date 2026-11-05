@@ -160,6 +160,10 @@ def release_manual_hold(customer_id, *, operator):
     # The reactivation site re-checks all of this under the row lock.
     moved = LiveCounter.clear_manual_hold(customer.id)
     customer.refresh_from_db()
+    if not moved and customer.deleted_at is not None:
+        _refuse(customer.id, operator,
+                f"customer {customer.id} was deleted while its release was asked; "
+                "there is no live customer to release", tenant_id=tenant_id)
     if moved:
         outcome = RELEASED
     elif customer.status == CUSTOMER_STATUS_ACTIVE:
