@@ -69,7 +69,7 @@ class Customer(SoftDeleteMixin, BaseModel):
     billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")
     # Tier-2 P6b (D15): why the customer was suspended. Set on every suspend;
     # only a MONETARY reason is auto-cleared on recovery, so a top-up never
-    # silently un-suspends an admin/fraud suspension. A monetary reason is the
+    # silently un-suspends a manual hold. A monetary reason is the
     # stop that opened the episode, in that stop's own word (slice 6 §9,
     # `reasons.HARD_FLOOR` / `reasons.CUSTOMER_SPEND_POOL`; the pair is
     # `LiveCounter._MONEY_SUSPEND_REASONS`). Since R10 Stage C2 two causes no

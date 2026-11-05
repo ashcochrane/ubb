@@ -10,8 +10,9 @@ the roster-change transaction). No products installed = no listeners = no-op.
 
 The roster mutations (R10 Stage C4, A-2): a seat created through
 ``POST /customers``, a seat soft-deleted, a seat suspended (the ``off`` floor,
-the enforcing stop, the AR and dispute causes) and a seat reactivated. Each
-notifies once, inside its own transaction.
+the enforcing stop, the AR and dispute causes, an operator's manual hold) and a
+seat reactivated (by any recovery, or a manual hold's release). Each notifies
+once, inside its own transaction.
 """
 
 _listeners = []

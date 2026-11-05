@@ -128,7 +128,7 @@ PARENT_KILLED = REASON_CODE_PARENT_KILLED
 # declared is `services.CascadeRecord`.
 PARENT_EXPIRED = REASON_CODE_PARENT_EXPIRED
 # Stop-context ``limit`` tag ONLY (apps.metering.usage.services.stop_context,
-# customer scope) — an owner suspended with no open episode (admin/fraud, or a
+# customer scope) — an owner suspended with no open episode (a manual hold, or a
 # money suspension whose episode already cleared). Deliberately NOT an episode
 # reason, NOT a registry value and NOT in ALL_REASONS/CROSSING_REASONS: it
 # never rides a terminal stop event or an ack's stop_reason (those are

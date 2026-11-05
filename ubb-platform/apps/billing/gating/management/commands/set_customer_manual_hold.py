@@ -29,11 +29,11 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("--customer", required=True, help="the customer's id")
+        parser.add_argument("--customer", required=True, help="The customer's id.")
         parser.add_argument("--state", required=True, choices=STATES,
-                            help="held places the hold; released lifts it")
+                            help="held places the hold; released lifts it.")
         parser.add_argument("--operator", required=True,
-                            help="the acting UBB operator's id, kept on every outcome")
+                            help="The acting UBB operator's id, kept on every outcome.")
 
     def handle(self, *args, **options):
         operator = (options["operator"] or "").strip()
@@ -48,7 +48,9 @@ class Command(BaseCommand):
         try:
             outcome = act(customer_id, operator=operator)
         except manual_hold.ManualHoldRefused as e:
-            raise CommandError(f"refused: {e}. Nothing was changed.")
+            raise CommandError(f"refused: {e}. Nothing was written.")
+        except manual_hold.ManualHoldFailed as e:
+            raise CommandError(f"failed: {e}. Nothing was written.")
         messages = {
             manual_hold.HELD: f"Customer {customer_id} is now under a manual hold.",
             manual_hold.ALREADY_HELD: f"Customer {customer_id} was already under a "
@@ -60,4 +62,6 @@ class Command(BaseCommand):
                                      "but a standing payment failure keeps it suspended "
                                      "for payment_failed, which its own recovery owns.",
         }
-        self.stdout.write(self.style.SUCCESS(messages[outcome]))
+        style = (self.style.WARNING if outcome == manual_hold.HANDED_OVER
+                 else self.style.SUCCESS)
+        self.stdout.write(style(messages[outcome]))

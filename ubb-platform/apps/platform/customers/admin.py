@@ -76,6 +76,18 @@ class CustomerAdmin(admin.ModelAdmin):
             return readonly
         return readonly + self.CREATION_ONLY_FIELDS + self.LIFECYCLE_FIELDS
 
+    def save_model(self, request, obj, form, change):
+        # An edit writes ONLY the fields this form changed. Django's default
+        # saves the whole row, read-only fields included, as they were when the
+        # page loaded — so a manual hold, a system suspension or a soft delete
+        # committed meanwhile would be silently written back over.
+        if not change:
+            return super().save_model(request, obj, form, change)
+        editable = {f.name for f in obj._meta.concrete_fields}
+        changed = [name for name in form.changed_data if name in editable]
+        if changed:
+            obj.save(update_fields=[*changed, "updated_at"])
+
     def get_actions(self, request):
         # No bulk delete: Django's action runs a queryset delete, which is a
         # hard delete that skips `Customer.soft_delete` and everything it does.

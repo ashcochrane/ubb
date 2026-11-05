@@ -14,7 +14,7 @@ operator surface.
 
 - **The representation is the existing one:** ``status = suspended`` with an
   EMPTY ``suspension_reason`` (``LiveCounter.MANUAL_HOLD_REASON``) — the
-  glossary's manual suspension. No new reason value.
+  glossary's *manual hold*. No new reason value.
 - **Placing a hold** is allowed only on an active, live customer. It writes the
   status and reason together, announces ``customer.suspended`` (reason
   ``""``) and, for a seat, notifies its business's roster once — all in one
@@ -23,7 +23,7 @@ operator surface.
   ``dispute_lost``) is REFUSED: a hold never overwrites the cause its own
   recovery owns. A customer already held is a no-op.
 - **Releasing a hold** goes through the one reactivation site
-  (``LiveCounter.release_manual_hold``), which announces
+  (``LiveCounter.clear_manual_hold``), which announces
   ``customer.reactivated`` and notifies a seat's roster, exactly as every
   other clear. Only a manual hold is released; a system cause is REFUSED. If a
   qualifying payment failure still stands, the customer stays suspended and
@@ -32,10 +32,10 @@ operator surface.
 - **Closing a customer is not a supported v1 transition**, and nothing here
   writes ``closed``.
 
-The operator's id is logged on every outcome (``customer.manual_hold``). The
-governance audit ledger has no action for a hold, and its action set is a
-closed concept published in the API contract, so a ledger entry waits on that
-ruling (see the C4 PR).
+The operator's id is logged on every outcome, refusals and failures included
+(``customer.manual_hold``). The governance audit ledger has no action for a
+hold, and its action set is a closed concept published in the API contract,
+so a ledger entry waits on that ruling (see the C4 PR).
 """
 import logging
 
@@ -49,6 +49,7 @@ from apps.platform.customers.models import (
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import CustomerSuspended
 from apps.platform.work import reasons
+from core.exceptions import UBBError
 
 logger = logging.getLogger(__name__)
 
@@ -64,16 +65,42 @@ ALREADY_ACTIVE = "already_active"
 HANDED_OVER = "handed_over_to_payment_failed"
 
 
-class ManualHoldRefused(Exception):
+#: A refused or failed operation, as logged.
+REFUSED = "refused"
+FAILED = "failed"
+
+
+class ManualHoldRefused(UBBError):
     """The operation would act on something that is not a manual hold: a
     customer that does not exist or is deleted, one suspended for a system
     cause, or one in a state a hold does not apply to. Nothing was written."""
 
 
-def _log(customer, outcome, operator):
-    logger.info("customer.manual_hold", extra={"data": {
-        "tenant_id": str(customer.tenant_id), "customer_id": str(customer.id),
-        "outcome": outcome, "operator": str(operator)}})
+class ManualHoldFailed(UBBError):
+    """A release the reactivation site did not carry out although the customer
+    is still under a manual hold — an internal failure there, which it logs as
+    ``live_counter.unsuspend_failed``. Nothing was written; it can be retried."""
+
+
+def _log(customer_id, outcome, operator, *, tenant_id=None, detail=""):
+    data = {"customer_id": str(customer_id), "outcome": outcome,
+            "operator": str(operator)}
+    if tenant_id is not None:
+        data["tenant_id"] = str(tenant_id)
+    if detail:
+        data["detail"] = detail
+    log = logger.warning if outcome in (REFUSED, FAILED) else logger.info
+    log("customer.manual_hold", extra={"data": data})
+
+
+def _refuse(customer_id, operator, message, *, tenant_id=None):
+    _log(customer_id, REFUSED, operator, tenant_id=tenant_id, detail=message)
+    raise ManualHoldRefused(message)
+
+
+def _is_held(customer):
+    return (customer.status == CUSTOMER_STATUS_SUSPENDED
+            and customer.suspension_reason == MANUAL_HOLD_REASON)
 
 
 def place_manual_hold(customer_id, *, operator):
@@ -83,19 +110,18 @@ def place_manual_hold(customer_id, *, operator):
         customer = (Customer.objects.select_for_update(of=("self",))
                     .select_related("tenant").filter(id=customer_id).first())
         if customer is None:
-            raise ManualHoldRefused(f"no live customer {customer_id}")
-        if (customer.status == CUSTOMER_STATUS_SUSPENDED
-                and customer.suspension_reason == MANUAL_HOLD_REASON):
+            _refuse(customer_id, operator, f"no live customer {customer_id}")
+        if _is_held(customer):
             outcome = ALREADY_HELD
         elif customer.status == CUSTOMER_STATUS_SUSPENDED:
-            raise ManualHoldRefused(
-                f"customer {customer.id} is suspended for "
-                f"{customer.suspension_reason!r}, a cause its own recovery owns; "
-                "a manual hold never overwrites it")
+            _refuse(customer.id, operator,
+                    f"customer {customer.id} is suspended for "
+                    f"{customer.suspension_reason!r}, a cause its own recovery owns; "
+                    "a manual hold never overwrites it", tenant_id=customer.tenant_id)
         elif customer.status != CUSTOMER_STATUS_ACTIVE:
-            raise ManualHoldRefused(
-                f"customer {customer.id} is {customer.status!r}; only an active "
-                "customer can be held")
+            _refuse(customer.id, operator,
+                    f"customer {customer.id} is {customer.status!r}; only an active "
+                    "customer can be held", tenant_id=customer.tenant_id)
         else:
             customer.status = CUSTOMER_STATUS_SUSPENDED
             customer.suspension_reason = MANUAL_HOLD_REASON
@@ -106,28 +132,33 @@ def place_manual_hold(customer_id, *, operator):
                 balance_micros=announced_balance(customer.id, customer.tenant)))
             notify_if_a_seat(customer)
             outcome = HELD
-    _log(customer, outcome, operator)
+    _log(customer.id, outcome, operator, tenant_id=customer.tenant_id)
     return outcome
 
 
 def release_manual_hold(customer_id, *, operator):
     """Release one customer's manual hold through the one reactivation site.
     Answers ``RELEASED``, ``ALREADY_ACTIVE`` or ``HANDED_OVER``; raises
-    ``ManualHoldRefused`` for anything that is not a manual hold."""
+    ``ManualHoldRefused`` for anything that is not a manual hold, and
+    ``ManualHoldFailed`` when the reactivation site did not carry it out."""
     customer = Customer.objects.filter(id=customer_id).first()
     if customer is None:
-        raise ManualHoldRefused(f"no live customer {customer_id}")
+        _refuse(customer_id, operator, f"no live customer {customer_id}")
+    tenant_id = customer.tenant_id
     if customer.status == CUSTOMER_STATUS_ACTIVE:
-        _log(customer, ALREADY_ACTIVE, operator)
+        _log(customer.id, ALREADY_ACTIVE, operator, tenant_id=tenant_id)
         return ALREADY_ACTIVE
-    if not (customer.status == CUSTOMER_STATUS_SUSPENDED
-            and customer.suspension_reason == MANUAL_HOLD_REASON):
-        raise ManualHoldRefused(
-            f"customer {customer.id} is {customer.status!r} for "
-            f"{customer.suspension_reason!r}, which is not a manual hold; its own "
-            "recovery owns it")
+    if customer.status != CUSTOMER_STATUS_SUSPENDED:
+        _refuse(customer.id, operator,
+                f"customer {customer.id} is {customer.status!r}; there is no hold "
+                "to release", tenant_id=tenant_id)
+    if not _is_held(customer):
+        _refuse(customer.id, operator,
+                f"customer {customer.id} is suspended for "
+                f"{customer.suspension_reason!r}, which is not a manual hold; its own "
+                "recovery owns it", tenant_id=tenant_id)
     # The reactivation site re-checks all of this under the row lock.
-    moved = LiveCounter.release_manual_hold(customer.id)
+    moved = LiveCounter.clear_manual_hold(customer.id)
     customer.refresh_from_db()
     if moved:
         outcome = RELEASED
@@ -136,9 +167,16 @@ def release_manual_hold(customer_id, *, operator):
     elif (customer.status == CUSTOMER_STATUS_SUSPENDED
           and customer.suspension_reason == reasons.PAYMENT_FAILED):
         outcome = HANDED_OVER
+    elif _is_held(customer):
+        message = (f"the reactivation site did not release customer {customer.id} "
+                   "(see live_counter.unsuspend_failed); it is still held, and the "
+                   "release can be retried")
+        _log(customer.id, FAILED, operator, tenant_id=tenant_id, detail=message)
+        raise ManualHoldFailed(message)
     else:
-        raise ManualHoldRefused(
-            f"customer {customer.id} was not released: it is {customer.status!r} "
-            f"for {customer.suspension_reason!r}")
-    _log(customer, outcome, operator)
+        _refuse(customer.id, operator,
+                f"customer {customer.id} was not released: it is now "
+                f"{customer.status!r} for {customer.suspension_reason!r}",
+                tenant_id=tenant_id)
+    _log(customer.id, outcome, operator, tenant_id=tenant_id)
     return outcome

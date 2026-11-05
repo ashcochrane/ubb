@@ -447,13 +447,28 @@ class LifecycleFieldsAreNotAdminControlsTest(_CustomerAdminCase):
         self.assertEqual((self.solo.status, self.solo.metadata, self.solo.stripe_customer_id),
                          ("suspended", {"note": "kept"}, "cus_kept"))
 
+    def test_an_ordinary_edit_never_writes_back_a_lifecycle_change_made_meanwhile(self):
+        """The admin loads the row, a manual hold commits, then the operator's
+        ordinary edit saves: only the field the form changed is written, so the
+        hold stands (a whole-row save wrote the loaded `active` back over it)."""
+        loaded = Customer.objects.get(id=self.solo.id)        # the page's copy
+        Customer.objects.filter(id=self.solo.id).update(status="suspended")   # meanwhile
+        form_class = self.model_admin.get_form(self.request, loaded, change=True)
+        form = form_class(self._form(loaded, metadata='{"note": "edited"}'), instance=loaded)
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.changed_data, ["metadata"])
+        self.model_admin.save_model(self.request, form.save(commit=False), form, change=True)
+        self.solo.refresh_from_db()
+        self.assertEqual((self.solo.status, self.solo.metadata),
+                         ("suspended", {"note": "edited"}))
+
     def test_bulk_delete_is_not_an_admin_action(self):
         from django.urls import reverse
         self.assertNotIn("delete_selected", self.model_admin.get_actions(self.request))
         response = self.http.post(reverse("admin:customers_customer_changelist"), {
             "action": "delete_selected", "_selected_action": [str(self.solo.pk)],
             "post": "yes"})
-        self.assertIn(response.status_code, (200, 302))
+        self.assertEqual(response.status_code, 200)           # re-rendered: no such action
         row = Customer.all_objects.get(id=self.solo.id)       # never hard-deleted
         self.assertIsNone(row.deleted_at)                      # nor deleted at all
 

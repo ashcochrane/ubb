@@ -12,7 +12,7 @@ surface is ``manage.py set_customer_manual_hold``; the Django admin no longer
 edits ``status`` or ``suspension_reason``.
 """
 import datetime
-import logging
+from unittest.mock import patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -144,25 +144,30 @@ class ReleasingAHoldTest(_ManualHoldCase):
         self.assertEqual(self.standing(self.solo), ("suspended", reasons.PAYMENT_FAILED))
         self.assertEqual(self.events(self.solo, "customer.reactivated"), [])
 
-    def test_the_operator_is_kept_on_every_outcome(self):
-        records = []
-
-        class Capture(logging.Handler):
-            def emit(self, record):
-                records.append(record)
-
-        logger = logging.getLogger("apps.billing.gating.services.manual_hold")
-        handler, level = Capture(), logger.level
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-        self.addCleanup(logger.removeHandler, handler)
-        self.addCleanup(logger.setLevel, level)
-        manual_hold.place_manual_hold(self.solo.id, operator="op-7")
-        manual_hold.release_manual_hold(self.solo.id, operator="op-8")
+    def test_the_operator_is_kept_on_every_outcome_refusals_included(self):
+        self.suspend_for(self.seat, reasons.HARD_FLOOR)
+        with self.assertLogs("apps.billing.gating.services.manual_hold", "INFO") as logs:
+            manual_hold.place_manual_hold(self.solo.id, operator="op-7")
+            manual_hold.release_manual_hold(self.solo.id, operator="op-8")
+            with self.assertRaises(manual_hold.ManualHoldRefused):
+                manual_hold.release_manual_hold(self.seat.id, operator="op-9")
         self.assertEqual(
-            [(r.getMessage(), r.data["outcome"], r.data["operator"]) for r in records],
+            [(r.getMessage(), r.data["outcome"], r.data["operator"]) for r in logs.records],
             [("customer.manual_hold", manual_hold.HELD, "op-7"),
-             ("customer.manual_hold", manual_hold.RELEASED, "op-8")])
+             ("customer.manual_hold", manual_hold.RELEASED, "op-8"),
+             ("customer.manual_hold", manual_hold.REFUSED, "op-9")])
+
+    def test_a_release_the_reactivation_site_did_not_carry_out_is_a_failure(self):
+        """An internal failure at the reactivation site (which it swallows and
+        logs) is reported as a failure that can be retried, never as a
+        refusal; the hold stands."""
+        manual_hold.place_manual_hold(self.solo.id, operator="op-1")
+        with patch("apps.billing.gating.services.live_counter.LiveCounter.clear_manual_hold",
+                   return_value=False), \
+                self.assertRaisesMessage(manual_hold.ManualHoldFailed, "can be retried"):
+            manual_hold.release_manual_hold(self.solo.id, operator="op-1")
+        self.assertEqual(self.standing(self.solo), ("suspended", ""))
+        self.assertEqual(self.events(self.solo, "customer.reactivated"), [])
 
 
 class TheOperatorCommandTest(_ManualHoldCase):
@@ -181,6 +186,20 @@ class TheOperatorCommandTest(_ManualHoldCase):
         self.assertIn("manual hold is released", out)
         self.assertEqual(self.standing(self.seat), ("active", ""))
 
+    def test_holding_a_held_customer_reports_it_and_changes_nothing(self):
+        self._run("--customer", str(self.solo.id), "--state", "held", "--operator", "op-1")
+        out = self._run("--customer", str(self.solo.id), "--state", "held", "--operator", "op-1")
+        self.assertIn("already under a manual hold", out)
+        self.assertEqual(len(self.events(self.solo, "customer.suspended")), 1)
+
+    def test_a_failed_release_is_reported_as_a_failure(self):
+        self._run("--customer", str(self.solo.id), "--state", "held", "--operator", "op-1")
+        with patch("apps.billing.gating.services.live_counter.LiveCounter.clear_manual_hold",
+                   return_value=False), self.assertRaisesMessage(CommandError, "failed:"):
+            self._run("--customer", str(self.solo.id), "--state", "released",
+                      "--operator", "op-1")
+        self.assertEqual(self.standing(self.solo), ("suspended", ""))
+
     def test_a_system_cause_is_refused_and_nothing_changes(self):
         self.suspend_for(self.solo, reasons.HARD_FLOOR)
         for state in ("held", "released"):
@@ -191,16 +210,19 @@ class TheOperatorCommandTest(_ManualHoldCase):
 
     def test_the_operator_customer_and_state_are_required_and_checked(self):
         cases = {
-            "blank operator": ("--customer", str(self.solo.id), "--state", "held",
-                               "--operator", " "),
-            "no operator": ("--customer", str(self.solo.id), "--state", "held"),
-            "not a uuid": ("--customer", "solo", "--state", "held", "--operator", "op-1"),
-            "unknown customer": ("--customer", "00000000-0000-0000-0000-000000000000",
-                                 "--state", "held", "--operator", "op-1"),
-            "no such state": ("--customer", str(self.solo.id), "--state", "closed",
-                              "--operator", "op-1"),
+            "blank operator": (("--customer", str(self.solo.id), "--state", "held",
+                                "--operator", " "), "--operator must name"),
+            "no operator": (("--customer", str(self.solo.id), "--state", "held"),
+                            "--operator"),
+            "not a uuid": (("--customer", "solo", "--state", "held", "--operator", "op-1"),
+                           "is not a customer id"),
+            "unknown customer": (("--customer", "00000000-0000-0000-0000-000000000000",
+                                  "--state", "held", "--operator", "op-1"),
+                                 "no live customer"),
+            "no such state": (("--customer", str(self.solo.id), "--state", "closed",
+                               "--operator", "op-1"), "invalid choice"),
         }
-        for name, args in cases.items():
-            with self.subTest(name), self.assertRaises(CommandError):
+        for name, (args, message) in cases.items():
+            with self.subTest(name), self.assertRaisesMessage(CommandError, message):
                 self._run(*args)
         self.assertEqual(self.standing(self.solo), ("active", ""))
