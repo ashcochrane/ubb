@@ -8,7 +8,9 @@ product. Code anchors are relative to `ubb-platform/`.
 
 **Tenant**:
 A UBB customer organization — the top-level isolation boundary every domain row is scoped to,
-carrying its product set, billing mode, and Stripe linkage. (`apps/platform/tenants/models.py:Tenant`)
+carrying its product set, billing mode, and Stripe linkage. Deleting one is not a supported v1
+operation: no tenant teardown exists, and the Django admin, whose delete would cascade a hard
+delete to every customer, offers none (R10 Stage C4). (`apps/platform/tenants/models.py:Tenant`)
 
 **Sandbox**:
 A tenant's test-mode sibling that inherits its shape but never any real Stripe linkage, so
@@ -141,10 +143,15 @@ transition.
 **Manual hold**:
 An accountable operator's suspension of one active customer — `suspended` with an empty reason —
 which no automatic recovery lifts. It is placed and released only through `manage.py
-set_customer_manual_hold`, which never overwrites or clears a system cause; a release meeting a
-standing payment failure leaves that failure as the cause (R10 Stage C4).
+set_customer_manual_hold`, which never overwrites or clears a system cause. **Releasing** one
+removes the manual cause and lets the system decide what holds now — it never forces the customer
+active: a system condition still standing (a payment failure, a stop line still open, a wallet
+past its floor) becomes the cause and the customer stays suspended, and `customer.reactivated`
+records only a real transition to `active` (R10 Stage C4). The operator's id is logged on every
+outcome; a durable audit record of a hold and its release is owed by C5.
 (`apps/billing/gating/services/manual_hold.py`)
-_Avoid_: "admin suspension", "fraud suspension" as distinct states; editing `status` to hold a customer.
+_Avoid_: "admin suspension", "fraud suspension" as distinct states; editing `status` to hold a customer;
+"release" meaning "make active".
 
 ## Membership & identity
 

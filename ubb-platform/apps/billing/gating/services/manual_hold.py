@@ -22,20 +22,28 @@ operator surface.
   a system cause (``hard_floor``, ``customer_spend_pool``, ``payment_failed``,
   ``dispute_lost``) is REFUSED: a hold never overwrites the cause its own
   recovery owns. A customer already held is a no-op.
-- **Releasing a hold** goes through the one reactivation site
-  (``LiveCounter.clear_manual_hold``), which announces
-  ``customer.reactivated`` and notifies a seat's roster, exactly as every
-  other clear. Only a manual hold is released; a system cause is REFUSED. If a
-  qualifying payment failure still stands, the customer stays suspended and
-  that failure becomes the cause (RULED Q4) — the release is answered as
-  handed over, not done. An active customer is a no-op.
+- **Releasing a hold REMOVES THE MANUAL CAUSE; it never forces the customer
+  active** (Ruling B). It goes through the one reactivation site
+  (``LiveCounter.clear_manual_hold``), which decides under the customer's row
+  lock what holds now. With nothing else standing, the customer is active
+  again, ``customer.reactivated`` is announced once and a seat's roster is
+  notified once, exactly as every other clear. If a system condition still
+  stands — a qualifying payment failure (RULED Q4), a stop line still open,
+  or a wallet past its floor — that cause takes over: the customer stays
+  suspended, nothing is announced (it entered no new state), and the release
+  is answered ``HANDED_OVER``, naming the cause. Only a manual hold is
+  released; a customer already suspended for a system cause is REFUSED. An
+  active customer is a no-op.
 - **Closing a customer is not a supported v1 transition**, and nothing here
   writes ``closed``.
 
 The operator's id is logged on every outcome, refusals and failures included
-(``customer.manual_hold``). The governance audit ledger has no action for a
-hold, and its action set is a closed concept published in the API contract,
-so a ledger entry waits on that ruling (see the C4 PR).
+(``customer.manual_hold``). That is C4's evidence and no more: the governance
+audit ledger has no action for a hold, its action set is a CLOSED concept in
+the published contract, and C4 changes no contract (Ruling A). The durable
+audit actions ``customer.manual_hold_set`` and ``customer.manual_hold_released``
+are a REQUIRED C5 obligation (PLAN §7 item 42), owed before Stage D; until
+then no ledger entry is written, and no unrelated action is borrowed for one.
 """
 import logging
 
@@ -48,7 +56,6 @@ from apps.platform.customers.models import (
     CUSTOMER_STATUS_ACTIVE, CUSTOMER_STATUS_SUSPENDED, Customer)
 from apps.platform.events.outbox import write_event
 from apps.platform.events.schemas import CustomerSuspended
-from apps.platform.work import reasons
 from core.exceptions import UBBError
 
 logger = logging.getLogger(__name__)
@@ -60,9 +67,11 @@ HELD = "held"
 ALREADY_HELD = "already_held"
 RELEASED = "released"
 ALREADY_ACTIVE = "already_active"
-#: A release that met a standing payment failure: the customer stays
-#: suspended, now for ``payment_failed``, which its own recovery owns.
-HANDED_OVER = "handed_over_to_payment_failed"
+#: A release that removed the manual cause while a system condition still
+#: stands (a payment failure, an open stop line, a wallet past its floor): the
+#: customer stays suspended, now for that cause, which its own recovery lifts.
+#: The hold is gone — this is not a failure — and nothing was announced.
+HANDED_OVER = "handed_over"
 
 
 #: A refused or failed operation, as logged.
@@ -137,10 +146,12 @@ def place_manual_hold(customer_id, *, operator):
 
 
 def release_manual_hold(customer_id, *, operator):
-    """Release one customer's manual hold through the one reactivation site.
-    Answers ``RELEASED``, ``ALREADY_ACTIVE`` or ``HANDED_OVER``; raises
-    ``ManualHoldRefused`` for anything that is not a manual hold, and
-    ``ManualHoldFailed`` when the reactivation site did not carry it out."""
+    """Remove one customer's manual hold through the one reactivation site.
+    Answers ``RELEASED`` (active again), ``ALREADY_ACTIVE`` or ``HANDED_OVER``
+    (the hold is gone and a standing system cause keeps the customer
+    suspended); raises ``ManualHoldRefused`` for anything that is not a manual
+    hold, and ``ManualHoldFailed`` when the reactivation site did not carry it
+    out."""
     customer = Customer.objects.filter(id=customer_id).first()
     if customer is None:
         _refuse(customer_id, operator, f"no live customer {customer_id}")
@@ -164,13 +175,19 @@ def release_manual_hold(customer_id, *, operator):
         _refuse(customer.id, operator,
                 f"customer {customer.id} was deleted while its release was asked; "
                 "there is no live customer to release", tenant_id=tenant_id)
+    detail = ""
     if moved:
         outcome = RELEASED
     elif customer.status == CUSTOMER_STATUS_ACTIVE:
         outcome = ALREADY_ACTIVE               # a concurrent release won
     elif (customer.status == CUSTOMER_STATUS_SUSPENDED
-          and customer.suspension_reason == reasons.PAYMENT_FAILED):
+          and customer.suspension_reason != MANUAL_HOLD_REASON):
+        # Only the reactivation site changes a suspended customer's reason —
+        # every suspend path acts on an active one — so a system cause here is
+        # the one it handed the hold over to (this release's, or a concurrent
+        # one's): the hold is gone, and that cause's recovery owns the rest.
         outcome = HANDED_OVER
+        detail = f"still suspended for {customer.suspension_reason!r}"
     elif _is_held(customer):
         message = (f"the reactivation site did not release customer {customer.id} "
                    "(see live_counter.unsuspend_failed); it is still held, and the "
@@ -182,5 +199,5 @@ def release_manual_hold(customer_id, *, operator):
                 f"customer {customer.id} was not released: it is now "
                 f"{customer.status!r} for {customer.suspension_reason!r}",
                 tenant_id=tenant_id)
-    _log(customer.id, outcome, operator, tenant_id=tenant_id)
+    _log(customer.id, outcome, operator, tenant_id=tenant_id, detail=detail)
     return outcome

@@ -4,8 +4,11 @@ Stage C4; owner/consultant ruling 2026-11-05, PLAN §7 item 41, FINAL).
     manage.py set_customer_manual_hold --customer <uuid> --state held|released \\
         --operator <operator id>
 
-``held`` places a manual hold on an active, live customer; ``released`` lifts
-that hold. Both refuse a customer suspended for a system cause — a hold never
+``held`` places a manual hold on an active, live customer; ``released`` removes
+that hold — the MANUAL cause only: if a system condition still stands (a
+payment failure, an open stop line, a wallet past its floor) the customer
+stays suspended for it, and the command says so; it never forces a customer
+active. Both refuse a customer suspended for a system cause — a hold never
 overwrites, and a release never clears, a cause its own recovery owns. The
 rules and the side effects are the service's
 (``apps/billing/gating/services/manual_hold.py``); this command only parses,
@@ -18,6 +21,7 @@ import uuid
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.billing.gating.services import manual_hold
+from apps.platform.customers.models import Customer
 
 STATES = ("held", "released")
 
@@ -51,17 +55,23 @@ class Command(BaseCommand):
             raise CommandError(f"refused: {e}. Nothing was written.")
         except manual_hold.ManualHoldFailed as e:
             raise CommandError(f"failed: {e}. Nothing was written.")
+        if outcome == manual_hold.HANDED_OVER:
+            # The hold IS released — not a failure — but the customer did not
+            # become active: name the cause that holds it now.
+            cause = (Customer.all_objects.filter(id=customer_id)
+                     .values_list("suspension_reason", flat=True).first())
+            self.stdout.write(self.style.WARNING(
+                f"Customer {customer_id}'s manual hold is released, but it remains "
+                f"suspended for {cause!r}, a system cause its own recovery lifts; "
+                "it was not reactivated."))
+            return
         messages = {
             manual_hold.HELD: f"Customer {customer_id} is now under a manual hold.",
             manual_hold.ALREADY_HELD: f"Customer {customer_id} was already under a "
                                       "manual hold; nothing changed.",
-            manual_hold.RELEASED: f"Customer {customer_id}'s manual hold is released.",
+            manual_hold.RELEASED: f"Customer {customer_id}'s manual hold is released; "
+                                  "it is active again.",
             manual_hold.ALREADY_ACTIVE: f"Customer {customer_id} is already active; "
                                         "nothing changed.",
-            manual_hold.HANDED_OVER: f"Customer {customer_id}'s manual hold is lifted, "
-                                     "but a standing payment failure keeps it suspended "
-                                     "for payment_failed, which its own recovery owns.",
         }
-        style = (self.style.WARNING if outcome == manual_hold.HANDED_OVER
-                 else self.style.SUCCESS)
-        self.stdout.write(style(messages[outcome]))
+        self.stdout.write(self.style.SUCCESS(messages[outcome]))

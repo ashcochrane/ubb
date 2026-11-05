@@ -10,9 +10,27 @@ from core.transitions import FROZEN
 
 @admin.register(Tenant)
 class TenantAdmin(admin.ModelAdmin):
+    """A tenant is inspected and maintained here, never deleted (R10 Stage C4,
+    PLAN §7 item 41, Ruling C).
+
+    Deleting a tenant row CASCADES to every one of its customers
+    (``Customer.tenant``), a database HARD delete — the very thing the Customer
+    admin no longer offers (its bulk ``delete_selected`` is gone, and its single
+    delete is the canonical soft delete). Left here, it would be the route
+    around that ruling, and it would take each customer's wallet, invoices,
+    subscriptions and history with no lifecycle event. Tenant deletion is not
+    a supported v1 operation: there is no tenant teardown with its own
+    economic and lifecycle semantics, so this admin has no delete permission —
+    no single-object delete page, and with it Django withdraws the bulk
+    ``delete_selected`` action. Every other inspection and maintenance edit is
+    unchanged."""
+
     list_display = ("name", "is_active", "platform_fee_percentage", "created_at")
     list_filter = ("is_active",)
     search_fields = ("name",)
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(PaymentRailActivation)
