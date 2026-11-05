@@ -699,11 +699,14 @@ class LiveCounter:
         Stage C4, PLAN §7 item 41, Ruling B). No new calculation — the
         composition of the two existing reads:
 
-        - an OPEN STOP LINE holds the owner, on that line's word, in line
-          order — the word ``resume`` re-points the fast flag to while a line
-          survives (``open_stop_lines``: "the one read every lifting path
-          makes"; an enforcement-mode flip closes every episode, so it answers
-          for both modes);
+        - under ``enforcing``, an OPEN STOP LINE holds the owner, on that
+          line's word, in line order — the word ``resume`` re-points the fast
+          flag to while a line survives (``open_stop_lines``: "the one read
+          every lifting path makes"). Only under ``enforcing``: the ledger's
+          lines are that mode's controls (signals exist only there, #42), and
+          nothing lifts a line under ``off`` — a row left behind by a mode flip
+          whose silent close failed must not hand a customer to a cause no
+          ``off`` lane would ever clear;
         - else, where the tenant's mode keeps a wallet, a DURABLE balance past
           its floor holds the wallet's holder, on the floor's word — the D15
           gate ``resume`` and the ``off`` lanes share
@@ -716,7 +719,8 @@ class LiveCounter:
         Only a manual hold's release asks it: an automatic recovery is already
         called only once its own condition cleared, and the C2 rules for
         those are unchanged."""
-        surviving = StopSignalService.open_stop_lines(owner.id)
+        surviving = (StopSignalService.open_stop_lines(owner.id)
+                     if enforcing(tenant) else [])
         if surviving:
             return surviving[0]["reason"]
         if (holds_a_wallet(tenant) and owner.resolve_billing_owner().id == owner.id
@@ -725,7 +729,7 @@ class LiveCounter:
         return None
 
     @staticmethod
-    def _maybe_unsuspend(owner_id, *, clearable=None, money_gate=False) -> bool:
+    def _maybe_unsuspend(owner_id, *, clearable=None, check_money_causes=False) -> bool:
         """THE ONE SITE THAT MOVES A CUSTOMER ``suspended -> active`` (R10
         Stage C2, RULED Q3). Durably reactivate an owner suspended for one of
         the ``clearable`` reasons (the enforcing money pair by default), once
@@ -750,20 +754,25 @@ class LiveCounter:
         concurrently is either seen here or, arriving later, meets an owner
         already active and suspends it.
 
-        ⚠ ``money_gate`` — A MANUAL HOLD'S RELEASE REMOVES THE MANUAL CAUSE; IT
-        NEVER FORCES ACTIVE (PLAN §7 item 41, Ruling B). Every automatic clear
-        is called once its own condition resolved; an operator's release is
-        not, and a system condition may have arisen under the hold that no
-        suspend path recorded (each suspends only an ``active`` owner — the
-        drawdown's level test, a stop line's fold, a lost dispute's
-        claw-back). So that release also asks, under this same lock and
-        after the payment-failure rule, ``_standing_money_cause``: a stop line
-        still open, or a wallet past its floor. One that stands takes over as
-        the cause — the reason changes, the status does not — and its own
-        recovery (``resume``, the credit hook, the hourly pass) lifts it.
-        Nothing is announced for such a hand-over, here or for a payment
-        failure: the customer entered no new state (no ``customer.reactivated``,
-        no ``customer.suspended``, no roster change).
+        ⚠ ``check_money_causes`` — A MANUAL HOLD'S RELEASE REMOVES THE MANUAL
+        CAUSE; IT NEVER FORCES ACTIVE (PLAN §7 item 41, Ruling B). Every
+        automatic clear is called once its own condition resolved; an
+        operator's release is not, and a system condition may have arisen
+        under the hold that no suspend path recorded (each suspends only an
+        ``active`` owner — the drawdown's level test, a stop line's fold, a
+        lost dispute's claw-back). So that release also asks, under this same
+        lock and AFTER the payment-failure rule, ``_standing_money_cause``: a
+        stop line still open (``enforcing``), or a wallet past its floor. One
+        that stands takes over as the cause — the reason changes, the status
+        does not — and its own recovery (``resume``, the credit hook, the
+        hourly pass) lifts it. Nothing is announced for such a hand-over, here
+        or for a payment failure: the customer entered no new state (no
+        ``customer.reactivated``, no ``customer.suspended``, no roster change).
+        A payment failure is asked first, so where one and a money cause
+        both stand the reason is ``payment_failed`` (Ruling B's words) — and
+        the AR clear, which asks no money cause (C2, unchanged), can later
+        reactivate while the money cause stands: a reading the PLAN puts to
+        the owner (§7 item 41, as built).
 
         Emits ``customer.reactivated`` EXACTLY ONCE, in the same transaction
         as the status write, only when the status actually changes — carrying
@@ -792,7 +801,7 @@ class LiveCounter:
                         owner.suspension_reason = reasons.PAYMENT_FAILED
                         owner.save(update_fields=["suspension_reason", "updated_at"])
                     return False
-                if money_gate:
+                if check_money_causes:
                     standing = LiveCounter._standing_money_cause(owner, owner.tenant)
                     if standing is not None:
                         owner.suspension_reason = standing
@@ -855,12 +864,12 @@ class LiveCounter:
         ``hard_floor``, ``customer_spend_pool``, ``payment_failed`` or
         ``dispute_lost`` suspension is never cleared by it. The release removes
         the MANUAL cause and lets the system decide what holds now (Ruling B):
-        a standing payment failure (RULED Q4), a stop line still open or a
-        wallet past its floor takes over as the cause, and the customer stays
-        suspended with nothing announced. Returns True only when the row moved
-        to ``active``."""
+        a standing payment failure (RULED Q4), a stop line still open
+        (``enforcing``) or a wallet past its floor takes over as the cause, and
+        the customer stays suspended with nothing announced. Returns True only
+        when the row moved to ``active``."""
         return LiveCounter._maybe_unsuspend(
-            owner_id, clearable=(LiveCounter.MANUAL_HOLD_REASON,), money_gate=True)
+            owner_id, clearable=(LiveCounter.MANUAL_HOLD_REASON,), check_money_causes=True)
 
     @staticmethod
     def clear_payment_failed_suspension(owner_id) -> bool:

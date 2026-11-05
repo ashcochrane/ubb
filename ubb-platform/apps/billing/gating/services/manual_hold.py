@@ -62,7 +62,23 @@ logger = logging.getLogger(__name__)
 
 MANUAL_HOLD_REASON = LiveCounter.MANUAL_HOLD_REASON
 
-#: What one operation came to.
+class Outcome(str):
+    """What one operation came to: one of the five kinds below — it compares
+    and prints as that word (``outcome == HELD``), so a caller that only asks
+    which kind needs nothing more — carrying, for a hand-over, the system
+    ``cause`` the customer remains suspended for, as the service read it after
+    the reactivation site's own transaction, so a caller reports the cause
+    without asking the database again."""
+
+    cause: str
+
+    def __new__(cls, kind, cause=""):
+        outcome = super().__new__(cls, kind)
+        outcome.cause = cause
+        return outcome
+
+
+#: The kinds of outcome.
 HELD = "held"
 ALREADY_HELD = "already_held"
 RELEASED = "released"
@@ -114,7 +130,8 @@ def _is_held(customer):
 
 def place_manual_hold(customer_id, *, operator):
     """Suspend one live, active customer under a manual hold. Answers
-    ``HELD`` or ``ALREADY_HELD``; raises ``ManualHoldRefused`` otherwise."""
+    ``HELD`` or ``ALREADY_HELD`` (an ``Outcome``); raises
+    ``ManualHoldRefused`` otherwise."""
     with transaction.atomic():
         customer = (Customer.objects.select_for_update(of=("self",))
                     .select_related("tenant").filter(id=customer_id).first())
@@ -142,23 +159,23 @@ def place_manual_hold(customer_id, *, operator):
             notify_if_a_seat(customer)
             outcome = HELD
     _log(customer.id, outcome, operator, tenant_id=customer.tenant_id)
-    return outcome
+    return Outcome(outcome)
 
 
 def release_manual_hold(customer_id, *, operator):
     """Remove one customer's manual hold through the one reactivation site.
     Answers ``RELEASED`` (active again), ``ALREADY_ACTIVE`` or ``HANDED_OVER``
-    (the hold is gone and a standing system cause keeps the customer
-    suspended); raises ``ManualHoldRefused`` for anything that is not a manual
-    hold, and ``ManualHoldFailed`` when the reactivation site did not carry it
-    out."""
+    (an ``Outcome``: the hold is gone and its ``cause``, a standing system
+    cause, keeps the customer suspended); raises
+    ``ManualHoldRefused`` for anything that is not a manual hold, and
+    ``ManualHoldFailed`` when the reactivation site did not carry it out."""
     customer = Customer.objects.filter(id=customer_id).first()
     if customer is None:
         _refuse(customer_id, operator, f"no live customer {customer_id}")
     tenant_id = customer.tenant_id
     if customer.status == CUSTOMER_STATUS_ACTIVE:
         _log(customer.id, ALREADY_ACTIVE, operator, tenant_id=tenant_id)
-        return ALREADY_ACTIVE
+        return Outcome(ALREADY_ACTIVE)
     if customer.status != CUSTOMER_STATUS_SUSPENDED:
         _refuse(customer.id, operator,
                 f"customer {customer.id} is {customer.status!r}; there is no hold "
@@ -175,7 +192,7 @@ def release_manual_hold(customer_id, *, operator):
         _refuse(customer.id, operator,
                 f"customer {customer.id} was deleted while its release was asked; "
                 "there is no live customer to release", tenant_id=tenant_id)
-    detail = ""
+    cause = detail = ""
     if moved:
         outcome = RELEASED
     elif customer.status == CUSTOMER_STATUS_ACTIVE:
@@ -186,8 +203,8 @@ def release_manual_hold(customer_id, *, operator):
         # every suspend path acts on an active one — so a system cause here is
         # the one it handed the hold over to (this release's, or a concurrent
         # one's): the hold is gone, and that cause's recovery owns the rest.
-        outcome = HANDED_OVER
-        detail = f"still suspended for {customer.suspension_reason!r}"
+        outcome, cause = HANDED_OVER, customer.suspension_reason
+        detail = f"still suspended for {cause!r}"
     elif _is_held(customer):
         message = (f"the reactivation site did not release customer {customer.id} "
                    "(see live_counter.unsuspend_failed); it is still held, and the "
@@ -200,4 +217,4 @@ def release_manual_hold(customer_id, *, operator):
                 f"{customer.status!r} for {customer.suspension_reason!r}",
                 tenant_id=tenant_id)
     _log(customer.id, outcome, operator, tenant_id=tenant_id, detail=detail)
-    return outcome
+    return Outcome(outcome, cause)

@@ -24,7 +24,6 @@ The owner's rulings are the shape:
 import json
 from unittest.mock import patch
 
-from django import forms
 from django.contrib.auth import get_user_model
 from django.core.management import CommandError, call_command
 from django.db import IntegrityError, connection, transaction
@@ -35,6 +34,7 @@ from django.utils import timezone
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
+from apps.platform.tenants.tests._helpers import the_forms_own_post
 from apps.platform.tenants.models import (
     MONEY_MODES,
     PaymentRailActivation,
@@ -206,7 +206,7 @@ class EveryDoorRefusesAMoneyModeWithoutItsRailTest(_TenantsTestCase):
         url = reverse("admin:tenants_tenant_change", args=[tenant.pk])
         form = self.http.get(url).context["adminform"].form
 
-        answered = self.http.post(url, _posted(form, billing_mode=CUSTOMER_BILLING_MODE_PREPAID))
+        answered = self.http.post(url, the_forms_own_post(form, billing_mode=CUSTOMER_BILLING_MODE_PREPAID))
 
         self.assertEqual(answered.status_code, 200)  # the form, re-rendered
         errors = answered.context["adminform"].form.errors
@@ -227,7 +227,7 @@ class EveryDoorRefusesAMoneyModeWithoutItsRailTest(_TenantsTestCase):
         url = reverse("admin:tenants_tenant_change", args=[tenant.pk])
         form = self.http.get(url).context["adminform"].form
 
-        answered = self.http.post(url, _posted(form, billing_mode=CUSTOMER_BILLING_MODE_PREPAID))
+        answered = self.http.post(url, the_forms_own_post(form, billing_mode=CUSTOMER_BILLING_MODE_PREPAID))
 
         self.assertEqual(answered.status_code, 302, getattr(answered, "context", None)
                          and answered.context["adminform"].form.errors)
@@ -485,29 +485,3 @@ class AClosedRailStartsNoNewMoneyTest(_TenantsTestCase):
 def _renamed_by_save(tenant):
     tenant.name = "Renamed by save"
     tenant.save()
-
-
-def _posted(form, **changes):
-    """The admin form's own current values, as a browser would post them,
-    with `changes` applied — so the post is the form's, not this test's.
-
-    The tenant's two JSON settings are required by the form and an empty
-    object reads as empty, so an operator fills each in; this post does too,
-    so the only thing that can refuse it is the rule under test.
-    """
-    changes = {"branding_config": {"filled_in": "by the operator"},
-               "metadata": {"filled_in": "by the operator"}, **changes}
-    data = {}
-    for name, field in form.fields.items():
-        value = changes.get(name, form[name].value())
-        if isinstance(field, forms.BooleanField):
-            if value:
-                data[name] = "on"
-            continue
-        if value is None:
-            data[name] = ""
-        elif isinstance(value, str):
-            data[name] = value
-        else:
-            data[name] = field.prepare_value(value)
-    return data

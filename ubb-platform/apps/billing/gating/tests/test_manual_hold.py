@@ -3,15 +3,17 @@ hold on a customer (R10 Stage C4; owner/consultant ruling 2026-11-05, PLAN §7
 item 41, FINAL).
 
 The hold is the existing representation — ``suspended`` with an EMPTY reason —
-placed through ``apps/billing/gating/services/manual_hold.py`` and released
-through the one reactivation site, each announcing the canonical lifecycle
-event and notifying a seat's roster once. It never overwrites, and its release
-never clears, a cause its own recovery owns (``hard_floor``,
-``customer_spend_pool``, ``payment_failed``, ``dispute_lost``). A release
-removes the MANUAL cause and never forces the customer active (Ruling B): a
-system condition still standing takes over, with nothing announced. The
-operator surface is ``manage.py set_customer_manual_hold``; the Django admin
-no longer edits ``status`` or ``suspension_reason``.
+placed through ``apps/billing/gating/services/manual_hold.py`` (announcing
+``customer.suspended`` and notifying a seat's roster once) and released through
+the one reactivation site. It never overwrites, and its release never clears, a
+cause its own recovery owns (``hard_floor``, ``customer_spend_pool``,
+``payment_failed``, ``dispute_lost``). A release removes the MANUAL cause and
+never forces the customer active (Ruling B): with nothing else standing the
+customer is active again, ``customer.reactivated`` is announced and a seat's
+roster notified, once; a system condition still standing takes over instead,
+with nothing announced. The operator surface is ``manage.py
+set_customer_manual_hold``; the Django admin no longer edits ``status`` or
+``suspension_reason``.
 """
 import datetime
 from unittest.mock import patch
@@ -65,7 +67,9 @@ class _ManualHoldCase(TestCase):
     def saved_states(self, customer):
         """Every ``(status, suspension_reason)`` the customer's row is SAVED with
         from here on — so a release that wrote ``active`` and then changed its
-        mind would show it, even inside one transaction."""
+        mind would show it, even inside one transaction. It sees ``save()``
+        only (``post_save``), which is how the one reactivation site writes; a
+        ``QuerySet.update()`` would pass it unseen."""
         from django.db.models.signals import post_save
 
         states = []
@@ -296,12 +300,13 @@ class AReleaseNeverForcesActiveTest(_ManualHoldCase):
         self.assertEqual(self.standing(customer), ("suspended", ""))
         saved = self.saved_states(customer)
 
-        self.assertEqual(manual_hold.release_manual_hold(customer.id, operator="op-1"),
-                         manual_hold.HANDED_OVER)
+        outcome = manual_hold.release_manual_hold(customer.id, operator="op-1")
         self.assertEqual(self.standing(customer), ("suspended", reasons.HARD_FLOOR))
         self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])   # never active
         self.assertEqual(self.events(customer, "customer.reactivated"), [])
         self.assertEqual(len(self.events(customer, "customer.suspended")), 1)  # the hold's
+        self.assertEqual((outcome, outcome.cause),
+                         (manual_hold.HANDED_OVER, reasons.HARD_FLOOR))
 
         # The floor's own recovery brings it back: a credit over the floor.
         with patch("apps.platform.events.tasks.process_single_event"), \
@@ -332,12 +337,11 @@ class AReleaseNeverForcesActiveTest(_ManualHoldCase):
                 self.assertEqual(self.standing(customer), ("suspended", ""))
                 saved = self.saved_states(customer)
 
-                self.assertEqual(
-                    manual_hold.release_manual_hold(customer.id, operator="op-1"),
-                    manual_hold.HANDED_OVER)
+                outcome = manual_hold.release_manual_hold(customer.id, operator="op-1")
                 self.assertEqual(self.standing(customer), ("suspended", line))
                 self.assertEqual(saved, [("suspended", line)])
                 self.assertEqual(self.events(customer, "customer.reactivated"), [])
+                self.assertEqual((outcome, outcome.cause), (manual_hold.HANDED_OVER, line))
 
                 # The line lifting brings it back, through `resume`, once.
                 LiveCounter.resume(customer.id, tenant, line=line,
@@ -345,6 +349,91 @@ class AReleaseNeverForcesActiveTest(_ManualHoldCase):
                 self.assertEqual(self.standing(customer), ("active", ""))
                 [reactivated] = self.events(customer, "customer.reactivated")
                 self.assertEqual(reactivated["reason_code"], line)
+
+    def test_a_dispute_lost_under_the_hold_keeps_it_suspended_for_the_floor(self):
+        """The lost dispute's claw-back suspends only an ACTIVE owner, so a
+        dispute lost under the hold drives the wallet past its floor with
+        nothing recorded; the release finds the floor, not ``active``."""
+        from unittest.mock import MagicMock
+        from apps.billing.connectors.stripe.webhooks import handle_charge_dispute_closed
+        from apps.billing.topups.models import TopUpAttempt
+        from apps.billing.wallets import operations as wallet_ops
+        from apps.billing.wallets.models import Wallet
+        from core.vocabulary import GRANT_SOURCE_CHECKOUT
+        tenant = Tenant.objects.create(
+            name="Disputed", products=["metering", "billing"], billing_mode="prepaid",
+            stripe_connected_account_id="acct_held")
+        customer = Customer.objects.create(tenant=tenant, external_id="disputed",
+                                           stripe_customer_id="cus_held")
+        Wallet.objects.create(customer=customer, balance_micros=0)
+        attempt = TopUpAttempt.objects.create(
+            customer=customer, billing_owner_id=customer.id, amount_micros=5_000_000,
+            trigger="manual", status="succeeded", stripe_charge_id="ch_held")
+        wallet_ops.credit_top_up(
+            customer_id=customer.id, tenant=tenant, amount_micros=5_000_000,
+            idempotency_key="topup:cs_held", source=GRANT_SOURCE_CHECKOUT,
+            source_reference=str(attempt.id), description="Stripe top-up")
+        manual_hold.place_manual_hold(customer.id, operator="op-1")
+        lost = MagicMock()
+        lost.data.object.id = "dp_held"
+        lost.data.object.charge = "ch_held"
+        lost.data.object.status = "lost"
+        lost.data.object.amount = 800                 # cents: 8M micros
+        lost.data.object.currency = "usd"
+        lost.account = "acct_held"
+        handle_charge_dispute_closed(lost)             # 5M - 8M = -3M, under the hold
+        self.assertEqual(Wallet.objects.get(customer=customer).balance_micros, -3_000_000)
+        self.assertEqual(self.standing(customer), ("suspended", ""))   # nothing recorded
+        saved = self.saved_states(customer)
+
+        outcome = manual_hold.release_manual_hold(customer.id, operator="op-1")
+        self.assertEqual(self.standing(customer), ("suspended", reasons.HARD_FLOOR))
+        self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])
+        self.assertEqual(self.events(customer, "customer.reactivated"), [])
+        self.assertEqual((outcome, outcome.cause),
+                         (manual_hold.HANDED_OVER, reasons.HARD_FLOOR))
+
+    def test_a_payment_failure_and_a_wallet_past_its_floor_leave_payment_failed(self):
+        """Both stand. The payment failure is asked first (RULED Q4, and Ruling
+        B's "the resulting suspension_reason is payment_failed"), so that is
+        the reason, and the customer stays suspended either way. What the AR
+        clear does later while the floor still stands is a reading put to the
+        owner (PLAN §7 item 41, as built), not pinned here."""
+        tenant = self._prepaid("off")
+        customer = self._funded(tenant, "both", 5_000_000)
+        manual_hold.place_manual_hold(customer.id, operator="op-1")
+        self._billed_under_the_hold(tenant, customer, 8_000_000)     # past the floor
+        self.stand_a_payment_failure(customer)
+        saved = self.saved_states(customer)
+
+        outcome = manual_hold.release_manual_hold(customer.id, operator="op-1")
+        self.assertEqual(self.standing(customer), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertEqual(saved, [("suspended", reasons.PAYMENT_FAILED)])
+        self.assertEqual(self.events(customer, "customer.reactivated"), [])
+        self.assertEqual(outcome, manual_hold.HANDED_OVER)
+
+    def test_under_off_a_stop_line_left_by_a_mode_flip_holds_nothing(self):
+        """The ledger's lines are ``enforcing``'s controls; a mode flip closes
+        them silently, best-effort. One left open by a failed close is no
+        cause under ``off``, where nothing would ever lift it: a release with
+        a healthy wallet and no failure is active again, not handed to it."""
+        from apps.billing.gating.services.stop_signal_service import (
+            LINE_CUSTOMER_SPEND_POOL, StopSignalService, control_id_of)
+        from core.vocabulary import TRIGGER_SOURCE_ENFORCEMENT_PATROL
+        tenant = self._prepaid("off")
+        customer = self._funded(tenant, "stale-line", 5_000_000)
+        manual_hold.place_manual_hold(customer.id, operator="op-1")
+        StopSignalService.drive_stop(
+            customer.id, tenant, line=LINE_CUSTOMER_SPEND_POOL,
+            control_id=control_id_of(LINE_CUSTOMER_SPEND_POOL, customer.id, tenant),
+            trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+            stop_bound_micros=0, stop_measured_micros=0)
+        self.assertEqual([row["reason"] for row in
+                          StopSignalService.open_stop_lines(customer.id)],
+                         [LINE_CUSTOMER_SPEND_POOL])                    # left open
+        self.assertEqual(manual_hold.release_manual_hold(customer.id, operator="op-1"),
+                         manual_hold.RELEASED)
+        self.assertEqual(self.standing(customer), ("active", ""))
 
     def test_a_pooled_seat_is_measured_by_no_floor_of_its_own(self):
         """A pooled seat is not its floor's subject: every floor path suspends
@@ -404,8 +493,7 @@ class TheOperatorCommandTest(_ManualHoldCase):
         out = self._run("--customer", str(self.solo.id), "--state", "released",
                         "--operator", "op-1")
         self.assertIn("manual hold is released, but it remains suspended for "
-                      "'payment_failed'", out)
-        self.assertIn("it was not reactivated", out)
+                      "'payment_failed', a system cause its own recovery lifts", out)
         self.assertEqual(self.standing(self.solo), ("suspended", reasons.PAYMENT_FAILED))
 
     def test_a_system_cause_is_refused_and_nothing_changes(self):
