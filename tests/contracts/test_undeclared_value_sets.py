@@ -12,7 +12,7 @@ coincidence can satisfy"*. So the census cannot see it, will never be able to
 see it, and the honest response is not to pretend otherwise but to **count it**.
 
 That is what this module does. **Every Django `choices=` in living backend code
-is pinned below, by file and by count** — all 58 of them across 21 files
+is pinned below, by file and by count** — all 59 of them across 22 files
 (**re-measured in #495, which found this sentence saying 50 across 20**: the
 per-file numbers below are the data the test reads and they were current, while
 this total had not been re-taken since some slice that raised one of them —
@@ -89,6 +89,12 @@ from tools.vocabulary import load_registry
 #: the SHAPE, deliberately: a derived list and a typed one are indistinguishable
 #: to a reader skimming a diff, so both come past one.
 VALUE_SETS = {
+    # 0 -> 1 in R10 Stage C4 (PLAN §7 item 41): the manual-hold command's
+    # `--state held|released`. An operator verb choosing which half of the one
+    # workflow runs, not a domain value set: no record stores it and no event
+    # carries it (the hold itself is `suspended` + an empty reason). Counted
+    # all the same, because this inventory counts the SHAPE.
+    "ubb-platform/apps/billing/gating/management/commands/set_customer_manual_hold.py": 1,
     "ubb-platform/apps/billing/gating/models.py": 5,
     # 4 -> 5 in R10-W4: the skip reason gained `choices=` when the registry
     # declared `skip_reason`; it was a bare string written as literals.
