@@ -16,7 +16,7 @@ set_customer_manual_hold``; the Django admin no longer edits ``status`` or
 ``suspension_reason``.
 """
 import datetime
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -240,10 +240,11 @@ class AReleaseNeverForcesActiveTest(_ManualHoldCase):
     claw-back each suspend only an ACTIVE owner. So a system condition can
     arise under a hold with nothing written — and before Ruling B the release
     made such a customer active. The release now asks, under the row lock, the
-    gate every money lift passes (an open stop line; a wallet past its
-    floor); a cause that stands takes over, the customer stays suspended with
-    nothing announced, and that cause's own recovery brings it back later —
-    the ``customer.reactivated`` then is the real transition's, once."""
+    gate every money lift passes (a stop line still open under ``enforcing``;
+    a wallet past its floor); a cause that stands takes over, the customer
+    stays suspended with nothing announced, and that cause's own recovery
+    brings it back later — the ``customer.reactivated`` then is the real
+    transition's, once."""
 
     def setUp(self):
         super().setUp()
@@ -252,10 +253,10 @@ class AReleaseNeverForcesActiveTest(_ManualHoldCase):
         activate_the_rail()          # a money mode needs its payment rail (G27)
         cache.clear()
 
-    def _prepaid(self, enforcement_mode):
+    def _prepaid(self, enforcement_mode, **fields):
         return Tenant.objects.create(
             name=f"Prepaid {enforcement_mode}", products=["metering", "billing"],
-            billing_mode="prepaid", enforcement_mode=enforcement_mode)
+            billing_mode="prepaid", enforcement_mode=enforcement_mode, **fields)
 
     def _funded(self, tenant, external_id, balance_micros):
         from apps.billing.wallets.models import Wallet
@@ -353,45 +354,58 @@ class AReleaseNeverForcesActiveTest(_ManualHoldCase):
     def test_a_dispute_lost_under_the_hold_keeps_it_suspended_for_the_floor(self):
         """The lost dispute's claw-back suspends only an ACTIVE owner, so a
         dispute lost under the hold drives the wallet past its floor with
-        nothing recorded; the release finds the floor, not ``active``."""
-        from unittest.mock import MagicMock
+        nothing recorded; the release finds the floor, not ``active``. Under
+        both modes — under ``enforcing`` too a claw-back opens no stop line
+        (it is not mirrored to the live counter), so it is the floor read, not
+        a line, that holds it — and the floor's own recovery lifts it."""
         from apps.billing.connectors.stripe.webhooks import handle_charge_dispute_closed
+        from apps.billing.gating.services.stop_signal_service import StopSignalService
         from apps.billing.topups.models import TopUpAttempt
         from apps.billing.wallets import operations as wallet_ops
         from apps.billing.wallets.models import Wallet
         from core.vocabulary import GRANT_SOURCE_CHECKOUT
-        tenant = Tenant.objects.create(
-            name="Disputed", products=["metering", "billing"], billing_mode="prepaid",
-            stripe_connected_account_id="acct_held")
-        customer = Customer.objects.create(tenant=tenant, external_id="disputed",
-                                           stripe_customer_id="cus_held")
-        Wallet.objects.create(customer=customer, balance_micros=0)
-        attempt = TopUpAttempt.objects.create(
-            customer=customer, billing_owner_id=customer.id, amount_micros=5_000_000,
-            trigger="manual", status="succeeded", stripe_charge_id="ch_held")
-        wallet_ops.credit_top_up(
-            customer_id=customer.id, tenant=tenant, amount_micros=5_000_000,
-            idempotency_key="topup:cs_held", source=GRANT_SOURCE_CHECKOUT,
-            source_reference=str(attempt.id), description="Stripe top-up")
-        manual_hold.place_manual_hold(customer.id, operator="op-1")
-        lost = MagicMock()
-        lost.data.object.id = "dp_held"
-        lost.data.object.charge = "ch_held"
-        lost.data.object.status = "lost"
-        lost.data.object.amount = 800                 # cents: 8M micros
-        lost.data.object.currency = "usd"
-        lost.account = "acct_held"
-        handle_charge_dispute_closed(lost)             # 5M - 8M = -3M, under the hold
-        self.assertEqual(Wallet.objects.get(customer=customer).balance_micros, -3_000_000)
-        self.assertEqual(self.standing(customer), ("suspended", ""))   # nothing recorded
-        saved = self.saved_states(customer)
+        for mode in ("off", "enforcing"):
+            with self.subTest(mode):
+                tenant = self._prepaid(mode, stripe_connected_account_id=f"acct_{mode}")
+                customer = self._funded(tenant, f"disputed-{mode}", 0)
+                attempt = TopUpAttempt.objects.create(
+                    customer=customer, billing_owner_id=customer.id,
+                    amount_micros=5_000_000, trigger="manual", status="succeeded",
+                    stripe_charge_id=f"ch_{mode}")
+                wallet_ops.credit_top_up(
+                    customer_id=customer.id, tenant=tenant, amount_micros=5_000_000,
+                    idempotency_key=f"topup:cs_{mode}", source=GRANT_SOURCE_CHECKOUT,
+                    source_reference=str(attempt.id), description="Stripe top-up")
+                manual_hold.place_manual_hold(customer.id, operator="op-1")
+                lost = MagicMock()
+                lost.data.object.id = f"dp_{mode}"
+                lost.data.object.charge = f"ch_{mode}"
+                lost.data.object.status = "lost"
+                lost.data.object.amount = 800                 # cents: 8M micros
+                lost.data.object.currency = "usd"
+                lost.account = f"acct_{mode}"
+                handle_charge_dispute_closed(lost)             # 5M - 8M = -3M, under the hold
+                self.assertEqual(Wallet.objects.get(customer=customer).balance_micros,
+                                 -3_000_000)
+                self.assertEqual(self.standing(customer), ("suspended", ""))  # unrecorded
+                self.assertEqual(StopSignalService.open_stop_lines(customer.id), [])
+                saved = self.saved_states(customer)
 
-        outcome = manual_hold.release_manual_hold(customer.id, operator="op-1")
-        self.assertEqual(self.standing(customer), ("suspended", reasons.HARD_FLOOR))
-        self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])
-        self.assertEqual(self.events(customer, "customer.reactivated"), [])
-        self.assertEqual((outcome, outcome.cause),
-                         (manual_hold.HANDED_OVER, reasons.HARD_FLOOR))
+                outcome = manual_hold.release_manual_hold(customer.id, operator="op-1")
+                self.assertEqual(self.standing(customer), ("suspended", reasons.HARD_FLOOR))
+                self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])
+                self.assertEqual(self.events(customer, "customer.reactivated"), [])
+                self.assertEqual((outcome, outcome.cause),
+                                 (manual_hold.HANDED_OVER, reasons.HARD_FLOOR))
+
+                # A credit back over the floor lifts it, once, in either mode.
+                with patch("apps.platform.events.tasks.process_single_event"), \
+                        self.captureOnCommitCallbacks(execute=True):
+                    wallet_ops.credit(customer_id=customer.id, tenant=tenant,
+                                      amount_micros=10_000_000, idempotency_key=f"cr_{mode}")
+                self.assertEqual(self.standing(customer), ("active", ""))
+                [reactivated] = self.events(customer, "customer.reactivated")
+                self.assertEqual(reactivated["reason_code"], reasons.HARD_FLOOR)
 
     def test_a_payment_failure_and_a_wallet_past_its_floor_leave_payment_failed(self):
         """Both stand. The payment failure is asked first (RULED Q4, and Ruling

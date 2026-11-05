@@ -34,7 +34,6 @@ from django.utils import timezone
 from apps.billing.topups.models import TopUpAttempt
 from apps.billing.wallets.models import Wallet
 from apps.platform.customers.models import Customer
-from apps.platform.tenants.tests._helpers import the_forms_own_post
 from apps.platform.tenants.models import (
     MONEY_MODES,
     PaymentRailActivation,
@@ -42,6 +41,7 @@ from apps.platform.tenants.models import (
     Tenant,
     TenantApiKey,
 )
+from apps.platform.tenants.tests._helpers import the_forms_own_post
 from core.vocabulary import (
     CUSTOMER_BILLING_MODE_EXTERNAL,
     CUSTOMER_BILLING_MODE_POSTPAID,

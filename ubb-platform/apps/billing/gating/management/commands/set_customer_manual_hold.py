@@ -6,9 +6,9 @@ Stage C4; owner/consultant ruling 2026-11-05, PLAN §7 item 41, FINAL).
 
 ``held`` places a manual hold on an active, live customer; ``released`` removes
 that hold — the MANUAL cause only: if a system condition still stands (a
-payment failure, an open stop line, a wallet past its floor) the customer
-stays suspended for it, and the command says so; it never forces a customer
-active. Both refuse a customer suspended for a system cause — a hold never
+payment failure, a stop line still open under ``enforcing``, a wallet past its
+floor) the customer stays suspended for it, and the command says so; it never
+forces a customer active. Both refuse a customer suspended for a system cause — a hold never
 overwrites, and a release never clears, a cause its own recovery owns. The
 rules and the side effects are the service's
 (``apps/billing/gating/services/manual_hold.py``); this command only parses,
@@ -54,20 +54,21 @@ class Command(BaseCommand):
             raise CommandError(f"refused: {e}. Nothing was written.")
         except manual_hold.ManualHoldFailed as e:
             raise CommandError(f"failed: {e}. Nothing was written.")
-        messages = {
-            manual_hold.HELD: f"Customer {customer_id} is now under a manual hold.",
-            manual_hold.ALREADY_HELD: f"Customer {customer_id} was already under a "
-                                      "manual hold; nothing changed.",
-            manual_hold.RELEASED: f"Customer {customer_id}'s manual hold is released; "
-                                  "it is active again.",
-            manual_hold.ALREADY_ACTIVE: f"Customer {customer_id} is already active; "
-                                        "nothing changed.",
+        ok, warn = self.style.SUCCESS, self.style.WARNING
+        report = {
+            manual_hold.HELD: (ok, f"Customer {customer_id} is now under a manual hold."),
+            manual_hold.ALREADY_HELD: (ok, f"Customer {customer_id} was already under a "
+                                           "manual hold; nothing changed."),
+            manual_hold.RELEASED: (ok, f"Customer {customer_id}'s manual hold is released; "
+                                       "it is active again."),
+            manual_hold.ALREADY_ACTIVE: (ok, f"Customer {customer_id} is already active; "
+                                             "nothing changed."),
             # The hold IS released — not a failure — but a system cause still
             # stands, so the customer is not active: say which.
-            manual_hold.HANDED_OVER: f"Customer {customer_id}'s manual hold is released, "
-                                     f"but it remains suspended for {outcome.cause!r}, a "
-                                     "system cause its own recovery lifts.",
+            manual_hold.HANDED_OVER: (warn, f"Customer {customer_id}'s manual hold is "
+                                            "released, but it remains suspended for "
+                                            f"{outcome.cause!r}, a system cause its own "
+                                            "recovery lifts."),
         }
-        style = (self.style.WARNING if outcome == manual_hold.HANDED_OVER
-                 else self.style.SUCCESS)
-        self.stdout.write(style(messages[outcome]))
+        style, message = report[outcome]
+        self.stdout.write(style(message))

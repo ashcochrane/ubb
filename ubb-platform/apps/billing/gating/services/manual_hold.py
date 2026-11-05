@@ -28,12 +28,12 @@ operator surface.
   lock what holds now. With nothing else standing, the customer is active
   again, ``customer.reactivated`` is announced once and a seat's roster is
   notified once, exactly as every other clear. If a system condition still
-  stands — a qualifying payment failure (RULED Q4), a stop line still open,
-  or a wallet past its floor — that cause takes over: the customer stays
-  suspended, nothing is announced (it entered no new state), and the release
-  is answered ``HANDED_OVER``, naming the cause. Only a manual hold is
-  released; a customer already suspended for a system cause is REFUSED. An
-  active customer is a no-op.
+  stands — a qualifying payment failure (RULED Q4), a stop line still open
+  under ``enforcing``, or a wallet past its floor — that cause takes over: the
+  customer stays suspended, nothing is announced (it entered no new state),
+  and the release is answered ``HANDED_OVER``, naming the cause. Only a manual
+  hold is released; a customer already suspended for a system cause is
+  REFUSED. An active customer is a no-op.
 - **Closing a customer is not a supported v1 transition**, and nothing here
   writes ``closed``.
 
@@ -62,6 +62,7 @@ logger = logging.getLogger(__name__)
 
 MANUAL_HOLD_REASON = LiveCounter.MANUAL_HOLD_REASON
 
+
 class Outcome(str):
     """What one operation came to: one of the five kinds below — it compares
     and prints as that word (``outcome == HELD``), so a caller that only asks
@@ -84,9 +85,10 @@ ALREADY_HELD = "already_held"
 RELEASED = "released"
 ALREADY_ACTIVE = "already_active"
 #: A release that removed the manual cause while a system condition still
-#: stands (a payment failure, an open stop line, a wallet past its floor): the
-#: customer stays suspended, now for that cause, which its own recovery lifts.
-#: The hold is gone — this is not a failure — and nothing was announced.
+#: stands (a payment failure, a stop line still open under ``enforcing``, a
+#: wallet past its floor): the customer stays suspended, now for that cause,
+#: which its own recovery lifts. The hold is gone — this is not a failure — and
+#: nothing was announced.
 HANDED_OVER = "handed_over"
 
 
