@@ -145,10 +145,10 @@ An accountable operator's suspension of one active customer — `suspended` with
 which no automatic recovery lifts. It is placed and released only through `manage.py
 set_customer_manual_hold`, which never overwrites or clears a system cause. **Releasing** one
 removes the manual cause and lets the system decide what holds now — it never forces the customer
-active: a system condition still standing (a payment failure, a stop line still open, a wallet
-past its floor) becomes the cause and the customer stays suspended, and `customer.reactivated`
-records only a real transition to `active` (R10 Stage C4). The operator's id is logged on every
-outcome; a durable audit record of a hold and its release is owed by C5.
+active: a system condition still standing (a payment failure, a stop line still open under
+`enforcing`, a wallet past its floor) becomes the cause and the customer stays suspended, and
+`customer.reactivated` records only a real transition to `active` (R10 Stage C4). The operator's id
+is logged on every outcome; a durable audit record of a hold and its release is owed by C5.
 (`apps/billing/gating/services/manual_hold.py`)
 _Avoid_: "admin suspension", "fraud suspension" as distinct states; editing `status` to hold a customer;
 "release" meaning "make active".

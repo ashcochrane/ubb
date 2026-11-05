@@ -8,9 +8,9 @@ Stage C4; owner/consultant ruling 2026-11-05, PLAN §7 item 41, FINAL).
 that hold — the MANUAL cause only: if a system condition still stands (a
 payment failure, a stop line still open under ``enforcing``, a wallet past its
 floor) the customer stays suspended for it, and the command says so; it never
-forces a customer active. Both refuse a customer suspended for a system cause — a hold never
-overwrites, and a release never clears, a cause its own recovery owns. The
-rules and the side effects are the service's
+forces a customer active. Both refuse a customer suspended for a system cause
+— a hold never overwrites, and a release never clears, a cause its own
+recovery owns. The rules and the side effects are the service's
 (``apps/billing/gating/services/manual_hold.py``); this command only parses,
 asks and reports. The Django Customer admin no longer edits ``status``,
 ``suspension_reason`` or ``deleted_at``: this is the one supported way to hold
