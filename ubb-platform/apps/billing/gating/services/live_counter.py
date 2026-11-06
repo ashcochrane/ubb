@@ -719,9 +719,10 @@ class LiveCounter:
         Two clears ask it, the two whose own resolved condition says nothing
         about money: a manual hold's release (§7 item 41, Ruling B) and the
         payment-failure clear (§7 item 43). The money recoveries (``resume``,
-        the credit hook, the gating floor pass in ``apps/billing/gating/
-        tasks.py``) run only once the money condition itself cleared, and hand
-        over to a standing payment failure instead (RULED Q4)."""
+        the credit hook, the gating floor pass in
+        ``apps/billing/gating/tasks.py``) run only once the money condition
+        itself cleared, and hand over to a standing payment failure instead
+        (RULED Q4)."""
         surviving = (StopSignalService.open_stop_lines(owner.id)
                      if enforcing(tenant) else [])
         if surviving:

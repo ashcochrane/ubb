@@ -138,10 +138,10 @@ the pool's line lifted, every failed invoice paid or voided — through the one 
 a paid or voided invoice never clears a money suspension (R10 Stage C2). There is one stored
 reason, and the customer becomes `active` only when no system condition still stands: a payment
 failure still standing takes over the reason when a money cause or a manual hold resolves, and a
-money cause still standing (a stop line open under `enforcing`, a wallet past its floor) takes over
-when a payment failure or a manual hold resolves — the customer stays `suspended` and nothing is
-announced; between two stop lines the suspension stands until every line has lifted (R10 Stage
-C4). Status, reason and
+money cause still standing (a stop line open under `enforcing`, its own wallet past its floor)
+takes over when a payment failure or a manual hold resolves — the customer stays `suspended` and
+nothing is announced; between two stop lines the suspension stands until every line has lifted
+(R10 Stage C4). Status, reason and
 `deleted_at` are changed only by the workflows that own their side effects — never as raw fields in
 the Django admin, where they are read-only (R10 Stage C4). Closing a customer is not a supported v1
 transition.
