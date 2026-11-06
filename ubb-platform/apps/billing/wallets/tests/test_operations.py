@@ -385,9 +385,10 @@ class TestReplays:
         assert w.balance_micros == 19_000_000
         assert _txns(w).count() == 3
 
-    def test_refund_replay_answers_with_the_original_reference(self):
-        """The refund replay quirk: refund_id on a replay is the stored row's
-        reference_id (the usage event id), not the txn id."""
+    def test_refund_replay_answers_the_refund_transaction_id(self):
+        """THE SAME DURABLE ID ON EVERY CALL (R10 Stage C5, F-14): a replay
+        answers the refund row's own `transaction_id` — the first call's —
+        never the usage event id the retired replay quirk answered."""
         t = _tenant()
         c = _customer(t)
         _wallet(c, balance=0)
@@ -403,10 +404,33 @@ class TestReplays:
                 idempotency_key=key)
         assert first.outcome == "applied"
         assert again.outcome == "replayed"
-        assert again.reference_id == str(event_id)
+        assert again.transaction_id == first.transaction_id
+        assert again.transaction_id != str(event_id)
+        assert WalletTransaction.objects.get(id=first.transaction_id).transaction_type == "refund"
         # Exactly one RefundRequested (winning branch only).
         assert OutboxEvent.objects.filter(
             event_type="refund.requested").count() == 1
+
+    def test_refund_refuses_a_key_owned_by_a_non_refund_row(self):
+        """R10 Stage C5 (F-14): a key already spent by a NON-refund transaction
+        is refused `idempotency_conflict`, never replayed as if it were a
+        refund — and nothing moves."""
+        t = _tenant()
+        c = _customer(t)
+        w = _wallet(c, balance=0)
+        key = str(uuid.uuid4())
+        wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=1_000_000,
+                          idempotency_key=key)
+        with patch("apps.metering.queries.get_posting_price",
+                   return_value={"billed_cost_micros": 2_000_000, "pricing_status": "known"}):
+            result = wallet_ops.refund_usage(
+                customer_id=c.id, tenant=t, usage_event_id=uuid.uuid4(),
+                idempotency_key=key)
+        assert result.outcome == "refused"
+        assert result.refusal_code == wallet_ops.IDEMPOTENCY_CONFLICT
+        w.refresh_from_db()
+        assert w.balance_micros == 1_000_000
+        assert _txns(w).filter(transaction_type="refund").count() == 0
 
     def test_void_replay_returns_the_lot_with_no_txn(self):
         t = _tenant()

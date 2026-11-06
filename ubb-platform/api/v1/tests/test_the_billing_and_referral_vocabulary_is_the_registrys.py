@@ -92,12 +92,12 @@ class AProgrammesRewardTypeIsTheRegistrysTest(TestCase):
             content_type="application/json", **self.auth)
 
     def test_a_reward_type_outside_the_set_is_refused_on_create_and_update(self):
-        refused = self._send("post", {"reward_type": "bogus", "reward_value": 5})
+        refused = self._send("post", {"reward_type": "bogus", "reward_amount_micros": 5})
         self.assertEqual(refused.status_code, 422, refused.content)
         self.assertFalse(ReferralProgram.objects.filter(tenant=self.tenant).exists())
 
         created = self._send("post", {"reward_type": REWARD_TYPE_FLAT_FEE,
-                                      "reward_value": 5})
+                                      "reward_amount_micros": 5})
         self.assertEqual(created.status_code, 200, created.content)
 
         refused = self._send("patch", {"reward_type": "bogus"})
@@ -107,7 +107,8 @@ class AProgrammesRewardTypeIsTheRegistrysTest(TestCase):
             ReferralProgram.objects.get(tenant=self.tenant).reward_type,
             REWARD_TYPE_FLAT_FEE)
 
-        moved = self._send("patch", {"reward_type": REWARD_TYPE_REVENUE_SHARE})
+        moved = self._send("patch", {"reward_type": REWARD_TYPE_REVENUE_SHARE,
+                                    "reward_share_basis_points": 1000})
         self.assertEqual(moved.status_code, 200, moved.content)
         self.assertEqual(moved.json()["reward_type"], REWARD_TYPE_REVENUE_SHARE)
 

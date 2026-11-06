@@ -25,6 +25,10 @@ from core.vocabulary import (
     SKIP_REASON_SEAT_SUPERSEDED,
     USAGE_INVOICE_STATUS_FAILED,
     USAGE_INVOICE_STATUS_PENDING,
+    USAGE_INVOICE_PAYMENT_STATUS_OPEN,
+    USAGE_INVOICE_PAYMENT_STATUS_PAID,
+    USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE,
+    USAGE_INVOICE_PAYMENT_STATUS_VOID,
     USAGE_INVOICE_STATUS_PUSHED,
     USAGE_INVOICE_STATUS_PUSHING,
     USAGE_INVOICE_STATUS_SKIPPED,
@@ -32,12 +36,14 @@ from core.vocabulary import (
 
 logger = logging.getLogger(__name__)
 
-# Stripe status -> our payment/invoice status. draft is not yet collectible (skip).
+# Stripe status -> our payment status (the registry's closed
+# `usage_invoice_payment_status`, R10 Stage C5). draft is not yet collectible
+# (skip): null on the row, never a fifth word.
 _STRIPE_STATUS_MAP = {
-    "paid": "paid",
-    "void": "void",
-    "uncollectible": "uncollectible",
-    "open": "open",
+    "paid": USAGE_INVOICE_PAYMENT_STATUS_PAID,
+    "void": USAGE_INVOICE_PAYMENT_STATUS_VOID,
+    "uncollectible": USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE,
+    "open": USAGE_INVOICE_PAYMENT_STATUS_OPEN,
 }
 # Which transitions are legal is NOT encoded here: both the webhook fast path and
 # this backstop share apps.billing.connectors.stripe.invoice_routing.AR_ALLOWED /

@@ -140,7 +140,7 @@ class GrantEndpointsTest(RailActivated, TestCase):
         grant_id = self._create_grant(amount_micros=10_000_000).json()["id"]
         # Consume 8 of the lot through /debit, then dent the cached balance.
         self._post("/api/v1/billing/debit", {
-            "customer_id": self.customer.external_id,
+            "customer_id": str(self.customer.id),
             "amount_micros": 8_000_000, "reference": "evt_x",
             "idempotency_key": "idem_evt_x"})
         self.wallet.refresh_from_db()

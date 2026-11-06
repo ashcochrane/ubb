@@ -1,5 +1,13 @@
+// The tenant-wide usage-invoice sweep (GET /billing/usage-invoices): one row
+// per customer per billing period, on the one usage-invoice shape every route
+// shares since R10 Stage C5 (F-15) — period, currency, push status, where the
+// Stripe invoice stands as a receivable (`payment_status`, null while not yet
+// collectible), and the hosted invoice where one exists — plus the two push
+// internals only the tenant's routes carry (`push_attempts`,
+// `last_attempt_error`).
+
 import { useState } from "react";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, ExternalLink } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -23,9 +31,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useTenantCurrency } from "@/hooks/use-tenant-config";
-import { skipReasonLabel, usageInvoiceStatusLabel } from "@/lib/usage-invoice";
-import { formatCalendarDate, formatMicros } from "@/lib/format";
+import {
+  paymentStatusWording,
+  skipReasonLabel,
+  usageInvoiceStatusLabel,
+} from "@/lib/usage-invoice";
+import { formatCalendarDate, formatDate, formatMicros } from "@/lib/format";
 
 import { useTenantUsageInvoices } from "../api/queries";
 import type { TenantUsageInvoice } from "../api/types";
@@ -37,7 +48,6 @@ const FAILED_STATUSES = new Set(["failed", "failed_permanent"]);
 export function UsageInvoicesCard() {
   const [month, setMonth] = useState("");
   const period = monthToPeriodDate(month);
-  const currency = useTenantCurrency();
   const list = useTenantUsageInvoices(period);
 
   return (
@@ -89,17 +99,14 @@ export function UsageInvoicesCard() {
                   <TableHead>Period</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Payment</TableHead>
                   <TableHead>Stripe invoice</TableHead>
                   <TableHead className="text-right">Push attempts</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {list.rows.map((invoice) => (
-                  <InvoiceRow
-                    key={`${invoice.customer_id}-${invoice.period_start}`}
-                    invoice={invoice}
-                    currency={currency}
-                  />
+                  <InvoiceRow key={invoice.id} invoice={invoice} />
                 ))}
               </TableBody>
             </Table>
@@ -117,13 +124,7 @@ export function UsageInvoicesCard() {
   );
 }
 
-function InvoiceRow({
-  invoice,
-  currency,
-}: {
-  invoice: TenantUsageInvoice;
-  currency: string;
-}) {
+function InvoiceRow({ invoice }: { invoice: TenantUsageInvoice }) {
   const failed = FAILED_STATUSES.has(invoice.status);
   return (
     <TableRow>
@@ -136,12 +137,15 @@ function InvoiceRow({
         </span>
       </TableCell>
       <TableCell className="whitespace-nowrap text-[12px] text-text-secondary">
-        {/* period_start is a calendar date ("YYYY-MM-DD") — format in UTC so
-            the period never shifts a day for viewers west of Greenwich. */}
-        {formatCalendarDate(invoice.period_start)}
+        {/* The period's two dates are calendar dates ("YYYY-MM-DD") — formatted
+            in UTC so the period never shifts a day for viewers west of
+            Greenwich. */}
+        {formatCalendarDate(invoice.period_start)} →{" "}
+        {formatCalendarDate(invoice.period_end)}
       </TableCell>
       <TableCell className="whitespace-nowrap text-right font-medium">
-        {formatMicros(invoice.total_billed_micros, currency)}
+        {/* The row carries its own currency: a Stripe invoice is issued in one. */}
+        {formatMicros(invoice.total_billed_micros, invoice.currency)}
       </TableCell>
       <TableCell>
         <Badge
@@ -150,6 +154,14 @@ function InvoiceRow({
         >
           {usageInvoiceStatusLabel(invoice.status)}
         </Badge>
+      </TableCell>
+      <TableCell className="whitespace-nowrap text-[12px]" data-payment-status={invoice.payment_status ?? ""}>
+        {paymentStatusWording(invoice.payment_status)}
+        {invoice.paid_at && (
+          <span className="ml-1.5 text-[11px] text-text-muted">
+            {formatDate(invoice.paid_at)}
+          </span>
+        )}
       </TableCell>
       <TableCell>
         {invoice.stripe_invoice_id ? (
@@ -161,6 +173,18 @@ function InvoiceRow({
               {invoice.stripe_invoice_id}
             </span>
             <CopyButton value={invoice.stripe_invoice_id} label="Copy Stripe invoice id" />
+            {invoice.hosted_invoice_url && (
+              <a
+                href={invoice.hosted_invoice_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 text-[12px] underline-offset-2 hover:underline"
+                aria-label="Open the hosted Stripe invoice"
+              >
+                View
+                <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+              </a>
+            )}
           </span>
         ) : (
           <span className="text-text-muted">—</span>
@@ -168,7 +192,7 @@ function InvoiceRow({
       </TableCell>
       <TableCell className="text-right">
         <span className="inline-flex items-center justify-end gap-1.5">
-          {invoice.push_attempts ?? 0}
+          {invoice.push_attempts}
           {invoice.last_attempt_error && (
             <Tooltip>
               <TooltipTrigger

@@ -11,6 +11,7 @@ from ..types import UNSET, Unset
 from ..models.debit_request_movement_reason_type_0 import DebitRequestMovementReasonType0
 from ..types import UNSET, Unset
 from typing import cast
+from uuid import UUID
 
 
 
@@ -26,7 +27,8 @@ class DebitRequest:
     """ 
         Attributes:
             amount_micros (int):
-            customer_id (str):
+            customer_id (UUID): The UBB platform Customer UUID (the `id` POST /customers answered), never the tenant's
+                external id.
             idempotency_key (str):
             reference (str):
             actor (str | Unset):  Default: ''.
@@ -37,7 +39,7 @@ class DebitRequest:
      """
 
     amount_micros: int
-    customer_id: str
+    customer_id: UUID
     idempotency_key: str
     reference: str
     actor: str | Unset = ''
@@ -52,7 +54,7 @@ class DebitRequest:
     def to_dict(self) -> dict[str, Any]:
         amount_micros = self.amount_micros
 
-        customer_id = self.customer_id
+        customer_id = str(self.customer_id)
 
         idempotency_key = self.idempotency_key
 
@@ -95,7 +97,10 @@ class DebitRequest:
         d = dict(src_dict)
         amount_micros = d.pop("amount_micros")
 
-        customer_id = d.pop("customer_id")
+        customer_id = UUID(d.pop("customer_id"))
+
+
+
 
         idempotency_key = d.pop("idempotency_key")
 

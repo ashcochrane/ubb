@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  basisPointsPercentLabel,
   emptyProgramFormValues,
   programFormSchema,
   programToFormValues,
+  rewardSummary,
   toProgramCreateRequest,
   toProgramUpdateRequest,
   type ProgramFormValues,
@@ -28,11 +30,31 @@ describe("programFormSchema (create-time bounds, applied to edit too)", () => {
     expect(result.success).toBe(false);
   });
 
+  // A-3: the wire takes basis points 1..10000, so the percent entry is
+  // 0.01..100 to two decimal places — 100.01 % is a basis point past the
+  // whole, and 0.001 % is finer than one basis point.
+  it("refuses a share past the whole or finer than one basis point", () => {
+    expect(programFormSchema.safeParse(values({ reward_amount: "100.01" })).success).toBe(false);
+    expect(programFormSchema.safeParse(values({ reward_amount: "0.001" })).success).toBe(false);
+    expect(programFormSchema.safeParse(values({ reward_amount: "0" })).success).toBe(false);
+    expect(programFormSchema.safeParse(values({ reward_amount: "100" })).success).toBe(true);
+    expect(programFormSchema.safeParse(values({ reward_amount: "0.01" })).success).toBe(true);
+    expect(programFormSchema.safeParse(values({ reward_amount: "12.5" })).success).toBe(true);
+  });
+
   it("accepts a flat fee over 100 currency units (micros scale, not percent)", () => {
     const result = programFormSchema.safeParse(
       values({ reward_type: "flat_fee", reward_amount: "150" }),
     );
     expect(result.success).toBe(true);
+  });
+
+  it("bounds the estimated cost to 0–100 % in whole basis points", () => {
+    expect(programFormSchema.safeParse(values({ estimated_cost_percent: "100" })).success).toBe(true);
+    expect(programFormSchema.safeParse(values({ estimated_cost_percent: "0" })).success).toBe(true);
+    expect(programFormSchema.safeParse(values({ estimated_cost_percent: "100.01" })).success).toBe(false);
+    expect(programFormSchema.safeParse(values({ estimated_cost_percent: "-1" })).success).toBe(false);
+    expect(programFormSchema.safeParse(values({ estimated_cost_percent: "5.005" })).success).toBe(false);
   });
 
   it("bounds the attribution window to 1–365", () => {
@@ -60,21 +82,46 @@ describe("programFormSchema (create-time bounds, applied to edit too)", () => {
   });
 });
 
+// A-3: exactly one reward figure goes out, the one the type names — micros
+// for a flat fee, basis points for a share — and the other key is not sent at
+// all, because the server refuses it. No percent reaches the wire.
 describe("program request converters", () => {
-  it("converts a flat fee entered in currency units to integer micros", () => {
+  it("submits a 10 % share as 1000 basis points and no flat fee", () => {
+    const body = toProgramCreateRequest(values({ reward_amount: "10" }));
+    expect(body.reward_type).toBe("revenue_share");
+    expect(body.reward_share_basis_points).toBe(1000);
+    expect("reward_amount_micros" in body).toBe(false);
+    expect(body).not.toHaveProperty("reward_value");
+  });
+
+  it("keeps two decimal places of a share: 12.5 % is 1250 basis points", () => {
+    const body = toProgramUpdateRequest(values({ reward_type: "profit_share", reward_amount: "12.5" }));
+    expect(body.reward_share_basis_points).toBe(1250);
+    expect("reward_amount_micros" in body).toBe(false);
+    expect(body.reward_window_days).toBeNull();
+    expect(body.max_reward_micros).toBeNull();
+    expect(body.max_referrals_per_day).toBeNull();
+  });
+
+  it("submits a flat fee entered in currency units as micros, and no share", () => {
     const body = toProgramCreateRequest(
       values({ reward_type: "flat_fee", reward_amount: "5.5" }),
     );
     expect(body.reward_type).toBe("flat_fee");
-    expect(body.reward_value).toBe(5_500_000);
+    expect(body.reward_amount_micros).toBe(5_500_000);
+    expect("reward_share_basis_points" in body).toBe(false);
   });
 
-  it("keeps share percentages as-is and nulls cleared optionals", () => {
-    const body = toProgramUpdateRequest(values({ reward_amount: "12.5" }));
-    expect(body.reward_value).toBe(12.5);
-    expect(body.reward_window_days).toBeNull();
-    expect(body.max_reward_micros).toBeNull();
-    expect(body.max_referrals_per_day).toBeNull();
+  it("sends the estimated cost percent as basis points, and null when cleared", () => {
+    expect(
+      toProgramCreateRequest(values({ estimated_cost_percent: "5" })).estimated_cost_basis_points,
+    ).toBe(500);
+    expect(
+      toProgramUpdateRequest(values({ estimated_cost_percent: "0.25" })).estimated_cost_basis_points,
+    ).toBe(25);
+    expect(
+      toProgramUpdateRequest(values({ estimated_cost_percent: "" })).estimated_cost_basis_points,
+    ).toBeNull();
   });
 
   it("converts the lifetime cap to micros", () => {
@@ -86,11 +133,12 @@ describe("program request converters", () => {
     const form = programToFormValues({
       id: "prog-1",
       reward_type: "flat_fee",
-      reward_value: 5_000_000,
+      reward_amount_micros: 5_000_000,
+      reward_share_basis_points: null,
       attribution_window_days: 30,
       reward_window_days: null,
       max_reward_micros: 250_000_000,
-      estimated_cost_percentage: null,
+      estimated_cost_basis_points: null,
       max_referrals_per_day: 50,
       min_customer_age_hours: null,
       status: "active",
@@ -100,7 +148,33 @@ describe("program request converters", () => {
     expect(form.reward_amount).toBe("5");
     expect(form.max_reward).toBe("250");
     expect(form.reward_window_days).toBe("");
+    expect(form.estimated_cost_percent).toBe("");
     expect(form.max_referrals_per_day).toBe("50");
+  });
+
+  it("shows a share's basis points back as a percent when editing: 1250 → 12.5", () => {
+    const program = {
+      id: "prog-2",
+      reward_type: "revenue_share" as const,
+      reward_amount_micros: null,
+      reward_share_basis_points: 1250,
+      attribution_window_days: 30,
+      reward_window_days: 365,
+      max_reward_micros: null,
+      estimated_cost_basis_points: 750,
+      max_referrals_per_day: null,
+      min_customer_age_hours: null,
+      status: "active" as const,
+      created_at: "2026-03-02T09:15:00Z",
+      updated_at: "2026-06-15T14:40:00Z",
+    };
+    const form = programToFormValues(program);
+    expect(form.reward_amount).toBe("12.5");
+    expect(form.estimated_cost_percent).toBe("7.5");
+    // And the summary words the same figure the same way.
+    expect(rewardSummary(program, "usd")).toBe("12.5% of referred revenue");
+    expect(basisPointsPercentLabel(1000)).toBe("10%");
+    expect(basisPointsPercentLabel(1225)).toBe("12.25%");
   });
 });
 

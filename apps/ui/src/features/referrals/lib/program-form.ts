@@ -6,12 +6,21 @@
 // here so both forms validate identically; the constants below are the
 // create contract's numbers.
 //
-// reward_value is POLYMORPHIC: micros for flat_fee (entered in currency
-// units, converted on save), a 0–100 percentage for revenue/profit share.
+// ⚠ **THE REWARD IS TWO WIRE FIELDS, EXACTLY ONE SET BY THE TYPE (R10 Stage
+// C5, A-3).** `reward_amount_micros` is the flat fee, in micros, for
+// `flat_fee`; `reward_share_basis_points` (1..10000, 10000 = the whole) is
+// the share for `revenue_share` / `profit_share`. The server refuses the
+// other, so the request carries only the one the type names — never both,
+// never null for the other. The form keeps ONE entry: currency units for a
+// flat fee, a PERCENT for a share (the user types 10 for 10 %, which goes
+// out as 1000 basis points), and basis points come back as a percent (÷ 100)
+// when editing. A percent exists only in the form; basis points only on the
+// wire. The same holds for `estimated_cost_basis_points` (0..10000): entered
+// as a percent, sent as basis points.
 
 import { z } from "zod";
 
-import { formatMicros, formatPercent } from "@/lib/format";
+import { formatMicros, formatPercentMicros } from "@/lib/format";
 import { rewardTypeLabel } from "./referral-vocabulary";
 
 import type {
@@ -28,7 +37,9 @@ export function isRewardType(value: string): value is RewardType {
 }
 
 // Create-time contract bounds.
-const REWARD_VALUE_MAX = 100_000_000_000; // micros for flat_fee → $100,000
+const REWARD_AMOUNT_MICROS_MAX = 100_000_000_000; // micros for flat_fee → $100,000
+const SHARE_BASIS_POINTS = { min: 1, max: 10_000 };
+const ESTIMATED_COST_BASIS_POINTS = { min: 0, max: 10_000 };
 const MAX_REWARD_MICROS_MAX = 999_999_999_999;
 const ATTRIBUTION_DAYS = { min: 1, max: 365 };
 const REWARD_WINDOW_DAYS = { min: 1, max: 3650 };
@@ -42,6 +53,30 @@ export function amountToMicros(amount: number): number {
 
 export function microsToAmountInput(micros: number): string {
   return String(micros / 1_000_000);
+}
+
+/** A percent entry → basis points: 10 → 1000, 12.5 → 1250. */
+export function percentToBasisPoints(percent: number): number {
+  return Math.round(percent * 100);
+}
+
+/** Basis points → the percent the form shows: 1250 → "12.5". */
+export function basisPointsToPercentInput(basisPoints: number): string {
+  return String(basisPoints / 100);
+}
+
+/**
+ * Basis points as a percent, worded: 1000 → "10%", 1250 → "12.5%". A
+ * percent in micros is how `@/lib/format` renders one exactly, and one basis
+ * point is ten thousand of those.
+ */
+export function basisPointsPercentLabel(basisPoints: number): string {
+  return formatPercentMicros(basisPoints * 10_000);
+}
+
+/** One basis point is the finest the wire takes: at most two decimal places. */
+function isWholeBasisPoints(percent: number): boolean {
+  return Math.abs(percent * 100 - Math.round(percent * 100)) < 1e-6;
 }
 
 /** "" → null (unset); non-numeric → NaN (invalid); otherwise the number. */
@@ -58,11 +93,13 @@ const isInt = (value: number, min: number, max: number) =>
 export const programFormSchema = z
   .object({
     reward_type: z.enum(REWARD_TYPES),
+    /** Currency units for a flat fee; a PERCENT for a share. */
     reward_amount: z.string(),
     attribution_window_days: z.string(),
     reward_window_days: z.string(),
     max_reward: z.string(),
-    estimated_cost_percentage: z.string(),
+    /** A PERCENT; sent as basis points. */
+    estimated_cost_percent: z.string(),
     max_referrals_per_day: z.string(),
     min_customer_age_hours: z.string(),
   })
@@ -79,11 +116,15 @@ export const programFormSchema = z
     } else if (Number.isNaN(reward) || reward <= 0) {
       fail("reward_amount", "Enter a number greater than zero");
     } else if (values.reward_type === "flat_fee") {
-      if (amountToMicros(reward) > REWARD_VALUE_MAX) {
+      if (amountToMicros(reward) > REWARD_AMOUNT_MICROS_MAX) {
         fail("reward_amount", "At most 100,000 (in currency units) per referral");
       }
-    } else if (reward > 100) {
-      fail("reward_amount", "Percentage must be between 0 and 100");
+    } else if (!isWholeBasisPoints(reward)) {
+      fail("reward_amount", "At most two decimal places (one basis point)");
+    } else if (
+      !isInt(percentToBasisPoints(reward), SHARE_BASIS_POINTS.min, SHARE_BASIS_POINTS.max)
+    ) {
+      fail("reward_amount", "Percentage must be between 0.01 and 100");
     }
 
     const attribution = parseInput(values.attribution_window_days);
@@ -107,9 +148,21 @@ export const programFormSchema = z
       }
     }
 
-    const estimatedCost = parseInput(values.estimated_cost_percentage);
-    if (estimatedCost !== null && (Number.isNaN(estimatedCost) || estimatedCost < 0 || estimatedCost > 100)) {
-      fail("estimated_cost_percentage", "Percentage between 0 and 100");
+    const estimatedCost = parseInput(values.estimated_cost_percent);
+    if (estimatedCost !== null) {
+      if (Number.isNaN(estimatedCost)) {
+        fail("estimated_cost_percent", "Percentage between 0 and 100");
+      } else if (!isWholeBasisPoints(estimatedCost)) {
+        fail("estimated_cost_percent", "At most two decimal places (one basis point)");
+      } else if (
+        !isInt(
+          percentToBasisPoints(estimatedCost),
+          ESTIMATED_COST_BASIS_POINTS.min,
+          ESTIMATED_COST_BASIS_POINTS.max,
+        )
+      ) {
+        fail("estimated_cost_percent", "Percentage between 0 and 100");
+      }
     }
 
     const perDay = parseInput(values.max_referrals_per_day);
@@ -132,15 +185,24 @@ export function emptyProgramFormValues(): ProgramFormValues {
     attribution_window_days: "30",
     reward_window_days: "",
     max_reward: "",
-    estimated_cost_percentage: "",
+    estimated_cost_percent: "",
     max_referrals_per_day: "",
     min_customer_age_hours: "",
   };
 }
 
-function rewardValueFrom(values: ProgramFormValues): number {
-  const amount = parseInput(values.reward_amount) ?? 0;
-  return values.reward_type === "flat_fee" ? amountToMicros(amount) : amount;
+/**
+ * The one reward figure the type names, and no other key: a flat fee goes
+ * out as micros, a share as basis points, and the server refuses the one
+ * the type does not take.
+ */
+function rewardFieldsFrom(
+  values: ProgramFormValues,
+): Pick<ProgramCreateRequest, "reward_amount_micros" | "reward_share_basis_points"> {
+  const entered = parseInput(values.reward_amount) ?? 0;
+  return values.reward_type === "flat_fee"
+    ? { reward_amount_micros: amountToMicros(entered) }
+    : { reward_share_basis_points: percentToBasisPoints(entered) };
 }
 
 function intOrNull(raw: string): number | null {
@@ -153,19 +215,19 @@ function microsOrNull(raw: string): number | null {
   return value === null || Number.isNaN(value) ? null : amountToMicros(value);
 }
 
-function numberOrNull(raw: string): number | null {
+function basisPointsOrNull(raw: string): number | null {
   const value = parseInput(raw);
-  return value === null || Number.isNaN(value) ? null : value;
+  return value === null || Number.isNaN(value) ? null : percentToBasisPoints(value);
 }
 
 export function toProgramCreateRequest(values: ProgramFormValues): ProgramCreateRequest {
   return {
     reward_type: values.reward_type,
-    reward_value: rewardValueFrom(values),
+    ...rewardFieldsFrom(values),
     attribution_window_days: intOrNull(values.attribution_window_days) ?? 30,
     reward_window_days: intOrNull(values.reward_window_days),
     max_reward_micros: microsOrNull(values.max_reward),
-    estimated_cost_percentage: numberOrNull(values.estimated_cost_percentage),
+    estimated_cost_basis_points: basisPointsOrNull(values.estimated_cost_percent),
     max_referrals_per_day: intOrNull(values.max_referrals_per_day),
     min_customer_age_hours: intOrNull(values.min_customer_age_hours),
   };
@@ -173,16 +235,17 @@ export function toProgramCreateRequest(values: ProgramFormValues): ProgramCreate
 
 /**
  * The edit dialog is what-you-see-is-what-you-save: the full form state is
- * always sent, with `null` for cleared optional fields (intent: clear).
+ * always sent, with `null` for cleared optional fields (intent: clear) — and
+ * still only the one reward figure the type names.
  */
 export function toProgramUpdateRequest(values: ProgramFormValues): ProgramUpdateRequest {
   return {
     reward_type: values.reward_type,
-    reward_value: rewardValueFrom(values),
+    ...rewardFieldsFrom(values),
     attribution_window_days: intOrNull(values.attribution_window_days) ?? 30,
     reward_window_days: intOrNull(values.reward_window_days),
     max_reward_micros: microsOrNull(values.max_reward),
-    estimated_cost_percentage: numberOrNull(values.estimated_cost_percentage),
+    estimated_cost_basis_points: basisPointsOrNull(values.estimated_cost_percent),
     max_referrals_per_day: intOrNull(values.max_referrals_per_day),
     min_customer_age_hours: intOrNull(values.min_customer_age_hours),
   };
@@ -196,15 +259,21 @@ export function programToFormValues(program: ProgramOut): ProgramFormValues {
     reward_type: rewardType,
     reward_amount:
       rewardType === "flat_fee"
-        ? microsToAmountInput(program.reward_value)
-        : String(program.reward_value),
+        ? program.reward_amount_micros === null
+          ? ""
+          : microsToAmountInput(program.reward_amount_micros)
+        : program.reward_share_basis_points === null
+          ? ""
+          : basisPointsToPercentInput(program.reward_share_basis_points),
     attribution_window_days: String(program.attribution_window_days),
     reward_window_days:
       program.reward_window_days === null ? "" : String(program.reward_window_days),
     max_reward:
       program.max_reward_micros === null ? "" : microsToAmountInput(program.max_reward_micros),
-    estimated_cost_percentage:
-      program.estimated_cost_percentage === null ? "" : String(program.estimated_cost_percentage),
+    estimated_cost_percent:
+      program.estimated_cost_basis_points === null
+        ? ""
+        : basisPointsToPercentInput(program.estimated_cost_basis_points),
     max_referrals_per_day:
       program.max_referrals_per_day === null ? "" : String(program.max_referrals_per_day),
     min_customer_age_hours:
@@ -213,9 +282,18 @@ export function programToFormValues(program: ProgramOut): ProgramFormValues {
 }
 
 /** "10% of referred revenue" / "$5.00 per referral" — for the settings list. */
-export function rewardSummary(rewardType: string, rewardValue: number, currency: string): string {
-  if (rewardType === "flat_fee") return `${formatMicros(rewardValue, currency)} per referral`;
-  if (rewardType === "revenue_share") return `${formatPercent(rewardValue)} of referred revenue`;
-  if (rewardType === "profit_share") return `${formatPercent(rewardValue)} of referred profit`;
-  return `${rewardTypeLabel(rewardType)} — ${rewardValue}`;
+export function rewardSummary(
+  program: Pick<ProgramOut, "reward_type" | "reward_amount_micros" | "reward_share_basis_points">,
+  currency: string,
+): string {
+  const { reward_type: rewardType } = program;
+  if (rewardType === "flat_fee" && program.reward_amount_micros !== null) {
+    return `${formatMicros(program.reward_amount_micros, currency)} per referral`;
+  }
+  if (program.reward_share_basis_points !== null) {
+    const share = basisPointsPercentLabel(program.reward_share_basis_points);
+    if (rewardType === "revenue_share") return `${share} of referred revenue`;
+    if (rewardType === "profit_share") return `${share} of referred profit`;
+  }
+  return rewardTypeLabel(rewardType);
 }

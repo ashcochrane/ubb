@@ -202,6 +202,57 @@ def test_negative_control_a_lazy_django_import_is_flagged():
     assert django_imports("def f():\n    import config.settings\n", "x.py")
 
 
+#: THE PLATFORM'S LOCK PINS THE RS256 BACKEND (R10 Stage C5, F-16, RULED Q16).
+#: `core/clerk_auth.py` verifies a Clerk session token with RS256, which PyJWT
+#: rides on `cryptography`; `requirements.txt` asked for `PyJWT>=2.8` without
+#: the extra and the lock held no `cryptography` at all, so an install of the
+#: lock — the one CI and a deployment make — could not verify a production
+#: token (`InvalidAlgorithmError`, swallowed to a 401). The extra is declared
+#: and the three packages it resolves to are pinned, from a clean isolated
+#: Python 3.13 environment with user-site packages disabled — never from a
+#: developer machine's user-site copy, which is what hid the defect.
+PLATFORM_REQUIREMENTS = REPO_ROOT / "ubb-platform" / "requirements.txt"
+PLATFORM_LOCK = REPO_ROOT / "ubb-platform" / "requirements.lock.txt"
+RS256_BACKEND_PACKAGES = ("cryptography", "cffi", "pycparser")
+
+
+def _pinned(lock_text):
+    """`{name (lower): version}` of every `==` pin in a lock."""
+    pins = {}
+    for line in lock_text.splitlines():
+        line = line.strip()
+        if "==" in line and not line.startswith("#"):
+            name, version = line.split("==", 1)
+            pins[name.strip().lower()] = version.strip()
+    return pins
+
+
+def test_the_platform_requirements_declare_the_pyjwt_crypto_extra():
+    lines = [ln.strip() for ln in PLATFORM_REQUIREMENTS.read_text(encoding="utf-8").splitlines()]
+    jwt_lines = [ln for ln in lines if ln.lower().startswith("pyjwt")]
+    # The EXTRA is the pin; the version floor may move without this test.
+    assert len(jwt_lines) == 1 and jwt_lines[0].startswith("PyJWT[crypto]"), (
+        "requirements.txt must ask for PyJWT WITH its crypto extra, so the RS256 "
+        f"backend is part of the resolution and not a user-site accident: {jwt_lines}")
+
+
+def test_the_platform_lock_pins_every_rs256_backend_package():
+    pins = _pinned(PLATFORM_LOCK.read_text(encoding="utf-8"))
+    assert "pyjwt" in pins, "the lock no longer pins PyJWT"
+    missing = [name for name in RS256_BACKEND_PACKAGES if name not in pins]
+    assert missing == [], (
+        f"requirements.lock.txt pins no {missing}: an install of the lock cannot "
+        "verify an RS256 (production Clerk) token — pin the versions a clean "
+        "isolated environment resolves for PyJWT[crypto], never a user-site copy")
+    for name in RS256_BACKEND_PACKAGES:
+        assert pins[name] and pins[name][0].isdigit(), (name, pins[name])
+
+
+def test_negative_control_a_lock_without_the_backend_is_flagged():
+    pins = _pinned("PyJWT==2.13.0\nDjango==6.0\n")
+    assert [n for n in RS256_BACKEND_PACKAGES if n not in pins] == list(RS256_BACKEND_PACKAGES)
+
+
 def test_positive_control_ordinary_imports_are_not_flagged():
     assert not django_imports("import yaml\nfrom pathlib import Path\n", "x.py")
     # `coreapi` is not `core`: prefix matching must not confuse sibling names.

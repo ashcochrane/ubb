@@ -4,10 +4,80 @@ All notable changes to `ubb-sdk`. This project follows [semantic versioning](htt
 each release is stamped with the exact committed API-contract revision it was
 generated against (`ubb.__spec_revision__`).
 
-## Unreleased
+## 5.0.0
+
+**R10 billing readiness Stage C5 — the one deliberate major after the cutover
+(PLAN §5.5, RULED Q10), generated against the one breaking contract
+regeneration of the pre-live lane.** The SDK's own surface broke, which is the
+only ground ADR-0003 §6 allows a major on; every edge is listed, and the
+migration guide is **[MIGRATION.md §27](./MIGRATION.md)**. The tag
+`sdk-v5.0.0` is cut by the owner on the merge commit carrying this version,
+and the wheel built from it by `release/build_wheel.py`, exactly as 4.0.0 was.
+
+**Release stamp** (filled by the owner at the cut, as 4.0.0's was): `ubb.__version__`
+`5.0.0`; `ubb.__spec_revision__` is the committed spec's SHA-256 at the merge
+commit (`ubb/_spec_revision.py`); generator `openapi-python-client==0.29.0`.
+
+### Changed (breaking)
+
+- **`BillingClient.create_top_up` / `UBBClient.create_top_up` answer a typed
+  checkout-or-accepted result** (F-5): a `TopUpCheckoutResponse` on 200 (a
+  checkout to open) or the new `TopUpAcceptedResponse` on 202 (`status`
+  `topup_requested`, `message`; the request was handed to the tenant, nothing
+  to open). Both routes now declare their 202, which the generated core
+  parses; until 5.0.0 the 202 was parsed as a checkout with no URL. Branch
+  with `isinstance`.
+- **`BillingClient.configure_auto_top_up` / `UBBClient.configure_auto_top_up`
+  require `trigger_threshold_micros` and `top_up_amount_micros`** (F-4): the
+  route always required all three fields, even when disabling; the SDK's
+  `None` defaults left them out and invited a 422.
+- **`BillingClient.get_usage_invoices` answers the page envelope**
+  (`PaginatedResponse[UsageInvoiceOut]`, with `cursor` / `limit` parameters)
+  instead of a bare list of the first page's rows (F-15).
+- **`DebitRequest.customer_id` / `CreditRequest.customer_id` are the UBB
+  platform Customer UUID** (`format: uuid`), never the tenant's external id
+  (F-13, RULED Q11): `BillingClient.debit` / `.credit` document it; an
+  external id in the body answers 404, a malformed UUID 422. No dual lookup,
+  no fallback.
+- **`ReferralsClient.create_program` takes each reward figure in its explicit unit** (A-3, RULED Q9):
+  `reward_amount_micros` (flat fee, micros, paid once per referral) or
+  `reward_share_basis_points` (1..10000; 1000 = 10 %), keyword-only, exactly
+  one by the type; `estimated_cost_basis_points` (0..10000) replaces
+  `estimated_cost_percentage`. `reward_value` (micros or a FRACTION by type)
+  is gone from the request, the response (`ProgramOut`) and `update_program`.
+- **The usage-invoice models are one shape** (F-15, RULED Q13): `UsageInvoiceOut`,
+  `TenantUsageInvoiceOut` and `MeUsageInvoiceOut` all carry `id`, `customer_id`,
+  `external_id`, `period_start`, `period_end` (dates), `currency`,
+  `total_billed_micros`, `status`, `skip_reason`, `stripe_invoice_id`,
+  `pushed_at`, `payment_status`, `paid_at`, `payment_failed_at`,
+  `hosted_invoice_url`, `invoice_pdf`, `created_at`; the two tenant models add
+  `push_attempts` and `last_attempt_error`. `payment_status` is the closed
+  `usage_invoice_payment_status` (`open` | `paid` | `void` | `uncollectible`),
+  nullable — null means not yet collectible, and is not a fifth value.
+- **`AffordabilityResponse.balance_micros` / `available_micros` are null off
+  the wallet lane** (F-12, RULED Q12): a tenant whose billing mode keeps no
+  wallet (`external`, `postpaid`) has no balance to report; they were `0`.
+- **`RefundResponse.refund_id` is the refund transaction's id on every call**
+  (F-14, RULED Q14): a replay of the same `idempotency_key` answers the same
+  id (it answered the usage event id); a key already spent by a non-refund
+  transaction is refused `ConflictError` (409).
 
 ### Added
 
+- **`UBBClient.update_tenant_config` accepts the seven fields it could not
+  send** (O-5): `enforcement_mode`, `live_counter_maintenance_enabled`,
+  `min_balance_micros`, `soft_min_balance_micros`,
+  `default_task_cogs_ceiling_micros`, `default_subtask_cogs_ceiling_micros`,
+  `max_task_starts_per_minute`, each defaulting to the generated `UNSET`
+  sentinel so an explicit `None` (clear) and an omission are two calls.
+- **`TopUpAcceptedResponse`** on the public surface; the vocabulary gains the
+  closed `top_up_request_status` (`topup_requested`) and
+  `usage_invoice_payment_status`, and the audit actions
+  `customer.manual_hold_set` / `customer.manual_hold_released`.
+- **The wallet-only reads refuse where no wallet is** (F-12): `GET …/balance`,
+  `…/transactions`, `GET …/grants` and `/me`'s three answer a tenant whose
+  billing mode keeps no wallet with `FeatureNotEnabledError` (403), the
+  problem the wallet writes already answered — not a page of zeros.
 - **`PaymentNotAvailableError`** (`ConflictError`, code `payment_not_available`,
   HTTP 409): a top-up checkout the tenant's payment account cannot presently
   perform — no connected Stripe account, or one that is not charge-ready

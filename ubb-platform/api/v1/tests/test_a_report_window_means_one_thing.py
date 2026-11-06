@@ -253,7 +253,7 @@ class EveryReportRouteReadsItsWindowOneWayTest(TestCase):
                                                        external_id="widget")
         ReferralProgram.objects.create(tenant=self.tenant,
                                        reward_type="revenue_share",
-                                       reward_value=0.10)
+                                       reward_share_basis_points=1000)
         referrer = Referrer.objects.create(tenant=self.tenant,
                                            customer=self.customer)
         referred = Customer.objects.create(tenant=self.tenant,
@@ -261,7 +261,7 @@ class EveryReportRouteReadsItsWindowOneWayTest(TestCase):
         self.referral = Referral.objects.create(
             tenant=self.tenant, referrer=referrer, referred_customer=referred,
             referral_code_used=referrer.referral_code,
-            snapshot_reward_type="revenue_share", snapshot_reward_value=0.10)
+            snapshot_reward_type="revenue_share", snapshot_reward_share_basis_points=1000)
         self.probes = [probe(self) for probe in PROBES]
         for probe in self.probes:
             for label, instant in FACTS.items():

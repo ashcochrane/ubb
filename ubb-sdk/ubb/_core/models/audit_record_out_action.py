@@ -10,6 +10,8 @@ class AuditRecordOutAction(str, Enum):
     COST_BOOK_DECLARED = "cost_book.declared"
     COST_BOOK_WITHDRAWN = "cost_book.withdrawn"
     CUSTOMER_CREATED = "customer.created"
+    CUSTOMER_MANUAL_HOLD_RELEASED = "customer.manual_hold_released"
+    CUSTOMER_MANUAL_HOLD_SET = "customer.manual_hold_set"
     CUSTOMER_PRICING_OVERRIDE_DECLARED = "customer_pricing_override.declared"
     CUSTOMER_PRICING_OVERRIDE_WITHDRAWN = "customer_pricing_override.withdrawn"
     CUSTOMER_SPEND_POOL_SET = "customer_spend_pool.set"

@@ -561,7 +561,7 @@ class TestCreditHookFiresThroughEndpoint:
         with django_capture_on_commit_callbacks(execute=True):
             resp = Client().post(
                 "/api/v1/billing/credit",
-                data=json.dumps({"customer_id": "c1", "amount_micros": 20_000_000,
+                data=json.dumps({"customer_id": str(c.id), "amount_micros": 20_000_000,
                                  "source": "goodwill", "reference": "tkt-1",
                                  "idempotency_key": "idem_tkt_1"}),
                 content_type="application/json",

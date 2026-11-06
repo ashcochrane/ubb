@@ -89,5 +89,17 @@ def verify_member_token(token):
         return jwt.decode(
             token, key, algorithms=algorithms, issuer=issuer, options=options
         )
+    except jwt.exceptions.InvalidAlgorithmError:
+        # PyJWT raises this for RS256 when the `cryptography` backend is not
+        # installed (the algorithm is then simply "not allowed") — a
+        # DEPLOYMENT defect, not a bad caller token, and until R10 Stage C5
+        # (F-16) it was swallowed into a silent 401 like any forged token.
+        # Still fail closed, but say so: the lock now pins `cryptography`
+        # (`requirements.txt` `PyJWT[crypto]`), so this fires only where the
+        # lock was not installed.
+        logger.warning("clerk.rs256_backend_unavailable",
+                       extra={"data": {"algorithms": list(algorithms or ())}},
+                       exc_info=True)
+        return None
     except jwt.InvalidTokenError:
         return None

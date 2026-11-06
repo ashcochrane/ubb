@@ -1286,6 +1286,102 @@ receipt shapes, and every receipt UBB can hold now states its subject, so:
 **Code that branched on a null subject** for a recorded event or its detail
 can drop the branch; code importing either `…Type0` enum takes the new name.
 
+## 27. The public contract and the SDK tell the truth — SDK 5.0.0 (R10 billing readiness Stage C5 — pre-live)
+
+The one breaking regeneration of the pre-live lane after the cutover (PLAN §5.5,
+RULED Q10), and the SDK major it forced. Every edge is a correction of
+something the contract or the SDK said that the server did not do. No v4
+compatibility branch: the pre-live lane is a licence with one use, and this
+is it.
+
+**A top-up answers one of two typed results (F-5).** Both top-up routes now
+declare their `202`: `TopUpAcceptedResponse {status: "topup_requested",
+message}` — the tenant has no Stripe connector, the request was recorded and
+handed to the tenant (`top_up.requested`), and there is nothing to open.
+`BillingClient.create_top_up` / `UBBClient.create_top_up` return
+`TopUpCheckoutResponse | TopUpAcceptedResponse`.
+
+```python
+result = client.create_top_up(customer_id, 50_000_000, success_url=..., cancel_url=..., idempotency_key=key)
+if isinstance(result, ubb.TopUpAcceptedResponse):
+    ...  # recorded; the tenant settles it — do not open anything
+else:
+    open(result.checkout_url)
+```
+
+**Auto top-up amounts are required (F-4).** `configure_auto_top_up(customer_id,
+is_enabled, trigger_threshold_micros, top_up_amount_micros)` — all four, even
+to disable. Code that passed `is_enabled=False` alone now fails at the call
+rather than with a 422.
+
+**`get_usage_invoices` answers the page envelope (F-15).** It returned a bare
+list of the first page's rows; it returns `PaginatedResponse[UsageInvoiceOut]`
+and takes `cursor` / `limit`. Read `.data`, follow `.next_cursor`.
+
+**`customer_id` on a credit or debit is the platform UUID (F-13, RULED Q11).**
+`BillingClient.debit(customer_id=...)` / `.credit(customer_id=...)` take the
+UBB platform Customer UUID — the `id` `create_customer` answered — and the
+document types the field `format: uuid`. An external id answers 404; a
+malformed UUID 422. There is no fallback: code that passed its own external id
+must look the UUID up from what it stored when it created the customer.
+
+**A referral reward's figure carries its unit (A-3, RULED Q9).**
+`ReferralsClient.create_program(reward_type, *, reward_amount_micros=None,
+reward_share_basis_points=None, ..., estimated_cost_basis_points=None)`:
+
+| Scheme | Was | Is |
+|---|---|---|
+| `flat_fee` | `reward_value=5_000_000` (micros) | `reward_amount_micros=5_000_000` |
+| `revenue_share` / `profit_share` | `reward_value=0.10` (a fraction) | `reward_share_basis_points=1000` (1..10000; ÷ 10,000 exactly) |
+| profit-share cost fallback | `estimated_cost_percentage=20` (0..100 over a column holding a fraction) | `estimated_cost_basis_points=2000` (0..10000) |
+
+Exactly one reward figure, by the type; the route refuses the other.
+`ProgramOut` answers `reward_amount_micros`, `reward_share_basis_points` and
+`estimated_cost_basis_points`; `update_program(**fields)` takes the same names.
+A flat fee is paid once per referral, in real time and by the batch
+reconciler alike. If you hold old values of your own, the conversion is
+determinate by the reward type: a `flat_fee` `reward_value` is already micros
+(`reward_amount_micros = int(reward_value)`); a share's `reward_value`
+fraction becomes `reward_share_basis_points = round(reward_value * 10000)`;
+`estimated_cost_basis_points = round(estimated_cost_percentage * 10000)` where
+that value was the column's fraction (`0.20`), not the API's percent. UBB's own
+migration carries no row, because no tenant's programme exists before launch.
+
+**One usage-invoice shape (F-15, RULED Q13).** `UsageInvoiceOut`,
+`TenantUsageInvoiceOut` and `MeUsageInvoiceOut` share one base: `id`,
+`customer_id`, `external_id`, `period_start`, `period_end` (dates), `currency`,
+`total_billed_micros`, `status`, `skip_reason`, `stripe_invoice_id`,
+`pushed_at`, `payment_status`, `paid_at`, `payment_failed_at`,
+`hosted_invoice_url`, `invoice_pdf`, `created_at`; the two tenant models add
+`push_attempts` and `last_attempt_error`, which `/me` never carries.
+`payment_status` is the closed `usage_invoice_payment_status` (`open` |
+`paid` | `void` | `uncollectible`) and NULLABLE: null is "not yet collectible"
+and keeps that meaning. `period_start` / `period_end` on `/me` are no longer
+nullable (they never were null); `created_at` is on every shape.
+
+**No wallet is not zero (F-12, RULED Q12).** `AffordabilityResponse.balance_micros`
+and `available_micros` are `None` for a tenant whose billing mode keeps no
+wallet (`external`, `postpaid`) — they read `0`. The wallet-only reads
+(`get_balance`, `get_transactions`, `list_grants`, and `/me`'s three) answer
+such a tenant `FeatureNotEnabledError` (403), as every wallet write already
+did. Gate on the tenant's mode; never probe for the 403.
+
+**A refund id is the refund transaction's id, every time (F-14, RULED Q14).**
+`RefundResponse.refund_id` on a replay of the same `idempotency_key` is the
+same id the first call answered (it was the usage event id); a key already
+spent by a non-refund transaction is `ConflictError` (409).
+
+**`update_tenant_config` takes every field the route does (O-5).**
+`enforcement_mode`, `live_counter_maintenance_enabled`, `min_balance_micros`,
+`soft_min_balance_micros`, `default_task_cogs_ceiling_micros`,
+`default_subtask_cogs_ceiling_micros`, `max_task_starts_per_minute` — each
+`UNSET` by default; pass `None` to clear a nullable one.
+
+**Vocabulary.** `ubb.vocabulary` gains `TOP_UP_REQUEST_STATUS_*`,
+`USAGE_INVOICE_PAYMENT_STATUS_*`, and the audit actions
+`AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_SET` / `_RELEASED` (the durable record of
+an operator's manual hold and its release, PLAN §7 item 42).
+
 ## Release checklist (operator)
 
 v3.0 is a coordinated release with the one integrating tenant:

@@ -2,6 +2,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { NOT_YET_COLLECTIBLE } from "@/lib/usage-invoice";
+
+import { MOCK_CUSTOMER_UUIDS } from "../api/mock-data";
+import { billingFeatureApi } from "../api/provider";
+import { PLATFORM_CUSTOMER_UUID_MESSAGE } from "../lib/billing-forms";
 import { BillingPage } from "./billing-page";
 
 function renderPage(search: { start_date?: string; end_date?: string } = {}) {
@@ -120,6 +125,8 @@ describe("BillingPage", () => {
   });
 
   it("credits a wallet through the confirm dialog and shows the new balance", async () => {
+    // F-13: what goes out is the platform Customer UUID, as typed.
+    const credit = vi.spyOn(billingFeatureApi, "creditWallet");
     renderPage();
 
     const creditHeading = await screen.findByText("Credit a wallet");
@@ -127,8 +134,8 @@ describe("BillingPage", () => {
     expect(creditForm).not.toBeNull();
     if (!creditForm) return;
 
-    fireEvent.change(within(creditForm).getByLabelText("Customer external ID"), {
-      target: { value: "acme-support-bot" },
+    fireEvent.change(within(creditForm).getByLabelText("Platform Customer UUID"), {
+      target: { value: MOCK_CUSTOMER_UUIDS.acmeSupportBot },
     });
     fireEvent.change(within(creditForm).getByLabelText(/^Amount/), {
       target: { value: "25" },
@@ -153,7 +160,74 @@ describe("BillingPage", () => {
     );
     expect(within(creditForm).getByText("$207.50")).toBeInTheDocument();
 
+    expect(credit).toHaveBeenCalledWith(
+      expect.objectContaining({ customer_id: MOCK_CUSTOMER_UUIDS.acmeSupportBot }),
+    );
+    credit.mockRestore();
+
     // Success resets the form for the next adjustment.
-    expect(within(creditForm).getByLabelText("Customer external ID")).toHaveValue("");
+    expect(within(creditForm).getByLabelText("Platform Customer UUID")).toHaveValue("");
+  });
+
+  // F-13 (PLAN §7 item 44): the ledger routes take the platform Customer UUID
+  // and nothing else, so the forms say exactly that — and never call the
+  // field a Customer external ID, which the route would answer 404 to.
+  it("labels the customer on both ledger forms as the Platform Customer UUID, never an external ID", async () => {
+    renderPage();
+
+    for (const heading of ["Credit a wallet", "Debit a wallet"]) {
+      const form = (await screen.findByText(heading)).closest("form");
+      expect(form).not.toBeNull();
+      if (!form) return;
+      expect(within(form).getByLabelText("Platform Customer UUID")).toBeInTheDocument();
+      expect(within(form).queryByLabelText(/external/i)).not.toBeInTheDocument();
+      expect(form.textContent).not.toMatch(/external[ _]id/i);
+    }
+  });
+
+  it("refuses a value that is not a UUID before anything is sent", async () => {
+    const credit = vi.spyOn(billingFeatureApi, "creditWallet");
+    renderPage();
+
+    const creditForm = (await screen.findByText("Credit a wallet")).closest("form");
+    expect(creditForm).not.toBeNull();
+    if (!creditForm) return;
+
+    // A tenant-side id — the thing the route no longer takes.
+    fireEvent.change(within(creditForm).getByLabelText("Platform Customer UUID"), {
+      target: { value: "acme-support-bot" },
+    });
+    fireEvent.change(within(creditForm).getByLabelText(/^Amount/), {
+      target: { value: "25" },
+    });
+    fireEvent.change(within(creditForm).getByLabelText("Reference"), {
+      target: { value: "TICKET-1043" },
+    });
+    fireEvent.change(within(creditForm).getByLabelText("Source"), {
+      target: { value: "support_goodwill" },
+    });
+    fireEvent.click(within(creditForm).getByRole("button", { name: "Credit…" }));
+
+    expect(
+      await within(creditForm).findByText(PLATFORM_CUSTOMER_UUID_MESSAGE),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Credit this wallet?")).not.toBeInTheDocument();
+    expect(credit).not.toHaveBeenCalled();
+    credit.mockRestore();
+  });
+
+  // F-15: the sweep says where each pushed invoice stands as a receivable,
+  // from the catalogue, and a not-yet-collectible one says that rather than
+  // nothing.
+  it("words each usage invoice's payment status, null as not yet collectible", async () => {
+    renderPage();
+
+    expect(await screen.findByText("in_1Pf8kQ2eZvKYlo2C9yTasMx1")).toBeInTheDocument();
+    expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+    expect(screen.getByText("Uncollectible")).toBeInTheDocument();
+    expect(screen.getAllByText(NOT_YET_COLLECTIBLE).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("link", { name: "Open the hosted Stripe invoice" }).length,
+    ).toBeGreaterThan(0);
   });
 });

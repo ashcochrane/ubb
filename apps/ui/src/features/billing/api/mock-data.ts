@@ -166,122 +166,216 @@ function periodStart(monthsAgo: number): string {
  * by the revenue window — but pinned periods would drift ever further from the
  * revenue the same page charts, and this file promises one coherent story.
  */
+/**
+ * The platform Customer UUIDs of the fixture's customers — the `id` UBB
+ * answered when each was created, which is what the ledger adjustments key
+ * on (R10 Stage C5, F-13) and what each usage invoice names as its customer.
+ */
+export const MOCK_CUSTOMER_UUIDS = {
+  acmeSupportBot: "0d0e3a92-6c1f-4f0a-9a4e-7f2b8c1d4e5f",
+  glowWriter: "3f7c2b10-8a4d-4e6b-b2c9-1d5e8f0a3b6c",
+  novaAgents: "7a1b9c33-2d4e-4f5a-8b6c-9d0e1f2a3b4c",
+  pixelLabs: "b4c5d6e7-f8a9-4b0c-8d1e-2f3a4b5c6d7e",
+  quillAndInk: "e8f9a0b1-c2d3-4e5f-9a6b-7c8d9e0f1a2b",
+} as const;
+
+/**
+ * Every row carries the whole shared usage-invoice base (R10 Stage C5,
+ * F-15): a Stripe invoice stands as a receivable (`payment_status`) only once
+ * one was issued — null before, which is not a fifth value — and the hosted
+ * invoice and PDF are empty until then.
+ */
 export function buildUsageInvoices(): TenantUsageInvoice[] {
   const current = periodStart(0);
+  const currentEnd = periodStart(-1);
   const previous = periodStart(1);
+  const previousEnd = current;
+  const notYetCollectible = {
+    pushed_at: null,
+    payment_status: null,
+    paid_at: null,
+    payment_failed_at: null,
+    hosted_invoice_url: "",
+    invoice_pdf: "",
+  };
   return [
     // Current period — close in progress.
     {
-      customer_id: "0d0e3a92-6c1f-4f0a-9a4e-7f2b8c1d4e5f",
+      id: "a1000000-0000-4000-8000-000000000001",
+      customer_id: MOCK_CUSTOMER_UUIDS.acmeSupportBot,
       external_id: "acme-support-bot",
       period_start: current,
+      period_end: currentEnd,
+      currency: "usd",
       total_billed_micros: 1_284_520_000,
       status: "pushing",
       stripe_invoice_id: "",
       skip_reason: null,
+      ...notYetCollectible,
+      created_at: `${currentEnd}T00:05:00Z`,
       push_attempts: 1,
-      last_attempt_error: null,
+      last_attempt_error: "",
     },
     {
-      customer_id: "3f7c2b10-8a4d-4e6b-b2c9-1d5e8f0a3b6c",
+      id: "a1000000-0000-4000-8000-000000000002",
+      customer_id: MOCK_CUSTOMER_UUIDS.glowWriter,
       external_id: "glow-writer",
       period_start: current,
+      period_end: currentEnd,
+      currency: "usd",
       total_billed_micros: 642_180_000,
       status: "pending",
       stripe_invoice_id: "",
       skip_reason: null,
+      ...notYetCollectible,
+      created_at: `${currentEnd}T00:05:00Z`,
       push_attempts: 0,
-      last_attempt_error: null,
+      last_attempt_error: "",
     },
     {
-      customer_id: "7a1b9c33-2d4e-4f5a-8b6c-9d0e1f2a3b4c",
+      id: "a1000000-0000-4000-8000-000000000003",
+      customer_id: MOCK_CUSTOMER_UUIDS.novaAgents,
       external_id: "nova-agents",
       period_start: current,
+      period_end: currentEnd,
+      currency: "usd",
       total_billed_micros: 2_918_450_000,
       status: "failed",
       stripe_invoice_id: "",
       skip_reason: null,
+      ...notYetCollectible,
+      created_at: `${currentEnd}T00:05:00Z`,
       push_attempts: 3,
       last_attempt_error:
         "Stripe: This customer has no attached payment source or default payment method.",
     },
     {
-      customer_id: "b4c5d6e7-f8a9-4b0c-8d1e-2f3a4b5c6d7e",
+      id: "a1000000-0000-4000-8000-000000000004",
+      customer_id: MOCK_CUSTOMER_UUIDS.pixelLabs,
       external_id: "pixel-labs",
       period_start: current,
+      period_end: currentEnd,
+      currency: "usd",
       total_billed_micros: 0,
       status: "skipped",
       stripe_invoice_id: "",
       skip_reason: "no_usage",
+      ...notYetCollectible,
+      created_at: `${currentEnd}T00:05:00Z`,
       push_attempts: 0,
-      last_attempt_error: null,
+      last_attempt_error: "",
     },
     // Previous period — closed and pushed.
     {
-      customer_id: "0d0e3a92-6c1f-4f0a-9a4e-7f2b8c1d4e5f",
+      id: "a1000000-0000-4000-8000-000000000005",
+      customer_id: MOCK_CUSTOMER_UUIDS.acmeSupportBot,
       external_id: "acme-support-bot",
       period_start: previous,
+      period_end: previousEnd,
+      currency: "usd",
       total_billed_micros: 1_106_330_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kQ2eZvKYlo2C9yTasMx1",
       skip_reason: null,
+      pushed_at: `${previousEnd}T00:12:00Z`,
+      payment_status: "paid",
+      paid_at: `${previousEnd}T09:30:00Z`,
+      payment_failed_at: null,
+      hosted_invoice_url: "https://invoice.stripe.com/i/acct_mock/in_1Pf8kQ2eZvKYlo2C9yTasMx1",
+      invoice_pdf: "https://pay.stripe.com/invoice/acct_mock/in_1Pf8kQ2eZvKYlo2C9yTasMx1/pdf",
+      created_at: `${previousEnd}T00:05:00Z`,
       push_attempts: 1,
-      last_attempt_error: null,
+      last_attempt_error: "",
     },
     {
-      customer_id: "3f7c2b10-8a4d-4e6b-b2c9-1d5e8f0a3b6c",
+      id: "a1000000-0000-4000-8000-000000000006",
+      customer_id: MOCK_CUSTOMER_UUIDS.glowWriter,
       external_id: "glow-writer",
       period_start: previous,
+      period_end: previousEnd,
+      currency: "usd",
       total_billed_micros: 587_940_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kR2eZvKYlo2CqW7bNd42",
       skip_reason: null,
+      pushed_at: `${previousEnd}T00:14:00Z`,
+      payment_status: "open",
+      paid_at: null,
+      payment_failed_at: null,
+      hosted_invoice_url: "https://invoice.stripe.com/i/acct_mock/in_1Pf8kR2eZvKYlo2CqW7bNd42",
+      invoice_pdf: "https://pay.stripe.com/invoice/acct_mock/in_1Pf8kR2eZvKYlo2CqW7bNd42/pdf",
+      created_at: `${previousEnd}T00:05:00Z`,
       push_attempts: 2,
-      last_attempt_error: null,
+      last_attempt_error: "",
     },
     {
-      customer_id: "7a1b9c33-2d4e-4f5a-8b6c-9d0e1f2a3b4c",
+      id: "a1000000-0000-4000-8000-000000000007",
+      customer_id: MOCK_CUSTOMER_UUIDS.novaAgents,
       external_id: "nova-agents",
       period_start: previous,
+      period_end: previousEnd,
+      currency: "usd",
       total_billed_micros: 2_403_710_000,
       status: "failed_permanent",
       stripe_invoice_id: "",
       skip_reason: null,
+      ...notYetCollectible,
+      created_at: `${previousEnd}T00:05:00Z`,
       push_attempts: 8,
       last_attempt_error: "Stripe: No such customer: 'cus_QRs7tUvWxYz012'.",
     },
     {
-      customer_id: "e8f9a0b1-c2d3-4e5f-9a6b-7c8d9e0f1a2b",
+      id: "a1000000-0000-4000-8000-000000000008",
+      customer_id: MOCK_CUSTOMER_UUIDS.quillAndInk,
       external_id: "quill-and-ink",
       period_start: previous,
+      period_end: previousEnd,
+      currency: "usd",
       total_billed_micros: 148_200_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kS2eZvKYlo2CeR3cPq83",
       skip_reason: null,
+      pushed_at: `${previousEnd}T00:16:00Z`,
+      payment_status: "uncollectible",
+      paid_at: null,
+      payment_failed_at: `${previousEnd}T10:00:00Z`,
+      hosted_invoice_url: "https://invoice.stripe.com/i/acct_mock/in_1Pf8kS2eZvKYlo2CeR3cPq83",
+      invoice_pdf: "https://pay.stripe.com/invoice/acct_mock/in_1Pf8kS2eZvKYlo2CeR3cPq83/pdf",
+      created_at: `${previousEnd}T00:05:00Z`,
       push_attempts: 1,
-      last_attempt_error: null,
+      last_attempt_error: "",
     },
     {
-      customer_id: "b4c5d6e7-f8a9-4b0c-8d1e-2f3a4b5c6d7e",
+      id: "a1000000-0000-4000-8000-000000000009",
+      customer_id: MOCK_CUSTOMER_UUIDS.pixelLabs,
       external_id: "pixel-labs",
       period_start: previous,
+      period_end: previousEnd,
+      currency: "usd",
       total_billed_micros: 96_750_000,
       status: "pushed",
       stripe_invoice_id: "in_1Pf8kT2eZvKYlo2CxN5dRs29",
       skip_reason: null,
+      pushed_at: `${previousEnd}T00:18:00Z`,
+      payment_status: "paid",
+      paid_at: `${previousEnd}T11:45:00Z`,
+      payment_failed_at: null,
+      hosted_invoice_url: "https://invoice.stripe.com/i/acct_mock/in_1Pf8kT2eZvKYlo2CxN5dRs29",
+      invoice_pdf: "https://pay.stripe.com/invoice/acct_mock/in_1Pf8kT2eZvKYlo2CxN5dRs29/pdf",
+      created_at: `${previousEnd}T00:05:00Z`,
       push_attempts: 1,
-      last_attempt_error: null,
+      last_attempt_error: "",
     },
   ];
 }
 
 export const TENANT_USAGE_INVOICES: TenantUsageInvoice[] = buildUsageInvoices();
 
-/** Wallet balances by EXTERNAL id (credit/debit key on external_id). */
+/** Wallet balances by platform Customer UUID (credit/debit key on it — F-13). */
 export const INITIAL_WALLETS: Record<string, number> = {
-  "acme-support-bot": 182_500_000, // $182.50
-  "glow-writer": 47_310_000,
-  "nova-agents": 964_020_000,
-  "pixel-labs": 12_000_000,
-  "quill-and-ink": 0,
+  [MOCK_CUSTOMER_UUIDS.acmeSupportBot]: 182_500_000, // $182.50
+  [MOCK_CUSTOMER_UUIDS.glowWriter]: 47_310_000,
+  [MOCK_CUSTOMER_UUIDS.novaAgents]: 964_020_000,
+  [MOCK_CUSTOMER_UUIDS.pixelLabs]: 12_000_000,
+  [MOCK_CUSTOMER_UUIDS.quillAndInk]: 0,
 };

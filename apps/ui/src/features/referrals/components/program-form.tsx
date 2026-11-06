@@ -62,7 +62,7 @@ export function ProgramForm({
   const hasAdvancedValues =
     defaults.reward_window_days !== "" ||
     defaults.max_reward !== "" ||
-    defaults.estimated_cost_percentage !== "" ||
+    defaults.estimated_cost_percent !== "" ||
     defaults.max_referrals_per_day !== "" ||
     defaults.min_customer_age_hours !== "";
   const [showAdvanced, setShowAdvanced] = useState(mode === "edit" && hasAdvancedValues);
@@ -104,7 +104,7 @@ export function ProgramForm({
           hint={
             rewardType === "flat_fee"
               ? "Entered in currency units — e.g. 5 means five dollars per referral."
-              : "Percent between 0 and 100."
+              : "Percent between 0.01 and 100, to two decimal places — e.g. 10 for 10%, 12.5 for 12.5%."
           }
         >
           {(id) => (
@@ -172,11 +172,11 @@ export function ProgramForm({
         </FormField>
         <FormField
           label="Estimated cost (%)"
-          error={errors.estimated_cost_percentage?.message}
-          hint="Optional planning figure: what you expect the program to cost as a share of referred spend."
+          error={errors.estimated_cost_percent?.message}
+          hint="Optional planning figure: what you expect the program to cost as a share of referred spend, 0–100 to two decimal places."
         >
           {(id) => (
-            <Input id={id} type="number" step="any" min="0" max="100" {...form.register("estimated_cost_percentage")} />
+            <Input id={id} type="number" step="any" min="0" max="100" {...form.register("estimated_cost_percent")} />
           )}
         </FormField>
         <FormField

@@ -9,7 +9,9 @@ from ubb import vocabulary
 from ubb.types import PaginatedResponse
 from ubb._core.models.affordability_response import AffordabilityResponse
 from ubb._core.models.balance_response import BalanceResponse
+from ubb._core.models.top_up_accepted_response import TopUpAcceptedResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
+from ubb.vocabulary import TOP_UP_REQUEST_STATUS_TOPUP_REQUESTED
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 
 
@@ -203,6 +205,24 @@ class BillingClientTest(unittest.TestCase):
         self.assertEqual(call_args.args[0], "/api/v1/billing/customers/cust_1/top-up")
         self.assertEqual(call_args.kwargs["json"]["idempotency_key"], "topup_k1")
 
+    @patch("ubb.billing.httpx.Client.post")
+    def test_create_top_up_answers_the_typed_acceptance_on_202(self, mock_post):
+        """SDK 5.0.0 (R10 Stage C5, F-5): the no-connector twin answers 202,
+        which both routes now declare — a typed `TopUpAcceptedResponse`, not a
+        checkout with no URL."""
+        mock_post.return_value = MagicMock(status_code=202, json=lambda: {
+            "status": "topup_requested", "message": "Top-up request sent to tenant"})
+        result = self.client.create_top_up(
+            customer_id="cust_1", amount_micros=50_000_000,
+            success_url="https://app.example.com/success",
+            cancel_url="https://app.example.com/cancel",
+            idempotency_key="topup_k2",
+        )
+        self.assertIsInstance(result, TopUpAcceptedResponse)
+        self.assertNotIsInstance(result, TopUpCheckoutResponse)
+        self.assertEqual(result.status, TOP_UP_REQUEST_STATUS_TOPUP_REQUESTED)
+        self.assertEqual(result.message, "Top-up request sent to tenant")
+
     # ---- configure_auto_top_up ----
 
     @patch("ubb.billing.httpx.Client.put")
@@ -218,17 +238,27 @@ class BillingClientTest(unittest.TestCase):
         body = call_args.kwargs["json"]
         self.assertTrue(body["is_enabled"])
         self.assertEqual(body["trigger_threshold_micros"], 5_000_000)
+        self.assertEqual(body["top_up_amount_micros"], 50_000_000)
 
     @patch("ubb.billing.httpx.Client.put")
-    def test_configure_auto_top_up_disable(self, mock_put):
+    def test_configure_auto_top_up_disable_still_sends_every_amount(self, mock_put):
+        """SDK 5.0.0 (R10 Stage C5, F-4): the route requires all three fields
+        even when disabling, so the SDK requires them too — until 5.0.0 a
+        disable call left the amounts out and was answered 422."""
         mock_put.return_value = MagicMock(status_code=200, json=lambda: {"status": "ok"})
         result = self.client.configure_auto_top_up(
             customer_id="cust_1", is_enabled=False,
+            trigger_threshold_micros=0, top_up_amount_micros=10_000,
         )
         self.assertEqual(result["status"], "ok")
         body = mock_put.call_args.kwargs["json"]
-        self.assertFalse(body["is_enabled"])
-        self.assertNotIn("trigger_threshold_micros", body)
+        self.assertEqual(body, {"is_enabled": False, "trigger_threshold_micros": 0,
+                                "top_up_amount_micros": 10_000})
+
+    def test_configure_auto_top_up_amounts_are_required(self):
+        """The signature says what the API accepts: no silent `None` default."""
+        with self.assertRaises(TypeError):
+            self.client.configure_auto_top_up(customer_id="cust_1", is_enabled=False)
 
     # ---- get_transactions ----
 

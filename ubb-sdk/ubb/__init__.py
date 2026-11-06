@@ -30,6 +30,7 @@ from ubb._core.models.utilisation_and_headroom_response import UtilisationAndHea
 from ubb._core.models.grant_out import GrantOut
 from ubb._core.models.refund_response import RefundResponse
 from ubb._core.models.status_response import StatusResponse
+from ubb._core.models.top_up_accepted_response import TopUpAcceptedResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_event_out import UsageEventOut
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
@@ -73,12 +74,19 @@ from ubb.webhooks import verify_webhook, verify_webhook_legacy
 from ubb._core.types import UNSET
 from ubb._models import is_unset
 
-# The SDK's own semver. 4.0.0 is the release cut at the cutover (#190,
-# ADR-0026), the first one tagged (`sdk-v4.0.0`) and built reproducibly
+# The SDK's own semver. 5.0.0 is R10 billing readiness Stage C5's one
+# deliberate major (PLAN §5.5, RULED Q10): the SDK's own surface broke —
+# `create_top_up` answers a typed checkout-or-accepted result,
+# `configure_auto_top_up` requires its amounts, `get_usage_invoices` answers
+# the page envelope, `ReferralsClient.create_program` takes each reward
+# figure in its explicit unit,
+# `DebitRequest`/`CreditRequest.customer_id` is a UUID — see CHANGELOG.md and
+# MIGRATION.md §27. 4.0.0 was the release cut at the cutover (#190, ADR-0026),
+# the first one tagged (`sdk-v4.0.0`) and built reproducibly
 # (`release/build_wheel.py`); 3.0.0 was the tree's pre-release number and was
 # never released. Kept in lockstep with pyproject's version by
 # tests/test_release.py — bumping the release means bumping both.
-__version__ = "4.0.0"
+__version__ = "5.0.0"
 
 # The exact committed-spec revision this build was generated from (issue #84).
 # Paired with __version__, this makes the release self-describing: which SDK
@@ -98,7 +106,7 @@ __all__ = [
     # longer exist, so re-exporting them is not a choice this module has.
     "UtilisationAndHeadroomResponse",
     "GrantOut", "RefundResponse", "StatusResponse",
-    "TopUpCheckoutResponse",
+    "TopUpCheckoutResponse", "TopUpAcceptedResponse",
     "UsageEventOut", "UsageInvoiceOut", "WalletTransactionOut", "WithdrawResponse",
     # the one economic query and its discovery read (#505)
     "EconomicsOut", "EconomicRowOut", "EconomicMeasureOut", "GroupingOptionOut",

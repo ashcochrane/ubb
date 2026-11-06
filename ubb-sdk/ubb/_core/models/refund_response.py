@@ -23,7 +23,9 @@ class RefundResponse:
     """ 
         Attributes:
             balance_micros (int):
-            refund_id (str):
+            refund_id (str): The id of the refund transaction on the billing owner's wallet ledger (a WalletTransaction of
+                type refund). The same id is answered on the first call and on every replay of the same idempotency_key; it is
+                never the usage event id.
      """
 
     balance_micros: int

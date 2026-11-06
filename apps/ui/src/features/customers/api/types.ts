@@ -250,6 +250,15 @@ export type GrantOut = BillingSchemas["GrantOut"];
 export type CreateGrantRequest = BillingSchemas["CreateGrantRequest"];
 export type CreateTopUpRequest = BillingSchemas["CreateTopUpRequest"];
 export type TopUpCheckoutResponse = BillingSchemas["TopUpCheckoutResponse"];
+/**
+ * The 202 answer of a top-up (R10 Stage C5, F-5): the tenant has no Stripe
+ * connector to open a checkout for, so the request was recorded and handed to
+ * the tenant to settle out of band. `status` is the registry's closed
+ * `top_up_request_status`.
+ */
+export type TopUpAcceptedResponse = BillingSchemas["TopUpAcceptedResponse"];
+/** What a top-up answers: a checkout to open (200), or an accepted request (202). */
+export type TopUpResult = TopUpCheckoutResponse | TopUpAcceptedResponse;
 export type WithdrawRequest = BillingSchemas["WithdrawRequest"];
 export type WithdrawResponse = BillingSchemas["WithdrawResponse"];
 export type CreditRequest = BillingSchemas["CreditRequest"];

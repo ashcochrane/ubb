@@ -26,22 +26,28 @@ class ProgramUpdateRequest:
     """ 
         Attributes:
             attribution_window_days (int | None | Unset):
-            estimated_cost_percentage (float | None | Unset):
+            estimated_cost_basis_points (int | None | Unset): A profit share's fallback where the actual supplier cost is
+                not known: the tenant's cost as a share of revenue, in basis points, 0..10000.
             max_referrals_per_day (int | None | Unset):
             max_reward_micros (int | None | Unset):
             min_customer_age_hours (int | None | Unset):
+            reward_amount_micros (int | None | Unset): The flat fee, in micros, paid exactly once per referral. Required for
+                reward_type flat_fee; must be absent for a share.
+            reward_share_basis_points (int | None | Unset): The share of the referred customer's revenue (revenue_share) or
+                of the profit on it (profit_share), in basis points, 1..10000 (10000 = the whole), applied by dividing by 10,000
+                exactly. Required for a share; must be absent for flat_fee.
             reward_type (None | ProgramUpdateRequestRewardTypeType0 | Unset):
-            reward_value (float | None | Unset):
             reward_window_days (int | None | Unset):
      """
 
     attribution_window_days: int | None | Unset = UNSET
-    estimated_cost_percentage: float | None | Unset = UNSET
+    estimated_cost_basis_points: int | None | Unset = UNSET
     max_referrals_per_day: int | None | Unset = UNSET
     max_reward_micros: int | None | Unset = UNSET
     min_customer_age_hours: int | None | Unset = UNSET
+    reward_amount_micros: int | None | Unset = UNSET
+    reward_share_basis_points: int | None | Unset = UNSET
     reward_type: None | ProgramUpdateRequestRewardTypeType0 | Unset = UNSET
-    reward_value: float | None | Unset = UNSET
     reward_window_days: int | None | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -56,11 +62,11 @@ class ProgramUpdateRequest:
         else:
             attribution_window_days = self.attribution_window_days
 
-        estimated_cost_percentage: float | None | Unset
-        if isinstance(self.estimated_cost_percentage, Unset):
-            estimated_cost_percentage = UNSET
+        estimated_cost_basis_points: int | None | Unset
+        if isinstance(self.estimated_cost_basis_points, Unset):
+            estimated_cost_basis_points = UNSET
         else:
-            estimated_cost_percentage = self.estimated_cost_percentage
+            estimated_cost_basis_points = self.estimated_cost_basis_points
 
         max_referrals_per_day: int | None | Unset
         if isinstance(self.max_referrals_per_day, Unset):
@@ -80,6 +86,18 @@ class ProgramUpdateRequest:
         else:
             min_customer_age_hours = self.min_customer_age_hours
 
+        reward_amount_micros: int | None | Unset
+        if isinstance(self.reward_amount_micros, Unset):
+            reward_amount_micros = UNSET
+        else:
+            reward_amount_micros = self.reward_amount_micros
+
+        reward_share_basis_points: int | None | Unset
+        if isinstance(self.reward_share_basis_points, Unset):
+            reward_share_basis_points = UNSET
+        else:
+            reward_share_basis_points = self.reward_share_basis_points
+
         reward_type: None | str | Unset
         if isinstance(self.reward_type, Unset):
             reward_type = UNSET
@@ -87,12 +105,6 @@ class ProgramUpdateRequest:
             reward_type = self.reward_type.value
         else:
             reward_type = self.reward_type
-
-        reward_value: float | None | Unset
-        if isinstance(self.reward_value, Unset):
-            reward_value = UNSET
-        else:
-            reward_value = self.reward_value
 
         reward_window_days: int | None | Unset
         if isinstance(self.reward_window_days, Unset):
@@ -107,18 +119,20 @@ class ProgramUpdateRequest:
         })
         if attribution_window_days is not UNSET:
             field_dict["attribution_window_days"] = attribution_window_days
-        if estimated_cost_percentage is not UNSET:
-            field_dict["estimated_cost_percentage"] = estimated_cost_percentage
+        if estimated_cost_basis_points is not UNSET:
+            field_dict["estimated_cost_basis_points"] = estimated_cost_basis_points
         if max_referrals_per_day is not UNSET:
             field_dict["max_referrals_per_day"] = max_referrals_per_day
         if max_reward_micros is not UNSET:
             field_dict["max_reward_micros"] = max_reward_micros
         if min_customer_age_hours is not UNSET:
             field_dict["min_customer_age_hours"] = min_customer_age_hours
+        if reward_amount_micros is not UNSET:
+            field_dict["reward_amount_micros"] = reward_amount_micros
+        if reward_share_basis_points is not UNSET:
+            field_dict["reward_share_basis_points"] = reward_share_basis_points
         if reward_type is not UNSET:
             field_dict["reward_type"] = reward_type
-        if reward_value is not UNSET:
-            field_dict["reward_value"] = reward_value
         if reward_window_days is not UNSET:
             field_dict["reward_window_days"] = reward_window_days
 
@@ -139,14 +153,14 @@ class ProgramUpdateRequest:
         attribution_window_days = _parse_attribution_window_days(d.pop("attribution_window_days", UNSET))
 
 
-        def _parse_estimated_cost_percentage(data: object) -> float | None | Unset:
+        def _parse_estimated_cost_basis_points(data: object) -> int | None | Unset:
             if data is None:
                 return data
             if isinstance(data, Unset):
                 return data
-            return cast(float | None | Unset, data)
+            return cast(int | None | Unset, data)
 
-        estimated_cost_percentage = _parse_estimated_cost_percentage(d.pop("estimated_cost_percentage", UNSET))
+        estimated_cost_basis_points = _parse_estimated_cost_basis_points(d.pop("estimated_cost_basis_points", UNSET))
 
 
         def _parse_max_referrals_per_day(data: object) -> int | None | Unset:
@@ -179,6 +193,26 @@ class ProgramUpdateRequest:
         min_customer_age_hours = _parse_min_customer_age_hours(d.pop("min_customer_age_hours", UNSET))
 
 
+        def _parse_reward_amount_micros(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        reward_amount_micros = _parse_reward_amount_micros(d.pop("reward_amount_micros", UNSET))
+
+
+        def _parse_reward_share_basis_points(data: object) -> int | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            return cast(int | None | Unset, data)
+
+        reward_share_basis_points = _parse_reward_share_basis_points(d.pop("reward_share_basis_points", UNSET))
+
+
         def _parse_reward_type(data: object) -> None | ProgramUpdateRequestRewardTypeType0 | Unset:
             if data is None:
                 return data
@@ -199,16 +233,6 @@ class ProgramUpdateRequest:
         reward_type = _parse_reward_type(d.pop("reward_type", UNSET))
 
 
-        def _parse_reward_value(data: object) -> float | None | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(float | None | Unset, data)
-
-        reward_value = _parse_reward_value(d.pop("reward_value", UNSET))
-
-
         def _parse_reward_window_days(data: object) -> int | None | Unset:
             if data is None:
                 return data
@@ -221,12 +245,13 @@ class ProgramUpdateRequest:
 
         program_update_request = cls(
             attribution_window_days=attribution_window_days,
-            estimated_cost_percentage=estimated_cost_percentage,
+            estimated_cost_basis_points=estimated_cost_basis_points,
             max_referrals_per_day=max_referrals_per_day,
             max_reward_micros=max_reward_micros,
             min_customer_age_hours=min_customer_age_hours,
+            reward_amount_micros=reward_amount_micros,
+            reward_share_basis_points=reward_share_basis_points,
             reward_type=reward_type,
-            reward_value=reward_value,
             reward_window_days=reward_window_days,
         )
 

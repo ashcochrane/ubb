@@ -76,7 +76,7 @@
     },
     "audit_action": {
       "advertised": true,
-      "backend_serves": "70 of 70 values",
+      "backend_serves": "72 of 72 values",
       "kind": "closed",
       "representation": "enum",
       "values": [
@@ -89,6 +89,8 @@
         "member.removed",
         "tenant.config_changed",
         "tenant.platform_billing_customer_set",
+        "customer.manual_hold_set",
+        "customer.manual_hold_released",
         "sandbox.created",
         "sandbox.reset",
         "connect.started",
@@ -917,6 +919,15 @@
         "referrals"
       ]
     },
+    "top_up_request_status": {
+      "advertised": true,
+      "backend_serves": "1 of 1 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "topup_requested"
+      ]
+    },
     "total_billed_cost_micros": {
       "advertised": false,
       "backend_serves": null,
@@ -970,6 +981,18 @@
       "values": [
         "metered_usage",
         "task_charge"
+      ]
+    },
+    "usage_invoice_payment_status": {
+      "advertised": true,
+      "backend_serves": "4 of 4 values",
+      "kind": "closed",
+      "representation": "enum",
+      "values": [
+        "open",
+        "paid",
+        "void",
+        "uncollectible"
       ]
     },
     "usage_invoice_status": {

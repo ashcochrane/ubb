@@ -256,7 +256,13 @@ class RiskService:
         # the composition layer says why), so that customer is still floored.
         from apps.platform.tenants.flags import holds_a_wallet
         on_the_wallet_lane = holds_a_wallet(owner.tenant)
-        balance = 0
+        # OFF THE WALLET LANE THE TWO BALANCE FIGURES ARE NULL, NEVER ZERO
+        # (R10 Stage C5, F-12, RULED Q12): an absent wallet is not a
+        # zero-balance wallet, and `reserve_agreed_price` below already
+        # answered `None` there while this answered zeros — the one verdict
+        # two ways. The pool and the standing are still asked; the floors
+        # stay `NO_FLOORS`, as they were.
+        balance = None
         reserved = 0
         floors = NO_FLOORS
         if on_the_wallet_lane:
@@ -270,7 +276,7 @@ class RiskService:
                 balance = 0
             reserved = open_reservations_micros(owner.id)
             floors = _floors(owner.id, customer.tenant, parent_task_id)
-        available = balance - reserved
+        available = None if balance is None else balance - reserved
 
         # The hard floor, then the soft floor at its own altitude — the one
         # walk `reserve_agreed_price` makes again with the price included.

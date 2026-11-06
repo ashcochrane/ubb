@@ -336,7 +336,26 @@ def refund_usage(*, customer_id, tenant, usage_event_id, idempotency_key,
     metering read channel (no caller supplies an amount, so no caller can book
     a wrong one), preserving replay-probe-before-lookup ordering. LOT-AWARE
     (F4.3): still-live funding lots are re-funded; the base remainder plus
-    shares from since-expired/voided lots land as base credit."""
+    shares from since-expired/voided lots land as base credit.
+
+    THE SAME DURABLE ID ON EVERY CALL (R10 Stage C5, F-14, RULED Q14): a
+    replay answers the refund row's own id (``transaction_id``), on the probe
+    and on the race-lost path alike — the latter re-reads the row the key
+    names, as ``mint_grant`` does — and a key already spent by a NON-refund
+    transaction is refused ``idempotency_conflict`` rather than replayed as
+    if it were one."""
+    def replay_shape(wallet, existing):
+        if existing.transaction_type != WALLET_TRANSACTION_TYPE_REFUND:
+            return OpResult(outcome="refused", balance_micros=wallet.balance_micros,
+                            refusal_code=IDEMPOTENCY_CONFLICT)
+        return _replayed(wallet, existing)
+
+    def on_conflict(wallet):
+        from apps.billing.wallets.models import WalletTransaction
+        existing = WalletTransaction.objects.get(
+            wallet=wallet, idempotency_key=idempotency_key)
+        return replay_shape(wallet, existing)
+
     def prepare(wallet, owner):
         from apps.billing.wallets.grants import GrantLedger
         from apps.billing.wallets.models import WalletTransaction
@@ -387,7 +406,8 @@ def refund_usage(*, customer_id, tenant, usage_event_id, idempotency_key,
     return _execute(customer_id=customer_id, tenant=tenant, key=idempotency_key,
                     run_expiry=True,  # a due lot expires first, so its share
                     # of the refund correctly lands as base.
-                    prepare=prepare, on_replay=_replayed)
+                    prepare=prepare, on_replay=replay_shape,
+                    on_conflict=on_conflict)
 
 
 # ---------------------------------------------------------------------------

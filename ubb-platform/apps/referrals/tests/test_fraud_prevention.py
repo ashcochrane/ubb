@@ -20,7 +20,7 @@ class TestVelocityLimit:
         self.program = ReferralProgram.objects.create(
             tenant=self.tenant,
             reward_type="revenue_share",
-            reward_value=0.10,
+            reward_share_basis_points=1000,
             max_referrals_per_day=2,
         )
         referrer_cust = Customer.objects.create(tenant=self.tenant, external_id="referrer")
@@ -45,7 +45,7 @@ class TestVelocityLimit:
             Referral.objects.create(
                 tenant=self.tenant, referrer=self.referrer, referred_customer=cust,
                 referral_code_used=self.referrer.referral_code,
-                snapshot_reward_type="revenue_share", snapshot_reward_value=0.10,
+                snapshot_reward_type="revenue_share", snapshot_reward_share_basis_points=1000,
             )
             ReferralRewardAccumulator.objects.create(
                 referral=Referral.objects.get(referred_customer=cust),
@@ -75,7 +75,7 @@ class TestCustomerAgeCheck:
         self.program = ReferralProgram.objects.create(
             tenant=self.tenant,
             reward_type="revenue_share",
-            reward_value=0.10,
+            reward_share_basis_points=1000,
             min_customer_age_hours=24,
         )
         referrer_cust = Customer.objects.create(tenant=self.tenant, external_id="referrer")

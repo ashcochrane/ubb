@@ -4,6 +4,24 @@ from ubb.billing import BillingClient
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 
 
+def _usage_invoice(period_start, period_end, total, *, status, stripe_invoice_id,
+                   skip_reason=None, payment_status=None):
+    """One row of the ONE usage-invoice shape (R10 Stage C5, F-15): the shared
+    base every usage-invoice route answers, plus the tenant read's two
+    operator fields."""
+    return {
+        "id": "7a1d1b9e-5e6e-4c9a-9a6d-1b2c3d4e5f60", "customer_id": "c1",
+        "external_id": "ext-c1", "period_start": period_start,
+        "period_end": period_end, "currency": "usd", "total_billed_micros": total,
+        "status": status, "skip_reason": skip_reason,
+        "stripe_invoice_id": stripe_invoice_id, "pushed_at": None,
+        "payment_status": payment_status, "paid_at": None, "payment_failed_at": None,
+        "hosted_invoice_url": "", "invoice_pdf": "",
+        "created_at": "2026-07-01T00:00:00Z",
+        "push_attempts": 1, "last_attempt_error": "",
+    }
+
+
 class PostpaidClientTest(unittest.TestCase):
     def setUp(self):
         self.client = BillingClient(api_key="ubb_live_t", base_url="http://localhost:8001")
@@ -14,27 +32,40 @@ class PostpaidClientTest(unittest.TestCase):
     @patch("ubb.billing.httpx.Client.get")
     def test_get_usage_invoices(self, mock_get):
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [
-            {"period_start": "2026-06-01", "period_end": "2026-07-01", "total_billed_micros": 1000,
-             "currency": "usd", "status": "pushed", "stripe_invoice_id": "in_1", "skip_reason": None}],
+            _usage_invoice("2026-06-01", "2026-07-01", 1000, status="pushed",
+                           stripe_invoice_id="in_1", payment_status="open")],
             "next_cursor": None, "has_more": False})
-        rows = self.client.get_usage_invoices("c1")
+        page = self.client.get_usage_invoices("c1")
+        rows = page.data
         self.assertIsInstance(rows[0], UsageInvoiceOut)
         self.assertEqual(rows[0].total_billed_micros, 1000)
+        self.assertEqual(rows[0].payment_status, "open")
+        self.assertEqual(rows[0].push_attempts, 1)
+        self.assertFalse(page.has_more)
         self.assertEqual(mock_get.call_args.args[0], "/api/v1/billing/customers/c1/usage-invoices")
+        self.assertEqual(mock_get.call_args.kwargs["params"], {"limit": 50})
 
     @patch("ubb.billing.httpx.Client.get")
-    def test_get_usage_invoices_returns_list(self, mock_get):
+    def test_get_usage_invoices_answers_the_page_envelope(self, mock_get):
+        """SDK 5.0.0: the one cursor envelope, not a bare list that dropped
+        the cursor (R10 Stage C5, F-15). `payment_status` is null while the
+        invoice is not yet collectible — null, never a fifth word."""
         mock_get.return_value = MagicMock(status_code=200, json=lambda: {"data": [
-            {"period_start": "2026-05-01", "period_end": "2026-06-01", "total_billed_micros": 500,
-             "currency": "usd", "status": "skipped", "stripe_invoice_id": None, "skip_reason": "no_usage"},
-            {"period_start": "2026-06-01", "period_end": "2026-07-01", "total_billed_micros": 2000,
-             "currency": "usd", "status": "pushed", "stripe_invoice_id": "in_2", "skip_reason": None},
-        ], "next_cursor": None, "has_more": False})
-        rows = self.client.get_usage_invoices("c2")
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0].status, "skipped")
-        self.assertEqual(rows[0].skip_reason, "no_usage")
-        self.assertEqual(rows[1].stripe_invoice_id, "in_2")
+            _usage_invoice("2026-05-01", "2026-06-01", 500, status="skipped",
+                           stripe_invoice_id="", skip_reason="no_usage"),
+            _usage_invoice("2026-06-01", "2026-07-01", 2000, status="pushed",
+                           stripe_invoice_id="in_2", payment_status="paid"),
+        ], "next_cursor": "c_next", "has_more": True})
+        page = self.client.get_usage_invoices("c2", cursor="c_prev", limit=2)
+        self.assertEqual(len(page.data), 2)
+        self.assertEqual(page.data[0].status, "skipped")
+        self.assertEqual(page.data[0].skip_reason, "no_usage")
+        self.assertIsNone(page.data[0].payment_status)
+        self.assertEqual(page.data[1].stripe_invoice_id, "in_2")
+        self.assertEqual(page.data[1].payment_status, "paid")
+        self.assertEqual((page.next_cursor, page.has_more), ("c_next", True))
+        self.assertEqual(mock_get.call_args.kwargs["params"],
+                         {"limit": 2, "cursor": "c_prev"})
 
     @patch("ubb.billing.httpx.Client.get")
     def test_get_postpaid_config(self, mock_get):

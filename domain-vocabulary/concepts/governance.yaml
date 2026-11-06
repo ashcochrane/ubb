@@ -38,6 +38,23 @@ audit_action:
     # governance reader asking who pointed the platform fee at which Stripe
     # customer must not have to read metadata to find out.
     - tenant.platform_billing_customer_set
+    # The manual hold — an accountable UBB operator's deliberate suspension of
+    # one customer, and its release (R10 Stage C5, PLAN §7 item 42, FINAL
+    # 2026-11-06). Written by the one manual-hold service for the operator
+    # named by `set_customer_manual_hold --operator`, under the operator actor,
+    # on the `customer` record. Governance audit, not lifecycle: the events
+    # `customer.suspended` / `customer.reactivated` are unchanged. `set` is
+    # written ONLY when a hold is actually established (active -> suspended
+    # with the manual reason). `released` is written whenever THIS call
+    # actually removed an existing hold — both when the customer became active
+    # again and when a standing system cause (a payment failure, a wallet past
+    # its floor, an open stop line under enforcing) took over and it stays
+    # suspended; its metadata records the resulting status and reason, so it
+    # means "the hold was removed", never "the customer became active". No row
+    # for a no-op, a refusal or a failed/rolled-back operation: those stay in
+    # the operational log, and there is no attempt/refusal/failure action.
+    - customer.manual_hold_set
+    - customer.manual_hold_released
     - sandbox.created
     - sandbox.reset
     - connect.started

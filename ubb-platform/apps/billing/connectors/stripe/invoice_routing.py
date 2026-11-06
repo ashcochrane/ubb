@@ -7,6 +7,18 @@
 # helpers here (billing-domain logic they always were) lets both
 # the webhook handler module and the invoicing task module import
 # them directly, with zero circularity.
+#
+# The four payment statuses are the registry's closed
+# `usage_invoice_payment_status` (R10 Stage C5, F-15), held here by reference
+# — this module is the concept's backend consumer, because the AR transition
+# table below is the facts the column records.
+from core.vocabulary import (
+    USAGE_INVOICE_PAYMENT_STATUS_OPEN,
+    USAGE_INVOICE_PAYMENT_STATUS_PAID,
+    USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE,
+    USAGE_INVOICE_PAYMENT_STATUS_VALUES,
+    USAGE_INVOICE_PAYMENT_STATUS_VOID,
+)
 
 # --- livemode <-> sandbox anti-collision (F4.4) -----------------------------
 # A Stripe Connect acct_ id is IDENTICAL in test and live mode, so an
@@ -55,13 +67,20 @@ def reject_for_mode(event, *, is_test_endpoint):
 
 
 # Stripe's documented invoice-status graph: uncollectible invoices remain
-# payable and voidable; paid and void are genuinely final.
+# payable and voidable; paid and void are genuinely final. The four statuses
+# are the registry's closed `usage_invoice_payment_status` (R10 Stage C5,
+# F-15), imported at the top of this module. The empty key is the NULL row
+# state: no status yet (not yet collectible), which is null on the contract
+# and no fifth value.
 AR_ALLOWED = {
-    "": {"open", "paid", "void", "uncollectible"},   # None/'' = no status yet
-    "open": {"paid", "void", "uncollectible"},
-    "uncollectible": {"paid", "void"},
-    "paid": set(),
-    "void": set(),
+    "": set(USAGE_INVOICE_PAYMENT_STATUS_VALUES),   # None/'' = no status yet
+    USAGE_INVOICE_PAYMENT_STATUS_OPEN: {
+        USAGE_INVOICE_PAYMENT_STATUS_PAID, USAGE_INVOICE_PAYMENT_STATUS_VOID,
+        USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE},
+    USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE: {
+        USAGE_INVOICE_PAYMENT_STATUS_PAID, USAGE_INVOICE_PAYMENT_STATUS_VOID},
+    USAGE_INVOICE_PAYMENT_STATUS_PAID: set(),
+    USAGE_INVOICE_PAYMENT_STATUS_VOID: set(),
 }
 
 
@@ -103,7 +122,8 @@ def _invoice_subscription_id(inv):
 #: an outstanding failure that can keep the owner suspended). An open or
 #: uncollectible invoice — or one with no status yet — that carries
 #: `payment_failed_at` still stands.
-SETTLED_PAYMENT_STATUSES = ("paid", "void")
+SETTLED_PAYMENT_STATUSES = (USAGE_INVOICE_PAYMENT_STATUS_PAID,
+                            USAGE_INVOICE_PAYMENT_STATUS_VOID)
 
 
 def settle_failure_stamp(row, payment_status):

@@ -61,11 +61,13 @@ export function buildInitialState(): ReferralsMockState {
     program: {
       id: "prog-4f2a9c",
       reward_type: "revenue_share",
-      reward_value: 10,
+      // A share carries basis points and no flat fee (A-3): 1000 = 10 %.
+      reward_amount_micros: null,
+      reward_share_basis_points: 1000,
       attribution_window_days: 30,
       reward_window_days: 365,
       max_reward_micros: 500_000_000, // $500 lifetime cap per referral
-      estimated_cost_percentage: 5,
+      estimated_cost_basis_points: 500, // 5 %
       max_referrals_per_day: 50,
       min_customer_age_hours: 24,
       status: "active",

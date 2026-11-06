@@ -82,6 +82,12 @@ def sync_detailed(
     avoid. A balance is one aggregate number, not sibling-attributed detail,
     so disclosing it does not cross the same privacy line.
 
+    A WALLET-ONLY READ IS REFUSED WHERE NO WALLET IS (R10 Stage C5, F-12,
+    RULED Q12): the Stage A door, asked of the widget's tenant, answers a
+    tenant whose billing mode keeps no wallet with `feature_not_enabled`
+    rather than a zero that invents a wallet. The widget hides the panel by
+    the tenant's mode; it never probes for this.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -128,6 +134,12 @@ def sync(
     avoid. A balance is one aggregate number, not sibling-attributed detail,
     so disclosing it does not cross the same privacy line.
 
+    A WALLET-ONLY READ IS REFUSED WHERE NO WALLET IS (R10 Stage C5, F-12,
+    RULED Q12): the Stage A door, asked of the widget's tenant, answers a
+    tenant whose billing mode keeps no wallet with `feature_not_enabled`
+    rather than a zero that invents a wallet. The widget hides the panel by
+    the tenant's mode; it never probes for this.
+
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
@@ -168,6 +180,12 @@ async def asyncio_detailed(
     financial activity — the exact leak their docstrings are written to
     avoid. A balance is one aggregate number, not sibling-attributed detail,
     so disclosing it does not cross the same privacy line.
+
+    A WALLET-ONLY READ IS REFUSED WHERE NO WALLET IS (R10 Stage C5, F-12,
+    RULED Q12): the Stage A door, asked of the widget's tenant, answers a
+    tenant whose billing mode keeps no wallet with `feature_not_enabled`
+    rather than a zero that invents a wallet. The widget hides the panel by
+    the tenant's mode; it never probes for this.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -214,6 +232,12 @@ async def asyncio(
     financial activity — the exact leak their docstrings are written to
     avoid. A balance is one aggregate number, not sibling-attributed detail,
     so disclosing it does not cross the same privacy line.
+
+    A WALLET-ONLY READ IS REFUSED WHERE NO WALLET IS (R10 Stage C5, F-12,
+    RULED Q12): the Stage A door, asked of the widget's tenant, answers a
+    tenant whose billing mode keeps no wallet with `feature_not_enabled`
+    rather than a zero that invents a wallet. The widget hides the panel by
+    the tenant's mode; it never probes for this.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
