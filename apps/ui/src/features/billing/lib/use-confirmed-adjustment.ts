@@ -5,7 +5,8 @@ import { useRef, useState } from "react";
 
 import type { DebitCreditResponse } from "../api/types";
 
-export type AdjustmentResult = DebitCreditResponse & { external_id: string };
+/** The route's answer, beside the platform Customer UUID it was asked about (F-13). */
+export type AdjustmentResult = DebitCreditResponse & { customer_id: string };
 
 export function useConfirmedAdjustment() {
   const [confirmOpen, setConfirmOpen] = useState(false);

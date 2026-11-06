@@ -128,21 +128,24 @@ export async function putPostpaidConfig(body: PostpaidConfigIn): Promise<Postpai
   return { ...postpaidConfig };
 }
 
+// F-13: the ledger routes take the platform Customer UUID — the wallet is
+// looked up by `id`, never by external id, exactly as the route does (an
+// external id is a 404 there).
 function applyLedgerAdjustment(
-  externalId: string,
+  customerId: string,
   deltaMicros: number,
   idempotencyKey: string,
   allowNegative: boolean,
 ): DebitCreditResponse {
   const replay = ledgerReplays.get(idempotencyKey);
   if (replay) return { ...replay };
-  const current = wallets[externalId];
+  const current = wallets[customerId];
   if (current === undefined) {
     throw new ApiProblem({
       status: 404,
       code: "not_found",
       title: "Customer not found",
-      detail: `No customer with external id "${externalId}".`,
+      detail: `No customer with id "${customerId}".`,
     });
   }
   const next = current + deltaMicros;
@@ -154,7 +157,7 @@ function applyLedgerAdjustment(
       detail: `The balance would go negative. Enable "allow negative" to permit an overdraft.`,
     });
   }
-  wallets[externalId] = next;
+  wallets[customerId] = next;
   transactionSeq += 1;
   const response: DebitCreditResponse = {
     transaction_id: `txn_mock_${transactionSeq}`,

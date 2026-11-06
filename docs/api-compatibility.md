@@ -19,6 +19,25 @@
 > cutover on 2026-10-29 (#190): every change to the contract since is measured against it,
 > and the earlier `api-v1-launch` tag stays exactly where it was.
 
+> **2026-11-07 — R10 billing readiness Stage C5, the first reviewed breaks since the cutover
+> (SDK 5.0.0), coordinated by hand in the pre-live lane above.** Fourteen generated entries
+> (ten ERR, four WARN) in `openapi/oasdiff-err-ignore.txt` / `oasdiff-warn-ignore.txt`,
+> each under a `#` block saying why: `POST /billing/credit` and `POST /billing/debit` take
+> the UBB platform Customer UUID only (`customer_id` typed `format: uuid`; an external id
+> is a 404, a malformed value a 422), and a referral programme's reward figure carries its
+> unit (`reward_amount_micros`, `reward_share_basis_points` 1..10000,
+> `estimated_cost_basis_points` 0..10000 replace `reward_value` and
+> `estimated_cost_percentage`). The same regeneration also made, additively: both top-up
+> routes declare their `202` (`TopUpAcceptedResponse`, status `topup_requested`); the
+> affordability answer's balance figures are null (never zero) off the wallet lane; the
+> three usage-invoice schemas compose one shared base (`id` … `created_at`, with
+> `payment_status` the closed `usage_invoice_payment_status`, nullable), the tenant's two
+> adding only `push_attempts` and `last_attempt_error`; the refund answer's `refund_id` is
+> the refund transaction's id on every call; and the audit actions
+> `customer.manual_hold_set` / `customer.manual_hold_released` are published. The wallet-only
+> reads (`…/balance`, `…/transactions`, `GET …/grants`, and `/me`'s three) answer a tenant
+> with no wallet `feature_not_enabled` (403), a dialect status, not a documented one.
+
 You are putting UBB between your agents and your Stripe account. You need to know the
 ground won't move under an integration you can't redeploy on our schedule. Here is the
 deal.

@@ -61,13 +61,36 @@ class WidgetTopUpNoWalletSubjectTest(RailActivated, TestCase):
                 self.assertFalse(OutboxEvent.objects.filter(tenant_id=tenant.id).exists())
                 self.assertFalse(Wallet.all_objects.filter(customer=customer).exists())
 
+    def test_me_wallet_reads_refuse_where_no_wallet_is(self):
+        """R10 Stage C5 (F-12): the widget's wallet-only READS — balance,
+        grants, transactions — are refused by the same door as its writes
+        where the tenant's billing mode holds no wallet (`external`,
+        `postpaid`): `feature_not_enabled` naming the mode, never a zero
+        balance that would invent the wallet the writes refuse."""
+        for mode, (tenant, customer, token) in self.postures.items():
+            for path in ("/api/v1/me/balance", "/api/v1/me/grants",
+                         "/api/v1/me/transactions"):
+                with self.subTest(mode=mode, path=path):
+                    response = self.http_client.get(
+                        path, HTTP_AUTHORIZATION=f"Bearer {token}")
+                    self.assertEqual(response.status_code, 403, response.content)
+                    self.assertEqual(response["Content-Type"], "application/problem+json")
+                    body = response.json()
+                    self.assertEqual(body["code"], "feature_not_enabled")
+                    self.assertEqual(
+                        body["detail"],
+                        "wallet operations are not available in this tenant's "
+                        f"billing mode ({mode})")
+                    self.assertFalse(Wallet.all_objects.filter(customer=customer).exists())
 
-class WidgetBalanceTest(TestCase):
+
+class WidgetBalanceTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
             products=["metering", "billing"],
+            billing_mode="prepaid",  # the wallet holder (R10 Stage C5, F-12)
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
@@ -105,7 +128,7 @@ class WidgetBalanceTest(TestCase):
         self.assertEqual(response.status_code, 401)
 
 
-class WidgetPooledSeatBalanceTest(TestCase):
+class WidgetPooledSeatBalanceTest(RailActivated, TestCase):
     """Task 9 finding B: a pooled seat's own wallet can never exist (Task
     8c's lock_for_billing ratchet refuses one), and every top-up this seat
     makes credits the business owner's wallet (start_top_up pins
@@ -119,6 +142,7 @@ class WidgetPooledSeatBalanceTest(TestCase):
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
             products=["metering", "billing"],
+            billing_mode="prepaid",  # the wallet holder (R10 Stage C5, F-12)
         )
         self.business = Customer.objects.create(
             tenant=self.tenant, external_id="biz", account_type="business",
@@ -186,12 +210,13 @@ class WidgetPooledSeatBalanceTest(TestCase):
         self.assertEqual(txn_resp.json()["data"], [])
 
 
-class WidgetTransactionsTest(TestCase):
+class WidgetTransactionsTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Test", stripe_connected_account_id="acct_test",
             products=["metering", "billing"],
+            billing_mode="prepaid",  # the wallet holder (R10 Stage C5, F-12)
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c1"
@@ -294,13 +319,14 @@ class WidgetTopUpReplayTest(RailActivated, TestCase):
                 event_type="top_up.requested").count(), 1)
 
 
-class WidgetGrantsEnvelopeTest(TestCase):
+class WidgetGrantsEnvelopeTest(RailActivated, TestCase):
     """#78: the /me grants list adopts the one cursor envelope."""
 
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="Grants", products=["metering", "billing"],
+            billing_mode="prepaid",  # the wallet holder (R10 Stage C5, F-12)
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="c_gr",
@@ -420,6 +446,17 @@ class WidgetUsageAndSubscriptionInvoiceTest(TestCase):
         self.assertEqual(row["stripe_invoice_id"], "in_usage_test")
         self.assertEqual(row["period_start"], "2026-05-01")
         self.assertEqual(row["period_end"], "2026-05-31")
+        # ONE SHAPE ACROSS THE THREE USAGE-INVOICE ROUTES (R10 Stage C5,
+        # F-15): the /me row carries the shared base — including the
+        # customer's identity, the currency, the status and when the row was
+        # made — and never the operator's push bookkeeping.
+        self.assertEqual(row["customer_id"], str(business.id))
+        self.assertEqual(row["external_id"], "biz")
+        self.assertEqual(row["currency"], "usd")
+        self.assertEqual(row["status"], "pushed")
+        self.assertIsNotNone(row["created_at"])
+        self.assertNotIn("push_attempts", row)
+        self.assertNotIn("last_attempt_error", row)
 
     def test_business_sees_its_subscription_invoice(self):
         business = Customer.objects.create(

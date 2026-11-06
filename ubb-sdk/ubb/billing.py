@@ -15,6 +15,7 @@ from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.customer_spend_pool_out import CustomerSpendPoolOut
 from ubb._core.models.customer_spend_pool_status_out import CustomerSpendPoolStatusOut
 from ubb._core.models.grant_out import GrantOut
+from ubb._core.models.top_up_accepted_response import TopUpAcceptedResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_invoice_out import UsageInvoiceOut
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
@@ -64,6 +65,11 @@ class BillingClient:
               movement_reason: str | None = None, actor: str = "") -> dict:
         """Debit a customer's wallet via POST /api/v1/billing/debit.
 
+        customer_id is the UBB platform Customer UUID (the ``id`` the
+        platform answered when the customer was created) — never the
+        tenant's external id, which the route no longer looks up (SDK 5.0.0):
+        an external id answers 404 and a malformed UUID 422.
+
         idempotency_key is required (server-enforced) so a retried debit never
         double-charges. By default the debit still respects the customer's
         overdraft floor; pass allow_negative=True to force a correction past it.
@@ -86,6 +92,9 @@ class BillingClient:
                reference: str, idempotency_key: str,
                movement_reason: str | None = None, actor: str = "") -> dict:
         """Credit a customer's wallet via POST /api/v1/billing/credit.
+
+        customer_id is the UBB platform Customer UUID — never the tenant's
+        external id (see ``debit``).
 
         idempotency_key is required (server-enforced). Adds plain, non-expiring
         adjustment money — for refunding a usage charge use ``refund``.
@@ -163,29 +172,48 @@ class BillingClient:
 
     def create_top_up(self, customer_id: str, amount_micros: int,
                       success_url: str, cancel_url: str,
-                      idempotency_key: str) -> TopUpCheckoutResponse:
-        """Create a top-up checkout session via POST
-        /api/v1/billing/customers/{customer_id}/top-up.
+                      idempotency_key: str
+                      ) -> TopUpCheckoutResponse | TopUpAcceptedResponse:
+        """Start a top-up via POST /api/v1/billing/customers/{customer_id}/top-up.
+
+        Answers one of two typed results, by what the route answered (SDK
+        5.0.0): a ``TopUpCheckoutResponse`` (200 — the tenant has a Stripe
+        connector; open ``checkout_url``) or a ``TopUpAcceptedResponse`` (202
+        — the tenant has no connector; the request was recorded and handed to
+        the tenant, ``status`` is ``topup_requested``, and nothing is to be
+        opened). Branch with ``isinstance``; until 5.0.0 the 202 was parsed as
+        a checkout with no URL.
 
         idempotency_key is REQUIRED (#78): a retried call re-uses the original
-        attempt server-side — a replay can never start a second charge."""
+        attempt server-side — a replay can never start a second charge, and a
+        replayed 202 emits no second event."""
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_CREATE_TOP_UP(customer_id), json={
             "amount_micros": amount_micros,
             "success_url": success_url,
             "cancel_url": cancel_url,
             "idempotency_key": idempotency_key,
         })
+        if r.status_code == 202:
+            return from_wire(TopUpAcceptedResponse, r.json())
         return from_wire(TopUpCheckoutResponse, r.json())
 
     def configure_auto_top_up(self, customer_id: str, is_enabled: bool,
-                              trigger_threshold_micros: int | None = None,
-                              top_up_amount_micros: int | None = None) -> dict:
-        """Configure auto top-up via PUT /api/v1/billing/customers/{customer_id}/auto-top-up."""
-        body: dict = {"is_enabled": is_enabled}
-        if trigger_threshold_micros is not None:
-            body["trigger_threshold_micros"] = trigger_threshold_micros
-        if top_up_amount_micros is not None:
-            body["top_up_amount_micros"] = top_up_amount_micros
+                              trigger_threshold_micros: int,
+                              top_up_amount_micros: int) -> dict:
+        """Configure auto top-up via PUT /api/v1/billing/customers/{customer_id}/auto-top-up.
+
+        Every parameter is REQUIRED (SDK 5.0.0): the route requires all three
+        fields even when disabling (``is_enabled=False`` still stores the
+        threshold and amount it will use when re-enabled), and until 5.0.0 this
+        method left a ``None`` out of the body, so a disable call was a 422
+        the SDK's own signature invited. The server keeps the rules:
+        ``trigger_threshold_micros >= 0``, ``top_up_amount_micros > 0`` and
+        cent-aligned."""
+        body: dict = {
+            "is_enabled": is_enabled,
+            "trigger_threshold_micros": trigger_threshold_micros,
+            "top_up_amount_micros": top_up_amount_micros,
+        }
         r = self._request(
             *ops.API_V1_BILLING_ENDPOINTS_CONFIGURE_AUTO_TOP_UP(customer_id),
             json=body)
@@ -229,9 +257,24 @@ class BillingClient:
         r = self._request(*ops.API_V1_BILLING_ENDPOINTS_GET_CUSTOMER_SPEND_POOL_STATUS(customer_id))
         return from_wire(CustomerSpendPoolStatusOut, r.json())
 
-    def get_usage_invoices(self, customer_id):
-        r = self._request(*ops.API_V1_BILLING_ENDPOINTS_LIST_CUSTOMER_USAGE_INVOICES(customer_id))
-        return [from_wire(UsageInvoiceOut, row) for row in r.json()["data"]]
+    def get_usage_invoices(self, customer_id: str, cursor: str | None = None,
+                           limit: int = 50) -> PaginatedResponse[UsageInvoiceOut]:
+        """List one customer's usage invoices via GET
+        /api/v1/billing/customers/{customer_id}/usage-invoices — the one
+        cursor envelope every list answers (SDK 5.0.0: this returned a bare
+        list of the first page's rows and dropped the cursor). Each row is the
+        one shared usage-invoice shape (``id`` … ``created_at``, with the
+        operator's ``push_attempts`` / ``last_attempt_error`` on this tenant
+        read); ``payment_status`` is null while the invoice is not yet
+        collectible, else one of the closed
+        ``ubb.vocabulary.USAGE_INVOICE_PAYMENT_STATUS_VALUES``."""
+        params: dict = {"limit": limit}
+        if cursor is not None:
+            params["cursor"] = cursor
+        r = self._request(
+            *ops.API_V1_BILLING_ENDPOINTS_LIST_CUSTOMER_USAGE_INVOICES(customer_id),
+            params=params)
+        return page_from_wire(UsageInvoiceOut, r.json())
 
     def create_grant(self, customer_id: str, kind: str, amount_micros: int,
                      idempotency_key: str, expires_at: str | None = None,

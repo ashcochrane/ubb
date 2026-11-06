@@ -35,6 +35,7 @@ from core.responses import json_response
 from core.vocabulary import (
     AUDIT_ACTION_TOP_UP_REQUESTED,
     AUDIT_RESOURCE_TYPE_WALLET,
+    TOP_UP_REQUEST_STATUS_TOPUP_REQUESTED,
 )
 
 logger = logging.getLogger(__name__)
@@ -161,6 +162,9 @@ def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
 
     # No connector — emit an event for the tenant to handle; the attempt row
     # is the replay anchor (a replayed key answers 202 without a second event).
+    # The 202 is a DECLARED answer of both routes (R10 Stage C5, F-5):
+    # `TopUpAcceptedResponse`, whose `status` is the registry's closed
+    # `top_up_request_status`, beside each route's own 200 checkout shape.
     from apps.platform.events.outbox import write_event
     from apps.platform.events.schemas import TopUpRequested
 
@@ -191,6 +195,7 @@ def start_top_up(request, customer, tenant, payload, *, trigger, checkout):
             pass  # concurrent replay already wrote the attempt + event
     return json_response(
         request,
-        {"status": "topup_requested", "message": "Top-up request sent to tenant"},
+        {"status": TOP_UP_REQUEST_STATUS_TOPUP_REQUESTED,
+         "message": "Top-up request sent to tenant"},
         status=202,
     )

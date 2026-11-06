@@ -27,7 +27,7 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
             "/api/v1/referrals/program",
             data=json.dumps({
                 "reward_type": "revenue_share",
-                "reward_value": 0.10,
+                "reward_share_basis_points": 1000,
                 "attribution_window_days": 30,
                 "reward_window_days": 365,
             }),
@@ -41,7 +41,7 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_get_program(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=5_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=5_000_000,
         )
         resp = self.http_client.get(
             "/api/v1/referrals/program", **self.headers,
@@ -57,20 +57,20 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_update_program(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         resp = self.http_client.patch(
             "/api/v1/referrals/program",
-            data=json.dumps({"reward_value": 0.20}),
+            data=json.dumps({"reward_share_basis_points": 2000}),
             content_type="application/json",
             **self.headers,
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertAlmostEqual(resp.json()["reward_value"], 0.20)
+        self.assertEqual(resp.json()["reward_share_basis_points"], 2000)
 
     def test_deactivate_program(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=1_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=1_000_000,
         )
         resp = self.http_client.delete(
             "/api/v1/referrals/program", **self.headers,
@@ -80,7 +80,7 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_reactivate_program(self):
         program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=1_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=1_000_000,
             status="deactivated",
         )
         resp = self.http_client.post(
@@ -91,25 +91,68 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_duplicate_program_409(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=1_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=1_000_000,
         )
         resp = self.http_client.post(
             "/api/v1/referrals/program",
             data=json.dumps({
                 "reward_type": "revenue_share",
-                "reward_value": 0.10,
+                "reward_share_basis_points": 1000,
             }),
             content_type="application/json",
             **self.headers,
         )
         assert_problem(resp, "conflict", 409)
 
+    def _post_program(self, body):
+        return self.http_client.post(
+            "/api/v1/referrals/program", data=json.dumps(body),
+            content_type="application/json", **self.headers,
+        )
+
+    def test_a_share_above_ten_thousand_basis_points_is_refused(self):
+        resp = self._post_program({
+            "reward_type": "revenue_share",
+            "reward_share_basis_points": 10001,
+        })
+        self.assertEqual(resp.status_code, 422, resp.content)
+        # Refused for the share's bound — the field is named — not for some
+        # other missing figure (the pre-C5 contract refused `reward_value`).
+        self.assertIn("reward_share_basis_points", resp.content.decode())
+        self.assertNotIn("reward_value", resp.content.decode())
+        self.assertFalse(ReferralProgram.objects.filter(tenant=self.tenant).exists())
+        # The whole, 10000 basis points, is the inclusive maximum.
+        whole = self._post_program({"reward_type": "revenue_share",
+                                    "reward_share_basis_points": 10_000})
+        self.assertEqual(whole.status_code, 200, whole.content)
+        self.assertEqual(whole.json()["reward_share_basis_points"], 10_000)
+
+    def test_a_flat_fee_program_needs_its_amount_and_no_share(self):
+        no_amount = self._post_program({"reward_type": "flat_fee"})
+        self.assertEqual(no_amount.status_code, 422, no_amount.content)
+
+        both = self._post_program({
+            "reward_type": "flat_fee",
+            "reward_amount_micros": 5_000_000,
+            "reward_share_basis_points": 1000,
+        })
+        self.assertEqual(both.status_code, 422, both.content)
+        self.assertFalse(ReferralProgram.objects.filter(tenant=self.tenant).exists())
+
+        ok = self._post_program({
+            "reward_type": "flat_fee", "reward_amount_micros": 5_000_000,
+        })
+        self.assertEqual(ok.status_code, 200, ok.content)
+        body = ok.json()
+        self.assertEqual(body["reward_amount_micros"], 5_000_000)
+        self.assertIsNone(body["reward_share_basis_points"])
+
 
 class TestReferrerEndpoints(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust-1",
@@ -176,7 +219,7 @@ class TestAttributionEndpoint(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
             reward_window_days=365,
         )
         self.referrer_customer = Customer.objects.create(
@@ -265,7 +308,7 @@ class TestRewardEndpoints(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         self.referrer_customer = Customer.objects.create(
             tenant=self.tenant, external_id="referrer",
@@ -281,7 +324,7 @@ class TestRewardEndpoints(ReferralsEndpointTestBase):
             referred_customer=self.referred,
             referral_code_used=self.referrer.referral_code,
             snapshot_reward_type="revenue_share",
-            snapshot_reward_value=0.10,
+            snapshot_reward_share_basis_points=1000,
         )
         ReferralRewardAccumulator.objects.create(
             referral=self.referral,
@@ -350,7 +393,7 @@ class TestRevocationEndpoint(ReferralsEndpointTestBase):
             tenant=self.tenant, referrer=referrer,
             referred_customer=referred_cust,
             referral_code_used="REF-X",
-            snapshot_reward_type="flat_fee", snapshot_reward_value=1000,
+            snapshot_reward_type="flat_fee", snapshot_reward_amount_micros=1000,
         )
 
         resp = self.http_client.delete(
@@ -393,7 +436,7 @@ class TestAnalyticsEarningsWindow(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         referrer_cust = Customer.objects.create(
             tenant=self.tenant, external_id="referrer",
@@ -409,7 +452,7 @@ class TestAnalyticsEarningsWindow(ReferralsEndpointTestBase):
             referred_customer=referred,
             referral_code_used=self.referrer.referral_code,
             snapshot_reward_type="revenue_share",
-            snapshot_reward_value=0.10,
+            snapshot_reward_share_basis_points=1000,
         )
         # All-time accumulator total deliberately disagrees with every window
         # to prove windowed earnings are ledger-sourced.

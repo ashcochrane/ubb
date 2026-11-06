@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from uuid import UUID
 from typing import Annotated, Any, List, Literal, Optional, Union
 
@@ -156,8 +156,11 @@ class AffordabilityResponse(Schema):
     floor is null where no wind-down line applies to the work asked about —
     contained work under a running parent, a tenant not enforcing, or none
     configured. The two balance figures are null where the answer was made
-    before a wallet was read (a standing refusal); the two floors are null
-    there too, and for a postpaid tenant, which has no wallet floors.
+    before a wallet was read (a standing refusal) AND off the wallet lane
+    altogether — a tenant whose billing mode keeps no wallet (`external`,
+    `postpaid`) has no balance to report, so null, never zero: an absent
+    wallet is not a zero-balance wallet (R10 Stage C5, F-12, RULED Q12).
+    The two floors are null there too, and wherever no wallet floor applies.
     """
     allowed: bool
     reason: Optional[AffordabilityReason] = None
@@ -738,6 +741,12 @@ GrantStatus = _concept("grant_status")
 GrantSource = _concept("grant_source")
 UsageInvoiceStatus = _concept("usage_invoice_status")
 SkipReason = _concept("skip_reason")
+#: R10 Stage C5 (F-15): the receivable's standing behind a pushed usage
+#: invoice — closed, and NULLABLE where it sits (null = not yet collectible),
+#: so the marker lands on the string member as `SkipReason`'s does.
+UsageInvoicePaymentStatus = _concept("usage_invoice_payment_status")
+#: R10 Stage C5 (F-5): the one value a top-up's 202 carries.
+TopUpRequestStatus = _concept("top_up_request_status")
 TenantInvoiceStatus = _concept("tenant_invoice_status")
 BillingPeriodStatus = _concept("billing_period_status")
 GroupingFieldValueStatus = _concept("grouping_field_value_status")
@@ -1494,9 +1503,23 @@ class CreateTopUpRequest(Schema):
 
 class TopUpCheckoutResponse(Schema):
     # The 200 answer when the Stripe connector is active (#98). The
-    # no-connector twin answers 202 out-of-band (top-up request handed to the
-    # tenant) — see the globally-documented out-of-band statuses.
+    # no-connector twin answers 202 with `TopUpAcceptedResponse` below —
+    # declared on the route beside this one (R10 Stage C5, F-5): a 2xx is
+    # never "out of band", only the problem dialect's 4xx are.
     checkout_url: str
+
+
+class TopUpAcceptedResponse(Schema):
+    """The 202 answer of both top-up routes (the tenant's and `/me`'s) when
+    the tenant has no Stripe connector to open a checkout for: the request
+    was recorded and handed to the tenant to settle out of band
+    (`top_up.requested`). A replay of the same `idempotency_key` answers this
+    again without a second event. `status` is the registry's closed
+    `top_up_request_status`; today it carries its one value."""
+    status: TopUpRequestStatus = Field(description=(
+        "The one value a 202 carries: the top-up request was recorded and "
+        "handed to the tenant; no checkout was opened."))
+    message: str
 
 
 class PaginatedUsageResponse(Paginated[UsageEventOut]):
@@ -1526,11 +1549,16 @@ class WithdrawResponse(Schema):
 
 
 class RefundResponse(Schema):
-    # A fresh refund answers the REFUND transaction id; an idempotent replay
-    # answers the original's reference_id — always a string (the column is
-    # NOT NULL, default ""), possibly empty if the replayed key belongs to a
-    # non-refund transaction that carries no reference.
-    refund_id: str
+    # R10 Stage C5 (F-14, RULED Q14): the SAME durable id on the first call
+    # and on every replay of the same idempotency_key — the refund
+    # WalletTransaction's id, never the usage event's reference and never "".
+    # A key already used by a non-refund transaction is refused 409
+    # `conflict`; a replay that lost a race re-reads the row it lost to.
+    refund_id: str = Field(description=(
+        "The id of the refund transaction on the billing owner's wallet "
+        "ledger (a WalletTransaction of type refund). The same id is "
+        "answered on the first call and on every replay of the same "
+        "idempotency_key; it is never the usage event id."))
     balance_micros: int
 
 
@@ -1624,8 +1652,22 @@ def _a_known_movement_reason(value):
     return value
 
 
+#: THE CUSTOMER A HAND-MOVED CREDIT OR DEBIT NAMES IS THE PLATFORM UUID (R10
+#: Stage C5, F-13, RULED Q11; PLAN §7 item 44 FINAL). Until C5 the field was a
+#: free string looked up as the tenant's `external_id` — the one money route
+#: keyed on a name the tenant chose, where every other money route takes the
+#: UUID in its path. It is structurally `UUID` now (`format: uuid` in the
+#: document, as `RecordUsageRequest.customer_id` already is), so the OpenAPI
+#: document and the SDK tell a caller what it is; a malformed value answers the
+#: ordinary 422 `validation_error` of a body field, an external id a 404. No
+#: dual lookup, no fallback, no resolver route.
+_PLATFORM_CUSTOMER_UUID = (
+    "The UBB platform Customer UUID (the `id` POST /customers answered), "
+    "never the tenant's external id.")
+
+
 class DebitRequest(Schema):
-    customer_id: str = Field(min_length=1, max_length=255)
+    customer_id: UUID = Field(description=_PLATFORM_CUSTOMER_UUID)
     amount_micros: int = Field(gt=0, le=999_999_999_999)
     reference: str = Field(min_length=1, max_length=500)
     # Required: every balance-mutating write must be safely replayable. A NULL
@@ -1653,7 +1695,7 @@ class DebitRequest(Schema):
 
 
 class CreditRequest(Schema):
-    customer_id: str = Field(min_length=1, max_length=255)
+    customer_id: UUID = Field(description=_PLATFORM_CUSTOMER_UUID)
     amount_micros: int = Field(gt=0, le=999_999_999_999)
     source: str = Field(min_length=1, max_length=255)
     reference: str = Field(min_length=1, max_length=500)
@@ -2498,31 +2540,107 @@ SKIP_REASON_MEANING = (
     "'skipped'.")
 
 
-class UsageInvoiceOut(Schema):
-    period_start: str
-    period_end: str
-    total_billed_micros: int
+#: ONE USAGE-INVOICE REPRESENTATION (R10 Stage C5, F-15, RULED Q13; PLAN §7
+#: item 44 FINAL). Three public routes publish a postpaid customer's usage
+#: invoice — the per-customer tenant read, the tenant-wide sweep and the end
+#: customer's own `/me/usage-invoices` — and until C5 each hand-wrote its own
+#: field set: one had no `id`, one no `period_end` or `currency`, and `/me`
+#: published `payment_status` as a free string beside no `status` at all. They
+#: compose this ONE base now, so the semantic fields cannot drift apart. The
+#: tenant/operator representation extends it with exactly two operator
+#: internals (`push_attempts`, `last_attempt_error`); `/me` never carries
+#: those. Every field is the durable `CustomerUsageInvoice` row's own fact —
+#: `created_at` the base model's stamp, projected alike by all three — never
+#: synthesised.
+USAGE_INVOICE_PAYMENT_STATUS_MEANING = (
+    "Where the Stripe invoice behind a pushed usage invoice stands as a "
+    "receivable: open, paid, void or uncollectible. Null while the invoice is "
+    "not yet collectible — no Stripe invoice has been issued for it, or none "
+    "has reported a status yet; null is that meaning, not a fifth value.")
+
+
+class UsageInvoiceBase(Schema):
+    """The one public shape of a postpaid customer's usage invoice."""
+    id: str
+    customer_id: str = Field(description=(
+        "The platform UUID of the customer the invoice is for — the billing "
+        "owner's own invoice."))
+    external_id: str = Field(description="That customer's tenant-side external id.")
+    period_start: date
+    period_end: date
     currency: str
+    total_billed_micros: int
     status: UsageInvoiceStatus
-    stripe_invoice_id: str = ""
     skip_reason: Optional[SkipReason] = Field(description=SKIP_REASON_MEANING)
-    push_attempts: Optional[int] = None
-    last_attempt_error: Optional[str] = None
+    stripe_invoice_id: str = Field(default="", description=(
+        "The Stripe invoice the period was pushed to; empty until it was."))
+    pushed_at: Optional[datetime] = Field(default=None, description=(
+        "When the period was pushed to Stripe; null until it was."))
+    payment_status: Optional[UsageInvoicePaymentStatus] = Field(
+        default=None, description=USAGE_INVOICE_PAYMENT_STATUS_MEANING)
+    paid_at: Optional[datetime] = Field(default=None, description=(
+        "When Stripe reported the invoice paid; null until then."))
+    payment_failed_at: Optional[datetime] = Field(default=None, description=(
+        "When the last payment attempt failed and the invoice began to stand "
+        "as a payment failure against its billing owner; null while none "
+        "stands (cleared once the invoice is paid or voided)."))
+    hosted_invoice_url: str = Field(default="", description=(
+        "Stripe's hosted invoice page; empty until the invoice exists."))
+    invoice_pdf: str = Field(default="", description=(
+        "Stripe's invoice PDF; empty until the invoice exists."))
+    created_at: datetime
+
+
+def usage_invoice_base_out(r):
+    """The one serializer of `UsageInvoiceBase` — every usage-invoice route
+    projects the same durable row the same way (callers
+    `select_related("customer")` for the external id)."""
+    return {
+        "id": str(r.id),
+        "customer_id": str(r.customer_id),
+        "external_id": r.customer.external_id,
+        "period_start": r.period_start,
+        "period_end": r.period_end,
+        "currency": r.currency,
+        "total_billed_micros": r.total_billed_micros,
+        "status": r.status,
+        "skip_reason": r.skip_reason,
+        "stripe_invoice_id": r.stripe_invoice_id,
+        "pushed_at": r.pushed_at,
+        # The column admits "" beside NULL (no `choices`); both mean "no
+        # status yet", and the contract's word for that is null, never "".
+        "payment_status": r.payment_status or None,
+        "paid_at": r.paid_at,
+        "payment_failed_at": r.payment_failed_at,
+        "hosted_invoice_url": r.hosted_invoice_url,
+        "invoice_pdf": r.invoice_pdf,
+        "created_at": r.created_at,
+    }
+
+
+class _OperatorUsageInvoice(UsageInvoiceBase):
+    """The tenant/operator extension: the push's own retry bookkeeping, which
+    an end customer has no business reading (`/me` never carries it)."""
+    push_attempts: int = Field(description=(
+        "How many times the push to Stripe has been attempted."))
+    last_attempt_error: str = Field(default="", description=(
+        "The last push attempt's error, empty where the last attempt "
+        "succeeded or none has run."))
+
+
+def _operator_usage_invoice_out(r):
+    return {**usage_invoice_base_out(r),
+            "push_attempts": r.push_attempts,
+            "last_attempt_error": r.last_attempt_error}
+
+
+class UsageInvoiceOut(_OperatorUsageInvoice):
+    """One customer's usage invoices, on the tenant's per-customer route."""
 
 
 def usage_invoice_out(r):
     """UsageInvoiceOut's serializer — one customer's usage invoice."""
-    return {
-        "period_start": r.period_start.isoformat(),
-        "period_end": r.period_end.isoformat(),
-        "total_billed_micros": r.total_billed_micros,
-        "currency": r.currency,
-        "status": r.status,
-        "stripe_invoice_id": r.stripe_invoice_id,
-        "skip_reason": r.skip_reason,
-        "push_attempts": r.push_attempts,
-        "last_attempt_error": r.last_attempt_error,
-    }
+    return _operator_usage_invoice_out(r)
 
 
 class UsageInvoiceListResponse(Paginated[UsageInvoiceOut]):
@@ -2532,32 +2650,14 @@ class UsageInvoiceListResponse(Paginated[UsageInvoiceOut]):
     pass
 
 
-class TenantUsageInvoiceOut(Schema):
-    customer_id: str
-    external_id: str
-    period_start: str
-    total_billed_micros: int
-    status: UsageInvoiceStatus
-    stripe_invoice_id: str = ""
-    skip_reason: Optional[SkipReason] = Field(description=SKIP_REASON_MEANING)
-    push_attempts: Optional[int] = None
-    last_attempt_error: Optional[str] = None
+class TenantUsageInvoiceOut(_OperatorUsageInvoice):
+    """The tenant-wide invoice sweep row."""
 
 
 def tenant_usage_invoice_out(r):
     """TenantUsageInvoiceOut's serializer — the tenant-wide invoice sweep
     row (callers select_related("customer") for external_id)."""
-    return {
-        "customer_id": str(r.customer_id),
-        "external_id": r.customer.external_id,
-        "period_start": r.period_start.isoformat(),
-        "total_billed_micros": r.total_billed_micros,
-        "status": r.status,
-        "stripe_invoice_id": r.stripe_invoice_id,
-        "skip_reason": r.skip_reason,
-        "push_attempts": r.push_attempts,
-        "last_attempt_error": r.last_attempt_error,
-    }
+    return _operator_usage_invoice_out(r)
 
 
 class TenantUsageInvoiceListResponse(Paginated[TenantUsageInvoiceOut]):

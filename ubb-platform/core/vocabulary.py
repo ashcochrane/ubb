@@ -198,6 +198,8 @@ AUDIT_ACTION_MEMBER_ROLE_CHANGED = 'member.role_changed'
 AUDIT_ACTION_MEMBER_REMOVED = 'member.removed'
 AUDIT_ACTION_TENANT_CONFIG_CHANGED = 'tenant.config_changed'
 AUDIT_ACTION_TENANT_PLATFORM_BILLING_CUSTOMER_SET = 'tenant.platform_billing_customer_set'
+AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_SET = 'customer.manual_hold_set'
+AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_RELEASED = 'customer.manual_hold_released'
 AUDIT_ACTION_SANDBOX_CREATED = 'sandbox.created'
 AUDIT_ACTION_SANDBOX_RESET = 'sandbox.reset'
 AUDIT_ACTION_CONNECT_STARTED = 'connect.started'
@@ -270,6 +272,8 @@ AUDIT_ACTION_VALUES = frozenset({
     AUDIT_ACTION_MEMBER_REMOVED,
     AUDIT_ACTION_TENANT_CONFIG_CHANGED,
     AUDIT_ACTION_TENANT_PLATFORM_BILLING_CUSTOMER_SET,
+    AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_SET,
+    AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_RELEASED,
     AUDIT_ACTION_SANDBOX_CREATED,
     AUDIT_ACTION_SANDBOX_RESET,
     AUDIT_ACTION_CONNECT_STARTED,
@@ -1806,7 +1810,14 @@ REVENUE_BASIS_VALUES = frozenset({
 # Which reward scheme a referral programme runs: a flat fee per referral, a
 # share of the referred customer's revenue, or a share of the profit on it.
 # Snapshotted onto each referral when it is attributed, so a later change to
-# the programme does not rewrite what an earlier referral earns.
+# the programme does not rewrite what an earlier referral earns. Each scheme's
+# figure has one explicit unit (R10 Stage C5, A-3, RULED Q9): a flat fee is an
+# amount in micros (reward_amount_micros), paid exactly once per referral; a
+# revenue or profit share is a share in basis points, 1 to 10000
+# (reward_share_basis_points), applied by dividing by 10,000 exactly; and a
+# profit share's fallback cost estimate is a share of revenue in basis points,
+# 0 to 10000 (estimated_cost_basis_points). Never a decimal fraction, never a
+# percentage.
 #
 # Declared in concepts/referrals.yaml.
 
@@ -2181,6 +2192,25 @@ TENANT_PRODUCT_VALUES = frozenset({
 })
 
 
+# --- top_up_request_status ---------------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# What a top-up route answers, with 202, when the tenant has no Stripe
+# connector to open a checkout for: the request was recorded and handed to the
+# tenant to settle out of band (`top_up.requested` is emitted), and a replay of
+# the same idempotency key answers the same way without a second event. The one
+# value a 202 carries today; a 200 carries a checkout URL and no status.
+#
+# Declared in concepts/billing.yaml.
+
+TOP_UP_REQUEST_STATUS_TOPUP_REQUESTED = 'topup_requested'
+
+TOP_UP_REQUEST_STATUS_VALUES = frozenset({
+    TOP_UP_REQUEST_STATUS_TOPUP_REQUESTED,
+})
+
+
 # --- total_billed_cost_micros ------------------------------------------------
 #
 # free_text — Not vocabulary. Recorded here so that "is this a value set?" is
@@ -2306,6 +2336,32 @@ USAGE_EVENT_KIND_TASK_CHARGE = 'task_charge'
 USAGE_EVENT_KIND_VALUES = frozenset({
     USAGE_EVENT_KIND_METERED_USAGE,
     USAGE_EVENT_KIND_TASK_CHARGE,
+})
+
+
+# --- usage_invoice_payment_status --------------------------------------------
+#
+# closed — UBB owns the whole value set — exactly these values, no more.
+#
+# Where the Stripe invoice behind a pushed usage invoice stands as a
+# receivable: open while it awaits payment, paid, void, or uncollectible —
+# exactly Stripe's four, as UBB's accounts-receivable transition table admits
+# them. NULLABLE on the invoice: null means the invoice is not yet collectible
+# — no Stripe invoice has been issued for it, or none has reported a status yet
+# — and null keeps that meaning; there is no fifth value standing in for it.
+#
+# Declared in concepts/billing.yaml.
+
+USAGE_INVOICE_PAYMENT_STATUS_OPEN = 'open'
+USAGE_INVOICE_PAYMENT_STATUS_PAID = 'paid'
+USAGE_INVOICE_PAYMENT_STATUS_VOID = 'void'
+USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE = 'uncollectible'
+
+USAGE_INVOICE_PAYMENT_STATUS_VALUES = frozenset({
+    USAGE_INVOICE_PAYMENT_STATUS_OPEN,
+    USAGE_INVOICE_PAYMENT_STATUS_PAID,
+    USAGE_INVOICE_PAYMENT_STATUS_VOID,
+    USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE,
 })
 
 

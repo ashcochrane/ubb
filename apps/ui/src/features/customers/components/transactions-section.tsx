@@ -13,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useHoldsAWallet, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros, formatSignedMicros } from "@/lib/format";
 import { transactionTypeLabel } from "../lib/wallet";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,13 @@ import { useTransactionsList } from "../api/queries";
 
 export function TransactionsSection({ customerId }: { customerId: string }) {
   const currency = useTenantCurrency();
-  const list = useTransactionsList(customerId);
+  // A wallet-only read (F-12): where the workspace's billing mode keeps no
+  // wallet the route answers 403, so the list is neither fetched nor drawn —
+  // the balance card above explains the absence once for the whole tab.
+  const walleted = useHoldsAWallet();
+  const list = useTransactionsList(customerId, walleted);
+
+  if (!walleted) return null;
 
   return (
     <Card>

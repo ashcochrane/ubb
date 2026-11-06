@@ -94,9 +94,28 @@ export function buildPostpaidPayload(
 
 // ---------------------------------------------------------------------------
 // Manual ledger adjustments (credit / debit).
+//
+// ⚠ **THE CUSTOMER IS THE PLATFORM CUSTOMER UUID (R10 Stage C5, F-13; PLAN
+// §7 item 44).** `POST /billing/credit` and `/debit` take the `id` UBB answered
+// when the customer was created — never the tenant's external id, which
+// answers 404 there. The form validates the shape before anything is sent,
+// so a typed external id is refused here with a message rather than by the
+// route.
+
+/** 8-4-4-4-12 hex, case-insensitive — the shape of a platform Customer UUID. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const PLATFORM_CUSTOMER_UUID_MESSAGE =
+  "Enter the platform Customer UUID (8-4-4-4-12 hex)";
+
+export const platformCustomerUuidField = z
+  .string()
+  .trim()
+  .min(1, "Required")
+  .refine((v) => UUID_RE.test(v), PLATFORM_CUSTOMER_UUID_MESSAGE);
 
 export const creditFormSchema = z.object({
-  customer_id: z.string().min(1, "Required").max(255),
+  customer_id: platformCustomerUuidField,
   amount: currencyAmountField({ min: 0 }).refine((v) => Number(v) > 0, "Must be more than 0"),
   reference: z.string().min(1, "Required").max(500),
   source: z.string().min(1, "Required").max(255),
@@ -107,7 +126,7 @@ export const creditFormSchema = z.object({
 export type CreditFormValues = z.infer<typeof creditFormSchema>;
 
 export const debitFormSchema = z.object({
-  customer_id: z.string().min(1, "Required").max(255),
+  customer_id: platformCustomerUuidField,
   amount: currencyAmountField({ min: 0 }).refine((v) => Number(v) > 0, "Must be more than 0"),
   reference: z.string().min(1, "Required").max(500),
   actor: z.string().max(255),

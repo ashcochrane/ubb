@@ -32,7 +32,7 @@ class MoneyRecordThroughHttpTest(RailActivated, TestCase):
     def test_credit_records_wallet_credited_with_api_key_actor(self):
         resp = self.http.post(
             "/api/v1/billing/credit",
-            data=json.dumps({"customer_id": "c1", "amount_micros": 5_000_000,
+            data=json.dumps({"customer_id": str(self.customer.id), "amount_micros": 5_000_000,
                              "source": "goodwill", "reference": "ref-1",
                              "idempotency_key": "cr-1"}),
             content_type="application/json", **self._hdr())
@@ -45,7 +45,7 @@ class MoneyRecordThroughHttpTest(RailActivated, TestCase):
         self.assertEqual(rec.metadata["source"], "goodwill")
 
     def test_credit_replay_records_once(self):
-        body = json.dumps({"customer_id": "c1", "amount_micros": 5_000_000,
+        body = json.dumps({"customer_id": str(self.customer.id), "amount_micros": 5_000_000,
                            "source": "goodwill", "reference": "ref-2",
                            "idempotency_key": "cr-2"})
         for _ in range(2):  # same idempotency key twice

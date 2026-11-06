@@ -301,10 +301,12 @@ class TheAffordabilityQuestionTest(RailActivated, TestCase):
         self.assertEqual(answer["reason"], AFFORDABILITY_REASON_ACCOUNT_CLOSED)
         self.assertIsNone(answer["balance_micros"])
 
-    def test_a_postpaid_tenant_has_a_balance_and_no_floors(self):
+    def test_a_postpaid_tenant_has_no_balance_to_report_and_no_floors(self):
         """Postpaid reserves nothing and has no wallet floors (`check`'s
         fork), so its floors are reported as absent rather than as figures
-        that were never tested; its balance is still read."""
+        that were never tested — and so are its balance figures (R10 Stage
+        C5, F-12): a tenant off the wallet lane holds no wallet, and `null`
+        is that absence, never a zero that would invent one."""
         postpaid = a_tenant_selling_whole_work(
             billing_mode="postpaid", balance_micros=0,
             name="Invoiced", external_id="c5")
@@ -313,7 +315,7 @@ class TheAffordabilityQuestionTest(RailActivated, TestCase):
         answer = response.json()
 
         self.assertTrue(answer["allowed"])
-        self.assertEqual(answer["balance_micros"], 0)
-        self.assertEqual(answer["available_micros"], 0)
+        self.assertIsNone(answer["balance_micros"])
+        self.assertIsNone(answer["available_micros"])
         self.assertIsNone(answer["min_balance_micros"])
         self.assertIsNone(answer["soft_min_balance_micros"])

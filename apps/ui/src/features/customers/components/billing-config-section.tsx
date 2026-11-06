@@ -32,7 +32,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useHasRole } from "@/hooks/use-current-role";
-import { useIsPostpaid, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useHoldsAWallet, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { WALLET_POLICY_TITLE } from "@/lib/control-family";
 import { formatMicros } from "@/lib/format";
 
@@ -67,8 +67,10 @@ export function BillingConfigSection({ customerId }: { customerId: string }) {
 function BillingProfileCard({ customerId }: { customerId: string }) {
   const currency = useTenantCurrency().toUpperCase();
   const isAdmin = useHasRole("admin");
-  const postpaid = useIsPostpaid();
-  const query = useBillingProfile(customerId, !postpaid);
+  // The floors are tested against a wallet's balance, so they apply only
+  // where the billing mode keeps one (F-12); the profile is not read otherwise.
+  const walleted = useHoldsAWallet();
+  const query = useBillingProfile(customerId, walleted);
   const mutation = useSaveBillingProfile(customerId);
   const form = useForm<BillingProfileForm>({
     resolver: zodResolver(billingProfileSchema),
@@ -121,14 +123,14 @@ function BillingProfileCard({ customerId }: { customerId: string }) {
         <p className="text-[12px] text-text-secondary">{WALLET_POLICY_DESCRIPTION}</p>
       </CardHeader>
       <CardContent>
-        {postpaid ? (
+        {!walleted ? (
           <Alert>
             <Info />
             <AlertDescription>
-              Overdraft and wind-down floors aren't used under postpaid
-              billing — usage drawdown skips the wallet entirely, so there's
-              no balance floor to configure here. The customer spend pool
-              above is the control that applies instead.
+              Overdraft and wind-down floors aren't used under this
+              workspace's billing mode — it keeps no prepaid wallet, so
+              there's no balance floor to configure here. The customer spend
+              pool above is the control that applies instead.
             </AlertDescription>
           </Alert>
         ) : query.isLoading ? (
@@ -237,7 +239,7 @@ function BillingProfileCard({ customerId }: { customerId: string }) {
 function AutoTopUpCard({ customerId }: { customerId: string }) {
   const currency = useTenantCurrency().toUpperCase();
   const isAdmin = useHasRole("admin");
-  const postpaid = useIsPostpaid();
+  const walleted = useHoldsAWallet();
   const mutation = useConfigureAutoTopUp(customerId);
   const form = useForm<AutoTopUpForm>({
     resolver: zodResolver(autoTopUpSchema),
@@ -257,7 +259,7 @@ function AutoTopUpCard({ customerId }: { customerId: string }) {
     }
   });
 
-  if (postpaid) {
+  if (!walleted) {
     return (
       <Card>
         <CardHeader>
@@ -267,9 +269,8 @@ function AutoTopUpCard({ customerId }: { customerId: string }) {
           <Alert>
             <Info />
             <AlertDescription>
-              Auto top-up isn't used under postpaid billing — there's no
-              prepaid wallet to top up. Usage is invoiced through Stripe at
-              period close instead.
+              Auto top-up isn't used under this workspace's billing mode —
+              there's no prepaid wallet to top up.
             </AlertDescription>
           </Alert>
         </CardContent>

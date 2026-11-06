@@ -3,7 +3,9 @@
 //
 // Identifier discipline (the contract's sharpest edge):
 // - Path {customer_id} params are always the internal Customer UUID.
-// - POST /billing/credit and /billing/debit take the EXTERNAL id in the body.
+// - POST /billing/credit and /billing/debit take the platform Customer UUID in
+//   the body too (R10 Stage C5, F-13) — never the tenant's external id, which
+//   answers 404 there.
 // - Platform routes (/customers/{external_id}/...) key on the external id.
 // - GET /margin/business/{external_id} keys on a business customer's external id.
 
@@ -47,7 +49,7 @@ import {
   type StripeSubscriptionOut,
   type SubscribeIn,
   type SubscriptionInvoiceOut,
-  type TopUpCheckoutResponse,
+  type TopUpResult,
   type UsageInvoiceOut,
   type WalletTransactionOut,
   type WithdrawRequest,
@@ -258,10 +260,16 @@ export async function getBalance(customerId: string): Promise<BalanceResponse> {
   );
 }
 
+/**
+ * Start a top-up. Two answers (R10 Stage C5, F-5): 200 with a checkout to
+ * open where the tenant has a Stripe connector, or 202 — the request was
+ * recorded and handed to the tenant to settle out of band — where it has
+ * none. The caller branches on the body, never opens a window on a 202.
+ */
 export async function createTopUp(
   customerId: string,
   body: CreateTopUpRequest,
-): Promise<TopUpCheckoutResponse> {
+): Promise<TopUpResult> {
   return unwrap(
     await billingApi.POST("/customers/{customer_id}/top-up", {
       params: { path: { customer_id: customerId } },
@@ -282,12 +290,12 @@ export async function withdraw(
   );
 }
 
-/** NOTE: body.customer_id is the customer's EXTERNAL id, not the UUID. */
+/** `body.customer_id` is the platform Customer UUID (F-13), never the external id. */
 export async function creditWallet(body: CreditRequest): Promise<DebitCreditResponse> {
   return unwrap(await billingApi.POST("/credit", { body }));
 }
 
-/** NOTE: body.customer_id is the customer's EXTERNAL id, not the UUID. */
+/** `body.customer_id` is the platform Customer UUID (F-13), never the external id. */
 export async function debitWallet(body: DebitRequest): Promise<DebitCreditResponse> {
   return unwrap(await billingApi.POST("/debit", { body }));
 }

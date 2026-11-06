@@ -60,6 +60,14 @@ def reconcile_referral(referral, period_start, period_end):
     # ledger says how much of the period was answered that way.
     unpriced_events = 0
 
+    # A FLAT FEE IS PAID ONCE PER REFERRAL, NEVER ONCE PER METERED EVENT OR
+    # PER PERIOD (R10 Stage C5, A-3, RULED Q9) — the same invariant the
+    # real-time handler keeps with `flat_fee_paid`. Until C5 this loop added
+    # the fee for EVERY event of EVERY period that had spend. Now the fee lands
+    # on exactly one ledger row: the first period reconciled with spend, and
+    # on no other; a share scheme still sums its per-event rewards.
+    flat_fee = referral.snapshot_reward_type == REWARD_TYPE_FLAT_FEE
+
     for event in events:
         raw_billed = event.get("billed_cost_micros")
         cost = raw_billed if raw_billed is not None else 0
@@ -75,13 +83,20 @@ def reconcile_referral(referral, period_start, period_end):
         elif counts_as_unresolved(SUPPLIER_COST, event.get("costing_status")):
             unresolved_events += 1
 
-        reward = RewardService.calculate_reward(
-            referral, cost, raw_cost_micros=raw_cost
-        )
-        total_reward += reward
+        if not flat_fee:
+            total_reward += RewardService.calculate_reward(
+                referral, cost, raw_cost_micros=raw_cost
+            )
 
     if total_spend == 0:
         return None
+
+    if flat_fee:
+        fee_already_on_another_period = ReferralRewardLedger.objects.filter(
+            referral=referral, reward_micros__gt=0,
+        ).exclude(period_start=period_start).exists()
+        total_reward = 0 if fee_already_on_another_period else (
+            RewardService.flat_fee_micros(referral))
 
     # Apply cap
     if referral.snapshot_max_reward_micros is not None:
@@ -115,6 +130,11 @@ def reconcile_referral(referral, period_start, period_end):
             "calculation_method": calc_method,
         },
     )
+    if flat_fee and total_reward > 0 and not referral.flat_fee_paid:
+        # The ledger now carries the one fee: the real-time handler must not
+        # pay it again on the next posting (its own invariant, kept here).
+        Referral.objects.filter(id=referral.id).update(flat_fee_paid=True)
+        referral.flat_fee_paid = True
 
     return ledger_entry
 

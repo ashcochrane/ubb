@@ -34,7 +34,7 @@ import type {
   IntegrationReadiness,
 } from "./blueprint.ts";
 
-export const CATALOGUE_VERSION = 10;
+export const CATALOGUE_VERSION = 11;
 
 /**
  * The environment a generated file reads, and the instructions each needs.
@@ -131,9 +131,10 @@ export const PYTHON = {
   verifyFile: "verify_integration.py",
   environmentFile: ".env.example",
   callSiteDirectory: "call_sites",
-  /** The SDK major this target is written against (4 since the SDK's v4.0.0
-   *  cut, #190 — which is why the catalogue is version 10). */
-  sdkMajorVersion: 4,
+  /** The SDK major this target is written against (5 since the SDK's v5.0.0
+   *  cut, R10 billing readiness Stage C5 — which is why the catalogue is
+   *  version 11; 4 from the v4.0.0 cut at the cutover, #190, catalogue 10). */
+  sdkMajorVersion: 5,
   startTask: "start_task",
   unitOfWork: "unit_of_work",
   startSubtaskPrefix: "start_subtask",

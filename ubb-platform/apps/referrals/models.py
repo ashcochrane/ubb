@@ -65,9 +65,20 @@ class ReferralProgram(BaseModel):
         "tenants.Tenant", on_delete=models.CASCADE, related_name="referral_program"
     )
     reward_type = models.CharField(max_length=20, choices=REWARD_TYPE_CHOICES)
-    reward_value = models.DecimalField(
-        max_digits=20, decimal_places=6,
-        help_text="Micros for flat_fee, decimal percentage (e.g. 0.50) for share types",
+    # EXPLICIT UNITS, ONE PER SCHEME (R10 Stage C5, A-3, RULED Q9). Until C5
+    # one Decimal column meant micros for a flat fee and a FRACTION for a share
+    # — and the console sent 0–100 while the backend multiplied by it as a
+    # fraction, so "10 %" paid 1,000 %. A flat fee is an amount in micros; a
+    # share is in basis points (1..10000), applied by dividing by 10,000
+    # exactly; exactly one of the two is set, by the reward type.
+    reward_amount_micros = models.BigIntegerField(
+        null=True, blank=True,
+        help_text="The flat fee, in micros, paid once per referral (flat_fee only)",
+    )
+    reward_share_basis_points = models.IntegerField(
+        null=True, blank=True,
+        help_text="The share of revenue or profit, in basis points 1..10000 "
+                  "(revenue_share / profit_share only)",
     )
     attribution_window_days = models.IntegerField(
         default=30,
@@ -81,9 +92,10 @@ class ReferralProgram(BaseModel):
         null=True, blank=True,
         help_text="Optional cap on total earnings per referral",
     )
-    estimated_cost_percentage = models.DecimalField(
-        max_digits=5, decimal_places=4, null=True, blank=True,
-        help_text="Fallback for profit-share: tenant's cost as fraction of revenue (e.g. 0.20)",
+    estimated_cost_basis_points = models.IntegerField(
+        null=True, blank=True,
+        help_text="Fallback for profit-share: the tenant's cost as a share of "
+                  "revenue, in basis points 0..10000",
     )
     max_referrals_per_day = models.IntegerField(
         null=True, blank=True,
@@ -155,11 +167,16 @@ class Referral(BaseModel):
 
     # Snapshotted reward config from program at creation time
     snapshot_reward_type = models.CharField(max_length=20, choices=REWARD_TYPE_CHOICES)
-    snapshot_reward_value = models.DecimalField(max_digits=20, decimal_places=6)
+    # The programme's figures in their explicit unit each, copied as they
+    # stood (A-3): one of the two reward figures by scheme, in micros or basis
+    # points.
+    snapshot_reward_amount_micros = models.BigIntegerField(null=True, blank=True)
+    snapshot_reward_share_basis_points = models.IntegerField(null=True, blank=True)
     snapshot_max_reward_micros = models.BigIntegerField(null=True, blank=True)
-    snapshot_estimated_cost_percentage = models.DecimalField(
-        max_digits=5, decimal_places=4, null=True, blank=True
-    )
+    snapshot_estimated_cost_basis_points = models.IntegerField(null=True, blank=True)
+    #: A flat fee is paid ONCE per referral — by the real-time handler on the
+    #: first rewarded posting, and by the batch reconciler by the same
+    #: invariant (never once per metered event, never once per period).
     flat_fee_paid = models.BooleanField(default=False)
 
     class Meta:

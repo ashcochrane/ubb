@@ -22,7 +22,7 @@ class TestPayoutExport:
         referral = Referral.objects.create(
             tenant=self.tenant, referrer=referrer, referred_customer=referred_cust,
             referral_code_used=referrer.referral_code,
-            snapshot_reward_type="revenue_share", snapshot_reward_value=0.10,
+            snapshot_reward_type="revenue_share", snapshot_reward_share_basis_points=1000,
         )
         ReferralRewardAccumulator.objects.create(
             referral=referral, total_earned_micros=500_000, total_referred_spend_micros=5_000_000, rewarded_posting_count=10,
@@ -73,12 +73,12 @@ class TestPayoutExport:
         referral1 = Referral.objects.create(
             tenant=self.tenant, referrer=referrer1, referred_customer=referred_cust1,
             referral_code_used=referrer1.referral_code,
-            snapshot_reward_type="revenue_share", snapshot_reward_value=0.10,
+            snapshot_reward_type="revenue_share", snapshot_reward_share_basis_points=1000,
         )
         referral2 = Referral.objects.create(
             tenant=self.tenant, referrer=referrer2, referred_customer=referred_cust2,
             referral_code_used=referrer2.referral_code,
-            snapshot_reward_type="revenue_share", snapshot_reward_value=0.10,
+            snapshot_reward_type="revenue_share", snapshot_reward_share_basis_points=1000,
         )
 
         ReferralRewardAccumulator.objects.create(
@@ -111,7 +111,7 @@ class TestPayoutExport:
         other_referral = Referral.objects.create(
             tenant=other_tenant, referrer=other_referrer, referred_customer=other_referred,
             referral_code_used=other_referrer.referral_code,
-            snapshot_reward_type="revenue_share", snapshot_reward_value=0.10,
+            snapshot_reward_type="revenue_share", snapshot_reward_share_basis_points=1000,
         )
         ReferralRewardAccumulator.objects.create(
             referral=other_referral, total_earned_micros=999_000,

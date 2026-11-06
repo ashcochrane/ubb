@@ -15,7 +15,7 @@ from api.v1.schemas import (
     WithdrawRequest,
     RefundRequest,
     DebitRequest, CreditRequest, DebitCreditResponse,
-    TopUpCheckoutResponse, WithdrawResponse, RefundResponse,
+    TopUpAcceptedResponse, TopUpCheckoutResponse, WithdrawResponse, RefundResponse,
     PaginatedWalletTransactions,
     CreateGrantRequest, GrantOut, PaginatedGrants,
     CustomerSpendPoolIn, CustomerSpendPoolOut, CustomerSpendPoolStatusOut,
@@ -72,6 +72,13 @@ _product_check = ProductAccess("billing")
 @role_floor(READ)
 def get_balance(request, customer_id: UUIDIdentifier):
     _product_check(request)
+    # A WALLET-ONLY READ IS REFUSED WHERE NO WALLET IS (R10 Stage C5, F-12,
+    # RULED Q12): a tenant whose billing mode keeps no wallet (`external`,
+    # `postpaid`) has no balance to report, and answering zeros invented a
+    # wallet the Stage A door refuses every write to. The same door, asked
+    # first — `feature_not_enabled` (403) naming the mode — so the console
+    # hides the panel by the mode rather than probing for this.
+    refuse_a_wallet_operation_without_a_wallet(request.auth.tenant)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     # Pooled seats read the OWNER's wallet — that's the row every other
     # money-aware consumer (RiskService, the drawdown handler, grants) reads.
@@ -116,8 +123,10 @@ def debit(request, payload: DebitRequest):
     _product_check(request)
     from apps.billing.wallets import operations as wallet_ops
 
+    # The platform UUID only (R10 Stage C5, F-13, RULED Q11): no external-id
+    # lookup, no fallback — an external id in the body is a 404.
     customer = get_object_or_404(
-        Customer, external_id=payload.customer_id, tenant=request.auth.tenant
+        Customer, id=payload.customer_id, tenant=request.auth.tenant
     )
     # Route through the billing owner (Task 3): lock_for_billing lazily
     # mints a wallet on whatever id it's handed, so a pooled seat's own id
@@ -143,7 +152,7 @@ def debit(request, payload: DebitRequest):
             audit_record(
                 action=AUDIT_ACTION_WALLET_DEBITED, tenant_id=request.auth.tenant.id,
                 resource_type=AUDIT_RESOURCE_TYPE_WALLET, resource_id=customer.id,
-                metadata={"customer_id": payload.customer_id,
+                metadata={"customer_id": str(customer.id),  # the canonical UUID
                           "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
                           "movement_reason": payload.movement_reason,
@@ -176,8 +185,9 @@ def credit(request, payload: CreditRequest):
     _product_check(request)
     from apps.billing.wallets import operations as wallet_ops
 
+    # The platform UUID only (F-13) — see debit() above.
     customer = get_object_or_404(
-        Customer, external_id=payload.customer_id, tenant=request.auth.tenant
+        Customer, id=payload.customer_id, tenant=request.auth.tenant
     )
     # Route through the billing owner (Task 3) — see debit() above: crediting
     # the owner's wallet is what the caller already meant (one wallet in
@@ -200,7 +210,7 @@ def credit(request, payload: CreditRequest):
             audit_record(
                 action=AUDIT_ACTION_WALLET_CREDITED, tenant_id=request.auth.tenant.id,
                 resource_type=AUDIT_RESOURCE_TYPE_WALLET, resource_id=customer.id,
-                metadata={"customer_id": payload.customer_id,
+                metadata={"customer_id": str(customer.id),  # the canonical UUID
                           "owner_id": str(owner.id),
                           "amount_micros": payload.amount_micros,
                           "source": payload.source,
@@ -251,13 +261,16 @@ def configure_auto_top_up(request, customer_id: UUIDIdentifier, payload: Configu
 
 
 @billing_router.post("/customers/{customer_id}/top-up",
-                     response={200: TopUpCheckoutResponse, 409: ProblemOut})
+                     response={200: TopUpCheckoutResponse,
+                               202: TopUpAcceptedResponse, 409: ProblemOut})
 @role_floor(WRITE)
 @records_audit(AUDIT_ACTION_TOP_UP_REQUESTED)
 def create_top_up(request, customer_id: UUIDIdentifier, payload: CreateTopUpRequest):
     """Start a top-up. Replay-safe: idempotency_key is required and unique
     per customer — a retried call re-uses the original attempt and never
-    starts a second charge."""
+    starts a second charge. Answers 200 with a checkout URL where the tenant
+    has a Stripe connector, and 202 (`status: topup_requested`) where it has
+    none and the request was handed to the tenant."""
     _product_check(request)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     return start_top_up(request, customer, request.auth.tenant, payload,
@@ -396,13 +409,17 @@ def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
                 "conflict",
                 "this usage event has no resolved customer price, so there is "
                 "nothing to refund")
+        if result.refusal_code == wallet_ops.IDEMPOTENCY_CONFLICT:
+            # R10 Stage C5 (F-14, RULED Q14): a key already spent by a
+            # NON-refund transaction is a conflict with that transaction,
+            # never a replay of it as a refund.
+            raise Problem(
+                "conflict",
+                "idempotency_key already used by a non-refund transaction")
         raise Problem("not_found", "usage event not found")
-    if result.outcome == "replayed":
-        # Replay quirk (preserved at the seam): the stored row's reference —
-        # the usage event id — answers as the refund id.
-        return {"refund_id": result.reference_id,
-                "balance_micros": result.balance_micros}
-
+    # The SAME durable id on the first call and on every replay (F-14): the
+    # refund transaction's own id — a replay re-reads the row the key names,
+    # and a race-lost replay re-reads the row it lost to.
     return {"refund_id": result.transaction_id,
             "balance_micros": result.balance_micros}
 
@@ -412,6 +429,8 @@ def refund_usage(request, customer_id: UUIDIdentifier, payload: RefundRequest):
 @role_floor(READ)
 def get_transactions(request, customer_id: UUIDIdentifier, cursor: str = None, limit: int = 50):
     _product_check(request)
+    # A wallet-only read: refused where no wallet is (F-12) — see get_balance().
+    refuse_a_wallet_operation_without_a_wallet(request.auth.tenant)
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     # Pooled seats read the OWNER's ledger — same wallet get_balance() reads.
     owner = customer.resolve_billing_owner()
@@ -493,6 +512,8 @@ def list_grants(request, customer_id: UUID, status: str = None,
                 cursor: str = None, limit: int = 50):
     """List the billing owner's grant lots (newest first), optional status filter."""
     _product_check(request)
+    # A wallet-only read: refused where no wallet is (F-12) — see get_balance().
+    refuse_a_wallet_operation_without_a_wallet(request.auth.tenant)
     from apps.billing.wallets.models import CreditGrant, Wallet
 
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
@@ -769,7 +790,8 @@ def list_customer_usage_invoices(request, customer_id: UUID,
     from apps.billing.invoicing.models import CustomerUsageInvoice
     customer = get_object_or_404(Customer, id=customer_id, tenant=request.auth.tenant)
     return page(CustomerUsageInvoice.objects.filter(
-                    tenant=request.auth.tenant, customer=customer),
+                    tenant=request.auth.tenant, customer=customer)
+                .select_related("customer"),
                 cursor, limit, serialize=usage_invoice_out)
 
 

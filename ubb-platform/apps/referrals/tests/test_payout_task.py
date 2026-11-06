@@ -25,7 +25,7 @@ def _create_referral_with_accumulator(tenant, earned_micros, last_payout_micros=
         referred_customer=referred_cust,
         referral_code_used=referrer.referral_code,
         snapshot_reward_type="revenue_share",
-        snapshot_reward_value=Decimal("0.10"),
+        snapshot_reward_share_basis_points=1000,
     )
     acc = ReferralRewardAccumulator.objects.create(
         referral=referral,

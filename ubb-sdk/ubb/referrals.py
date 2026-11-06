@@ -47,23 +47,39 @@ class ReferralsClient:
 
     # ---- Program Management ----
 
-    def create_program(self, reward_type: str, reward_value: float,
+    def create_program(self, reward_type: str, *,
+                       reward_amount_micros: int | None = None,
+                       reward_share_basis_points: int | None = None,
                        attribution_window_days: int = 30,
                        reward_window_days: int | None = None,
                        max_reward_micros: int | None = None,
-                       estimated_cost_percentage: float | None = None) -> dict:
-        """Create a referral program via POST /api/v1/referrals/program."""
+                       estimated_cost_basis_points: int | None = None) -> dict:
+        """Create a referral program via POST /api/v1/referrals/program.
+
+        The reward's figure carries its unit (SDK 5.0.0): for ``flat_fee``
+        pass ``reward_amount_micros`` (the fee in micros, paid once per
+        referral); for ``revenue_share`` / ``profit_share`` pass
+        ``reward_share_basis_points`` (1..10000 — 1000 is 10 %, applied by
+        dividing by 10,000 exactly). Exactly one of the two, by the type; the
+        route refuses the other. ``estimated_cost_basis_points`` (0..10000) is
+        a profit share's fallback cost estimate as a share of revenue. The
+        old ``reward_value`` (micros or a FRACTION by type) and
+        ``estimated_cost_percentage`` are gone — never a fraction, never a
+        percentage."""
         body: dict = {
             "reward_type": reward_type,
-            "reward_value": reward_value,
             "attribution_window_days": attribution_window_days,
         }
+        if reward_amount_micros is not None:
+            body["reward_amount_micros"] = reward_amount_micros
+        if reward_share_basis_points is not None:
+            body["reward_share_basis_points"] = reward_share_basis_points
         if reward_window_days is not None:
             body["reward_window_days"] = reward_window_days
         if max_reward_micros is not None:
             body["max_reward_micros"] = max_reward_micros
-        if estimated_cost_percentage is not None:
-            body["estimated_cost_percentage"] = estimated_cost_percentage
+        if estimated_cost_basis_points is not None:
+            body["estimated_cost_basis_points"] = estimated_cost_basis_points
         r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_CREATE_PROGRAM, json=body)
         return r.json()
 
@@ -73,7 +89,15 @@ class ReferralsClient:
         return r.json()
 
     def update_program(self, **kwargs) -> dict:
-        """Update the active referral program via PATCH /api/v1/referrals/program."""
+        """Update the active referral program via PATCH /api/v1/referrals/program.
+
+        Pass only the fields to change, under the route's own names:
+        ``reward_type``, ``reward_amount_micros``, ``reward_share_basis_points``
+        (1..10000), ``attribution_window_days``, ``reward_window_days``,
+        ``max_reward_micros``, ``estimated_cost_basis_points`` (0..10000),
+        ``max_referrals_per_day``, ``min_customer_age_hours``. A type change
+        must carry the figure the new scheme uses (SDK 5.0.0 — see
+        ``create_program``)."""
         r = self._request(*ops.APPS_REFERRALS_API_ENDPOINTS_UPDATE_PROGRAM, json=kwargs)
         return r.json()
 

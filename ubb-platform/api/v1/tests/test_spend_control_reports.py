@@ -124,7 +124,7 @@ class SpendControlReportsTestBase(TestCase):
     def _credit(self, amount):
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
             response = self.http.post("/api/v1/billing/credit", data=json.dumps({
-                "customer_id": self.customer.external_id, "amount_micros": amount,
+                "customer_id": str(self.customer.id), "amount_micros": amount,
                 "source": "test", "reference": "r1",
                 "idempotency_key": f"c-{uuid.uuid4()}"}), **self._headers())
         self.assertEqual(response.status_code, 200, response.content)

@@ -11,20 +11,42 @@ class TestReferralsClient:
             mock_post.return_value = httpx.Response(200, json={
                 "id": "prog-1",
                 "reward_type": "revenue_share",
-                "reward_value": 0.10,
+                "reward_amount_micros": None,
+                "reward_share_basis_points": 1000,
                 "attribution_window_days": 30,
                 "reward_window_days": 365,
                 "max_reward_micros": None,
-                "estimated_cost_percentage": None,
+                "estimated_cost_basis_points": None,
                 "status": "active",
                 "created_at": "2026-02-06T00:00:00Z",
                 "updated_at": "2026-02-06T00:00:00Z",
             })
 
-            result = client.create_program("revenue_share", 0.10, reward_window_days=365)
+            # SDK 5.0.0 (R10 Stage C5, A-3): a share is in basis points, 1000
+            # = 10 %; the old `reward_value` fraction is gone.
+            result = client.create_program("revenue_share", reward_share_basis_points=1000,
+                                           reward_window_days=365)
             call_url = mock_post.call_args[0][0]
             assert "/referrals/program" in call_url
+            assert mock_post.call_args.kwargs["json"] == {
+                "reward_type": "revenue_share", "attribution_window_days": 30,
+                "reward_share_basis_points": 1000, "reward_window_days": 365}
             assert result["reward_type"] == "revenue_share"
+            assert result["reward_share_basis_points"] == 1000
+
+    def test_create_a_flat_fee_program_sends_its_amount_in_micros(self):
+        client = ReferralsClient(api_key="ubb_live_test", base_url="http://localhost:8001")
+
+        with patch.object(client._http, "post") as mock_post:
+            mock_post.return_value = httpx.Response(200, json={
+                "id": "prog-2", "reward_type": "flat_fee",
+                "reward_amount_micros": 5_000_000, "reward_share_basis_points": None,
+                "status": "active"})
+            client.create_program("flat_fee", reward_amount_micros=5_000_000,
+                                  estimated_cost_basis_points=2000)
+            assert mock_post.call_args.kwargs["json"] == {
+                "reward_type": "flat_fee", "attribution_window_days": 30,
+                "reward_amount_micros": 5_000_000, "estimated_cost_basis_points": 2000}
 
     def test_get_program(self):
         client = ReferralsClient(api_key="ubb_live_test", base_url="http://localhost:8001")
@@ -33,7 +55,8 @@ class TestReferralsClient:
             mock_get.return_value = httpx.Response(200, json={
                 "id": "prog-1",
                 "reward_type": "flat_fee",
-                "reward_value": 5000000,
+                "reward_amount_micros": 5000000,
+                "reward_share_basis_points": None,
                 "status": "active",
             })
 
@@ -48,12 +71,13 @@ class TestReferralsClient:
         with patch.object(client._http, "patch") as mock_patch:
             mock_patch.return_value = httpx.Response(200, json={
                 "id": "prog-1",
-                "reward_value": 0.20,
+                "reward_share_basis_points": 2000,
                 "status": "active",
             })
 
-            result = client.update_program(reward_value=0.20)
-            assert result["reward_value"] == 0.20
+            result = client.update_program(reward_share_basis_points=2000)
+            assert mock_patch.call_args.kwargs["json"] == {"reward_share_basis_points": 2000}
+            assert result["reward_share_basis_points"] == 2000
 
     def test_deactivate_program(self):
         client = ReferralsClient(api_key="ubb_live_test", base_url="http://localhost:8001")

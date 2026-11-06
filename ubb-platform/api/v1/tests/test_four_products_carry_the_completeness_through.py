@@ -721,8 +721,8 @@ class TestTheRewardLedgerSaysWhatItCouldNotRead:
         self.referred = Customer.objects.create(
             tenant=self.tenant, external_id="c1")
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="profit_share", reward_value="0.1",
-            estimated_cost_percentage="0.3", status="active")
+            tenant=self.tenant, reward_type="profit_share", reward_share_basis_points=1000,
+            estimated_cost_basis_points=3000, status="active")
         referrer = Referrer.objects.create(
             tenant=self.tenant, customer=self.referrer_customer,
             referral_code="CODE", referral_link_token="tok")
@@ -730,8 +730,8 @@ class TestTheRewardLedgerSaysWhatItCouldNotRead:
             tenant=self.tenant, referrer=referrer,
             referred_customer=self.referred, referral_code_used="CODE",
             status="active", snapshot_reward_type="profit_share",
-            snapshot_reward_value="0.1",
-            snapshot_estimated_cost_percentage="0.3")
+            snapshot_reward_share_basis_points=1000,
+            snapshot_estimated_cost_basis_points=3000)
         self.today = timezone.now().date()
 
     def _reconcile(self):

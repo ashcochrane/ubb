@@ -31,12 +31,12 @@ class _WalletRoutesTestCase(RailActivated, TestCase):
                                             products=["metering", "billing"],
                                             billing_mode="prepaid")  # the wallet holder
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="k")
-        customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
-        Wallet.objects.create(customer=customer, balance_micros=10_000_000)
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
+        Wallet.objects.create(customer=self.customer, balance_micros=10_000_000)
         self.keys = iter(range(1000))
 
     def _move(self, route, **fields):
-        body = {"customer_id": "c1", "amount_micros": 1_000_000,
+        body = {"customer_id": str(self.customer.id), "amount_micros": 1_000_000,
                 "reference": "adj", "idempotency_key": f"k-{next(self.keys)}",
                 **ROUTES[route], **fields}
         return self.http.post(f"/api/v1/billing/{route}", data=json.dumps(body),

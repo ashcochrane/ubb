@@ -2,8 +2,8 @@
   "schema_version": 1,
   "renderer_contract_version": 3,
   "target": "python_sdk",
-  "sdk_major_version": 4,
-  "configuration_fingerprint": "sha256:fe72ea5c85d769fae00a190d5dfc44ffb81630181c6192266481819e72a3c719",
+  "sdk_major_version": 5,
+  "configuration_fingerprint": "sha256:9d92eff665d3a562ec4a76d2e0d3d3c4108bf49eae322d34a4a05ebef3134d9e",
   "readiness": "complete",
   "calls": [
     {

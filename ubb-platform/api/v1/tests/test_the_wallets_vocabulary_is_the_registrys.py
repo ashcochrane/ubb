@@ -56,7 +56,8 @@ class TheLedgerSpeaksLowercaseTest(_AWalletTestCase):
                              ("debit", {"allow_negative": True})):
             answered = http.post(
                 f"/api/v1/billing/{route}", content_type="application/json",
-                data=json.dumps({"customer_id": "c1", "amount_micros": 1_000_000,
+                data=json.dumps({"customer_id": str(self.customer.id),
+                                 "amount_micros": 1_000_000,
                                  "reference": "r", "idempotency_key": route,
                                  **extra}), **auth)
             self.assertEqual(answered.status_code, 200, answered.content)

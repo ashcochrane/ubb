@@ -181,6 +181,18 @@ class UBBClientTest(unittest.TestCase):
         self.assertIsInstance(result, TopUpCheckoutResponse)
         self.assertEqual(result.checkout_url, "https://checkout.example.com/abc")
 
+    def test_create_top_up_passes_the_typed_acceptance_through(self):
+        """SDK 5.0.0 (R10 Stage C5, F-5): the facade answers whichever typed
+        result the billing client did — a 202 acceptance is not a checkout."""
+        from ubb._core.models.top_up_accepted_response import TopUpAcceptedResponse
+        expected = TopUpAcceptedResponse(status="topup_requested", message="sent")
+        self.client.billing.create_top_up = MagicMock(return_value=expected)
+        result = self.client.create_top_up(customer_id="c1", amount_micros=50_000,
+                                           success_url="http://ok", cancel_url="http://no",
+                                           idempotency_key="tp_k")
+        self.assertIsInstance(result, TopUpAcceptedResponse)
+        self.assertEqual(result.message, "sent")
+
     # --- configure_auto_top_up (delegates to billing) ---
 
     def test_configure_auto_top_up(self):
@@ -337,6 +349,36 @@ class TenantConfigClientTest(unittest.TestCase):
         self.client.metering._request.assert_called_once_with(
             "patch", "/api/v1/tenant/config", json={},
         )
+
+    def test_the_seven_fields_the_route_accepts_are_sent_only_when_given(self):
+        """SDK 5.0.0 (R10 Stage C5, O-5): `update_tenant_config` accepts every
+        field `TenantConfigIn` does. The seven that were missing take the
+        generated `UNSET` sentinel, so "leave it out" and "set it to null" are
+        two different calls — the route reads an explicit null as "clear"."""
+        from ubb import UNSET
+        mock_resp = MagicMock(status_code=200, json=lambda: self.CONFIG_FIXTURE)
+        self.client.metering._request = MagicMock(return_value=mock_resp)
+        self.client.update_tenant_config(
+            enforcement_mode="enforcing", live_counter_maintenance_enabled=True,
+            min_balance_micros=-5_000_000, soft_min_balance_micros=None,
+            default_task_cogs_ceiling_micros=1_000_000,
+            default_subtask_cogs_ceiling_micros=None,
+            max_task_starts_per_minute=120)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config",
+            json={"enforcement_mode": "enforcing",
+                  "live_counter_maintenance_enabled": True,
+                  "min_balance_micros": -5_000_000,
+                  "soft_min_balance_micros": None,
+                  "default_task_cogs_ceiling_micros": 1_000_000,
+                  "default_subtask_cogs_ceiling_micros": None,
+                  "max_task_starts_per_minute": 120})
+        # Left UNSET (the default), none of the seven reaches the wire.
+        self.client.metering._request.reset_mock()
+        self.client.update_tenant_config(billing_mode="postpaid",
+                                         min_balance_micros=UNSET)
+        self.client.metering._request.assert_called_once_with(
+            "patch", "/api/v1/tenant/config", json={"billing_mode": "postpaid"})
 
 
 class ConnectClientTest(unittest.TestCase):

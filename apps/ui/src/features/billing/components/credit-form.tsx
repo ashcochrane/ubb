@@ -57,7 +57,7 @@ export function CreditForm({ isAdmin }: { isAdmin: boolean }) {
       {
         onSuccess: (result) => {
           confirm.onSuccessReset();
-          confirm.setLastResult({ ...result, external_id: v.customer_id.trim() });
+          confirm.setLastResult({ ...result, customer_id: v.customer_id.trim() });
           toastSuccess(
             `Credited ${formatMicros(currencyToMicros(v.amount), currency)}`,
             `New balance: ${formatMicros(result.new_balance_micros, currency)}`,

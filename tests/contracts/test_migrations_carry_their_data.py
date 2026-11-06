@@ -106,7 +106,19 @@ FRESH_INITIAL_SET = frozenset({
 #: move and `ck_usage_invoice_skip_reason_known` is rebuilt over seven values
 #: (a constraint removed and re-added under its own name; no column, no data
 #: step, nothing dropped).
-MIGRATIONS_SINCE_THE_CUTOVER = 4
+#: Five: R10 Stage C5 (A-3, RULED Q9) —
+#: `referrals/0002_reward_units_in_micros_and_basis_points`: a referral
+#: reward's figure carries its unit. Three explicit integer columns are added
+#: on the programme (a flat fee in micros, a share in basis points, the
+#: estimated cost in basis points) and the matching three snapshots on the
+#: referral; the two Decimal columns on each (`reward_value`, which meant
+#: micros or a fraction by reward type, and `estimated_cost_percentage`) are
+#: DROPPED with their reasons stated in `DROPS` and declared `NOT_A_RENAME`
+#: (a unit change, which no RenameField could carry). No data step, for two
+#: stated reasons: no production row exists before launch, and UBB's
+#: migrations admit no Python data step since the cutover (ADR-0026 §6's
+#: structural pin, `test_the_audit_catalogue_is_the_registrys.py`).
+MIGRATIONS_SINCE_THE_CUTOVER = 5
 
 NUMBERED = re.compile(r"^\d{4}_\w+\.py$")
 DROP_OPS = {"RemoveField", "DeleteModel"}

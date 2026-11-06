@@ -93,9 +93,11 @@ class AuditFeedTest(TestCase):
         customer = Customer.objects.create(tenant=self.tenant, external_id="c1")
         widget = create_widget_token(
             self.tenant.widget_secret, str(customer.id), str(self.tenant.id))
-        # Sanity: the widget token is otherwise valid on the /me surface.
+        # Sanity: the widget token is otherwise valid on the /me surface. The
+        # probe is a non-wallet route: `/me/balance` is a wallet-only read,
+        # refused on this default-mode tenant since R10 Stage C5 (F-12).
         self.assertEqual(
-            self.http.get("/api/v1/me/balance", **self._hdr(widget)).status_code,
+            self.http.get("/api/v1/me/invoices", **self._hdr(widget)).status_code,
             200)
         # But the feed is a tenant-principal route — refused (401).
         self.assertEqual(self._get(widget).status_code, 401)

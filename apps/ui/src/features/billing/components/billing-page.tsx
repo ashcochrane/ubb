@@ -1,6 +1,6 @@
 import { PageHeader } from "@/components/shared/page-header";
 import { ProductGate } from "@/components/shared/product-gate";
-import { useTenantConfig } from "@/hooks/use-tenant-config";
+import { holdsAWallet, useTenantConfig } from "@/hooks/use-tenant-config";
 import type { DateRange } from "@/lib/date-range";
 
 import { AdjustmentsCard } from "./adjustments-card";
@@ -29,7 +29,10 @@ export function BillingPage({ search, onSearchChange }: BillingPageProps) {
         <CustomerSpendPoolCard />
         <UsageInvoicesCard />
         {config?.billing_mode === "postpaid" && <PostpaidConfigCard />}
-        <AdjustmentsCard />
+        {/* Manual credit and debit are wallet-only writes (R10 Stage C5, F-12):
+            rendered only where the workspace's billing mode keeps a wallet,
+            never probed for the 403 the route answers off the wallet lane. */}
+        {holdsAWallet(config) && <AdjustmentsCard />}
       </div>
     </ProductGate>
   );

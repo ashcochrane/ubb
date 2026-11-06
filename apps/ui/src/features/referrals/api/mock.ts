@@ -41,6 +41,37 @@ function notFound(title: string, detail?: string): ApiProblem {
 
 // --- Program -----------------------------------------------------------------
 
+/**
+ * The route's rule for the two reward figures (R10 Stage C5, A-3): a flat
+ * fee carries `reward_amount_micros` and no share; a share carries
+ * `reward_share_basis_points` (1..10000) and no flat fee. The one the type
+ * does not take is refused, not ignored — so a form that sent both would
+ * fail here as it would against the server.
+ */
+function rewardFiguresOrRefuse(
+  rewardType: string,
+  figures: {
+    reward_amount_micros?: number | null;
+    reward_share_basis_points?: number | null;
+  },
+): Pick<ProgramOut, "reward_amount_micros" | "reward_share_basis_points"> {
+  const amount = figures.reward_amount_micros ?? null;
+  const share = figures.reward_share_basis_points ?? null;
+  const refuse = (detail: string) =>
+    new ApiProblem({ status: 422, code: "validation_error", title: "Invalid reward", detail });
+  if (rewardType === "flat_fee") {
+    if (amount === null) throw refuse("reward_amount_micros is required for flat_fee.");
+    if (share !== null) throw refuse("reward_share_basis_points must be absent for flat_fee.");
+    return { reward_amount_micros: amount, reward_share_basis_points: null };
+  }
+  if (share === null) throw refuse("reward_share_basis_points is required for a share.");
+  if (amount !== null) throw refuse("reward_amount_micros must be absent for a share.");
+  if (!Number.isInteger(share) || share < 1 || share > 10_000) {
+    throw refuse("reward_share_basis_points must be between 1 and 10000.");
+  }
+  return { reward_amount_micros: null, reward_share_basis_points: share };
+}
+
 export async function getProgram(): Promise<ProgramOut> {
   await mockDelay();
   if (!mockState.program) {
@@ -63,11 +94,13 @@ export async function createProgram(body: ProgramCreateRequest): Promise<Program
   mockState.program = {
     id: "prog-new001",
     reward_type: body.reward_type,
-    reward_value: body.reward_value,
+    // Exactly one reward figure, by the type (A-3) — the route refuses the
+    // other, and the mock mirrors that rule.
+    ...rewardFiguresOrRefuse(body.reward_type, body),
     attribution_window_days: body.attribution_window_days,
     reward_window_days: body.reward_window_days ?? null,
     max_reward_micros: body.max_reward_micros ?? null,
-    estimated_cost_percentage: body.estimated_cost_percentage ?? null,
+    estimated_cost_basis_points: body.estimated_cost_basis_points ?? null,
     max_referrals_per_day: body.max_referrals_per_day ?? null,
     min_customer_age_hours: body.min_customer_age_hours ?? null,
     status: "active",
@@ -82,14 +115,22 @@ export async function updateProgram(body: ProgramUpdateRequest): Promise<Program
   const program = mockState.program;
   if (!program) throw notFound("No referral program");
   if (body.reward_type != null) program.reward_type = body.reward_type;
-  if (body.reward_value != null) program.reward_value = body.reward_value;
+  if (
+    body.reward_type != null ||
+    body.reward_amount_micros != null ||
+    body.reward_share_basis_points != null
+  ) {
+    // A reward restated is restated whole: the one figure the (possibly new)
+    // type names, the other cleared — never both standing at once.
+    Object.assign(program, rewardFiguresOrRefuse(program.reward_type, body));
+  }
   if (body.attribution_window_days != null) {
     program.attribution_window_days = body.attribution_window_days;
   }
   if (body.reward_window_days !== undefined) program.reward_window_days = body.reward_window_days;
   if (body.max_reward_micros !== undefined) program.max_reward_micros = body.max_reward_micros;
-  if (body.estimated_cost_percentage !== undefined) {
-    program.estimated_cost_percentage = body.estimated_cost_percentage;
+  if (body.estimated_cost_basis_points !== undefined) {
+    program.estimated_cost_basis_points = body.estimated_cost_basis_points;
   }
   if (body.max_referrals_per_day !== undefined) {
     program.max_referrals_per_day = body.max_referrals_per_day;

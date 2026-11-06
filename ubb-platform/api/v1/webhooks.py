@@ -37,6 +37,10 @@ from apps.billing.connectors.stripe.invoice_routing import (  # noqa: F401
 )
 from core.vocabulary import (
     TENANT_INVOICE_STATUS_PAID,
+    USAGE_INVOICE_PAYMENT_STATUS_OPEN,
+    USAGE_INVOICE_PAYMENT_STATUS_PAID,
+    USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE,
+    USAGE_INVOICE_PAYMENT_STATUS_VOID,
 )
 
 logger = logging.getLogger(__name__)
@@ -257,7 +261,7 @@ def _apply_usage_invoice_status(row_id, inv, new_status):
 
 def handle_invoice_finalized(event):
     """invoice.finalized — mark the customer invoice open + store hosted url/pdf."""
-    _reconcile_customer_invoice(event, new_status="open")
+    _reconcile_customer_invoice(event, new_status=USAGE_INVOICE_PAYMENT_STATUS_OPEN)
 
 
 def handle_invoice_voided(event):
@@ -265,12 +269,12 @@ def handle_invoice_voided(event):
     carried a payment-failure stamp is a resolved AR condition (R10 Stage C2,
     PLAN §7 item 26 — not economically paid): its stamp is settled and billing
     re-decides the owner's `payment_failed` suspension, exactly as on paid."""
-    _reconcile_customer_invoice(event, new_status="void")
+    _reconcile_customer_invoice(event, new_status=USAGE_INVOICE_PAYMENT_STATUS_VOID)
 
 
 def handle_invoice_uncollectible(event):
     """invoice.marked_uncollectible — mark the customer invoice uncollectible."""
-    _reconcile_customer_invoice(event, new_status="uncollectible")
+    _reconcile_customer_invoice(event, new_status=USAGE_INVOICE_PAYMENT_STATUS_UNCOLLECTIBLE)
 
 
 def handle_invoice_paid(event):
@@ -288,7 +292,7 @@ def handle_invoice_paid(event):
     # events; it targets CustomerUsageInvoice / SubscriptionInvoice — a different
     # table from the top-up Invoice / TenantInvoice reconcile below, so both run.
     if connected_account:
-        _reconcile_customer_invoice(event, new_status="paid")
+        _reconcile_customer_invoice(event, new_status=USAGE_INVOICE_PAYMENT_STATUS_PAID)
 
     if connected_account:
         # End-user invoice on tenant's Connected Account

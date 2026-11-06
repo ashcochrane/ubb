@@ -23,7 +23,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
-import { formatDate, formatMicros, formatPercent } from "@/lib/format";
+import { formatDate, formatMicros } from "@/lib/format";
 import { referralProgramStatusLabel } from "../lib/referral-vocabulary";
 import { toastSuccess } from "@/lib/mutations";
 
@@ -37,6 +37,7 @@ import {
 import type { ProgramOut } from "../api/types";
 import { looseDate } from "../lib/dates";
 import {
+  basisPointsPercentLabel,
   programToFormValues,
   rewardSummary,
   toProgramCreateRequest,
@@ -46,7 +47,7 @@ import { ProgramForm } from "./program-form";
 
 function programItems(program: ProgramOut, currency: string): DetailItem[] {
   return [
-    { label: "Reward", value: rewardSummary(program.reward_type, program.reward_value, currency) },
+    { label: "Reward", value: rewardSummary(program, currency) },
     { label: "Attribution window", value: `${program.attribution_window_days} days` },
     {
       label: "Reward window",
@@ -62,9 +63,9 @@ function programItems(program: ProgramOut, currency: string): DetailItem[] {
     {
       label: "Estimated cost",
       value:
-        program.estimated_cost_percentage === null
+        program.estimated_cost_basis_points === null
           ? "—"
-          : `${formatPercent(program.estimated_cost_percentage)} of referred spend`,
+          : `${basisPointsPercentLabel(program.estimated_cost_basis_points)} of referred spend`,
     },
     {
       label: "Daily referral limit",

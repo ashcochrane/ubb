@@ -225,3 +225,58 @@ billing_period_status:
       path: openapi/v1.json
     - surface: console
       path: apps/ui/src/features/settings/lib/tenant-billing.ts
+
+usage_invoice_payment_status:
+  kind: closed
+  # DECLARED IN R10 Stage C5 (F-15, RULED Q13; PLAN §7 item 44 FINAL,
+  # 2026-11-07). The column had no `choices` and the three public usage-invoice
+  # schemas published it three ways, one of them as a free string. The facts
+  # are Stripe's own invoice-status graph as UBB applies it
+  # (`connectors/stripe/invoice_routing.py`), and the published shape is now the
+  # one shared base every usage-invoice route serialises.
+  summary: >-
+    Where the Stripe invoice behind a pushed usage invoice stands as a
+    receivable: open while it awaits payment, paid, void, or uncollectible —
+    exactly Stripe's four, as UBB's accounts-receivable transition table
+    admits them. NULLABLE on the invoice: null means the invoice is not yet
+    collectible — no Stripe invoice has been issued for it, or none has
+    reported a status yet — and null keeps that meaning; there is no fifth
+    value standing in for it.
+  values:
+    - open
+    - paid
+    - void
+    - uncollectible
+  label_key_prefix: usage_invoice_payment_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/apps/billing/connectors/stripe/invoice_routing.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/lib/usage-invoice.ts
+
+top_up_request_status:
+  kind: closed
+  # DECLARED IN R10 Stage C5 (F-5). The no-connector twin of both top-up routes
+  # answered 202 with this status, and neither route declared it: the one
+  # published value was spelled as a literal in `api/v1/topups.py` and read by
+  # nobody, because the console always opened a checkout URL. A one-value
+  # closed set is still a value set (the owner's review of #620).
+  summary: >-
+    What a top-up route answers, with 202, when the tenant has no Stripe
+    connector to open a checkout for: the request was recorded and handed to
+    the tenant to settle out of band (`top_up.requested` is emitted), and a
+    replay of the same idempotency key answers the same way without a second
+    event. The one value a 202 carries today; a 200 carries a checkout URL and
+    no status.
+  values:
+    - topup_requested
+  label_key_prefix: top_up_request_status
+  consumers:
+    - surface: backend
+      path: ubb-platform/api/v1/topups.py
+    - surface: openapi
+      path: openapi/v1.json
+    - surface: console
+      path: apps/ui/src/features/customers/components/money-dialogs.tsx
