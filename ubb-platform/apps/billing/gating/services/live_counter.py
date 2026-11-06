@@ -719,9 +719,9 @@ class LiveCounter:
         Two clears ask it, the two whose own resolved condition says nothing
         about money: a manual hold's release (§7 item 41, Ruling B) and the
         payment-failure clear (§7 item 43). The money recoveries (``resume``,
-        the credit hook, the hourly pass) run only once the money condition
-        itself cleared, and hand over to a standing payment failure instead
-        (RULED Q4)."""
+        the credit hook, the gating floor pass in ``apps/billing/gating/
+        tasks.py``) run only once the money condition itself cleared, and hand
+        over to a standing payment failure instead (RULED Q4)."""
         surviving = (StopSignalService.open_stop_lines(owner.id)
                      if enforcing(tenant) else [])
         if surviving:
@@ -760,17 +760,19 @@ class LiveCounter:
         ⚠ ``check_money_causes`` — WHEN ONE CONDITION RESOLVES, THE CUSTOMER
         BECOMES ACTIVE ONLY IF NO OTHER SYSTEM CONDITION STILL STANDS (PLAN §7
         items 41 and 43). A system condition can arise while a customer is
-        already suspended with nothing recorded — every suspend path suspends
-        only an ``active`` owner (the drawdown's level test, a stop line's
-        fold, a lost dispute's claw-back, a payment failure). So the two
+        already suspended with nothing recorded on its row — every suspend
+        path suspends only an ``active`` owner (the drawdown's level test, a
+        stop line's fold, a lost dispute's claw-back, a payment failure); a
+        line opened then lives in the signal ledger, which is what is read
+        here. So the two
         clears whose own resolved condition says nothing about money — a
         manual hold's release (Ruling B) and the payment-failure clear (item
         43) — also ask, under this same lock and AFTER the payment-failure
         rule, ``_standing_money_cause``: a stop line still open
         (``enforcing``), or a wallet past its floor. One that stands takes
         over the single reason — the reason changes, the status does not —
-        and its own recovery (``resume``, the credit hook, the hourly pass)
-        lifts it. Nothing is announced for such a hand-over, here or for a
+        and its own recovery (``resume``, the credit hook, the gating floor
+        pass) lifts it. Nothing is announced for such a hand-over, here or for a
         payment failure: the customer entered no new state (no
         ``customer.reactivated``, no ``customer.suspended``, no roster change).
         The payment failure is asked first, so while one is unresolved the
