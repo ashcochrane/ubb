@@ -135,7 +135,10 @@ Only a suspension whose condition has resolved auto-clears — the durable balan
 the pool's line lifted, every failed invoice paid or voided — through the one reactivation site
 (`LiveCounter._maybe_unsuspend`), which emits `customer.reactivated` exactly once on the real
 `suspended → active` transition; a top-up never silently un-suspends a manual hold, and
-a paid or voided invoice never clears a money suspension (R10 Stage C2). Status, reason and
+a paid or voided invoice never clears a money suspension (R10 Stage C2). There is one stored
+reason, and when its condition resolves while another system condition still stands, that
+condition takes over the reason — the customer stays `suspended` and nothing is announced — so the
+customer becomes `active` only when nothing stands (R10 Stage C4). Status, reason and
 `deleted_at` are changed only by the workflows that own their side effects — never as raw fields in
 the Django admin, where they are read-only (R10 Stage C4). Closing a customer is not a supported v1
 transition.

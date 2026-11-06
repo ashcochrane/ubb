@@ -16,9 +16,14 @@ Covered end-to-end:
   * event.account mismatch -> no write
   * /me visibility: billing owner sees the reconciled rows (w/ refreshed url);
     a pooled seat sees nothing (consolidated bill belongs to the business)
+  * a payment recovery is a cause hand-over (R10 Stage C4, PLAN §7 item 43):
+    a money cause still standing when the last failure resolves takes over
 """
+import uuid
+from dataclasses import asdict
 from types import SimpleNamespace
 from datetime import date
+from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, Client
 from django.utils import timezone
@@ -1104,3 +1109,361 @@ class TestAnInvoiceKeepsItsHistoricalBillingOwner(TestCase):
         self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
         self._deliver(handle_invoice_paid, "in_usage_seat", None)
         self.assertEqual(self._standing(seat), ("active", ""))
+
+
+class TestAPaymentRecoveryHandsOverToAStandingMoneyCause(TestCase):
+    """R10 Stage C4, PLAN §7 item 43 (owner/consultant ruling 2026-11-06 on C4
+    reading 13, option (b)): a payment recovery is a cause HAND-OVER, not an
+    unconditional activation.
+
+    A money condition can arise while a customer is suspended for a payment
+    failure: every suspend path suspends only an ACTIVE owner, so the
+    drawdown's level test, a stop line's fold and a lost dispute's claw-back
+    record nothing on it. Before the repair, the last failed invoice resolving
+    made such a customer `active` with the money condition still standing —
+    and under `enforcing`, with its stop line already open, nothing ever
+    suspended it again. Now, under the same Customer lock and after C2's own
+    checks (the reason is `payment_failed`; no qualifying failure of the
+    historical owner remains), the one money question is asked: a cause that
+    stands takes over the single reason, the status stays `suspended`, nothing
+    is announced and no roster changes, and that cause's own recovery brings
+    the customer back later with the one real `customer.reactivated`.
+
+    Every customer here is an ALLOCATED seat — its own billing owner, holding
+    its own wallet — so a roster change would be seen, and every invoice
+    failure and settlement goes through the real handlers. None but the last
+    test involves a manual hold: this is C2's recovery, not a hold's.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        from apps.platform.customers import hooks
+        from apps.platform.tenants.tests._rails import activate_the_rail
+        activate_the_rail()          # a money mode needs its payment rail (G27)
+        cache.clear()
+        self.periods = iter(range(1, 12))
+        # The roster's listeners, recorded for this test only.
+        self.notified = []
+        listeners = list(hooks._listeners)
+        hooks._listeners[:] = [self.notified.append]
+        self.addCleanup(lambda: hooks._listeners.__setitem__(slice(None), listeners))
+
+    # -- fixtures ------------------------------------------------------------
+
+    def _prepaid(self, mode):
+        return Tenant.objects.create(
+            name=f"Hand-over {mode}", products=["metering", "billing"],
+            billing_mode="prepaid", enforcement_mode=mode,
+            stripe_connected_account_id=f"acct_handover_{mode}")
+
+    def _seat(self, tenant, key, balance_micros):
+        """An allocated business and its seat — the seat its own billing owner,
+        with its own wallet."""
+        from apps.billing.wallets.models import Wallet
+        biz = Customer.objects.create(
+            tenant=tenant, external_id=f"biz-{key}", account_type="business",
+            billing_topology="allocated")
+        seat = Customer.objects.create(
+            tenant=tenant, external_id=f"seat-{key}", account_type="seat", parent=biz)
+        Wallet.objects.create(customer=seat, balance_micros=balance_micros)
+        return biz, seat
+
+    def _usage_row(self, tenant, owner, stripe_invoice_id):
+        month = next(self.periods)
+        return CustomerUsageInvoice.objects.create(
+            tenant=tenant, customer=owner,
+            period_start=date(2026, month, 1), period_end=date(2026, month + 1, 1),
+            total_billed_micros=1_000_000, status="pushed",
+            stripe_invoice_id=stripe_invoice_id)
+
+    def _subscription_row(self, tenant, owner, stripe_invoice_id, sub_id):
+        now = timezone.now()
+        sub = a_mirrored_subscription(
+            tenant=tenant, customer=owner, stripe_subscription_id=sub_id,
+            stripe_product_name="Pro", status="active", amount_micros=49_000_000,
+            currency="usd", interval="month", current_period_start=now,
+            current_period_end=now, last_synced_at=now)
+        return SubscriptionInvoice.objects.create(
+            tenant=tenant, customer=owner, billing_owner=owner, stripe_subscription=sub,
+            stripe_invoice_id=stripe_invoice_id, amount_paid_micros=0,
+            currency="usd", status="open")
+
+    def _fail(self, tenant, obj):
+        handle_invoice_payment_failed(_event(tenant.stripe_connected_account_id, obj=obj))
+
+    def _pay(self, tenant, obj):
+        handle_invoice_paid(_event(tenant.stripe_connected_account_id, obj=obj))
+
+    def _billed_while_suspended(self, tenant, customer, usage_micros, key):
+        """Usage recorded while the customer was still active, billed after its
+        suspension: the outbox handler draws the wallet down asynchronously."""
+        from apps.billing.handlers import handle_usage_recorded_billing
+        from apps.metering.usage.tests._helpers import a_posting
+        from apps.platform.events.schemas import UsageRecorded
+        posting = a_posting(tenant=tenant, customer=customer, idempotency_key=key,
+                            provider_cost_micros=usage_micros,
+                            billed_cost_micros=usage_micros)
+        handle_usage_recorded_billing(str(uuid.uuid4()), asdict(UsageRecorded(
+            pricing_status_reason=None, tenant_id=tenant.id, customer_id=customer.id,
+            event_id=str(posting.id), cost_micros=usage_micros)))
+
+    def _topped_up_then_lost_dispute(self, tenant, customer, key, *, top_up, disputed_minor):
+        """A paid top-up, then its dispute lost: the real claw-back handler."""
+        from apps.billing.connectors.stripe.webhooks import handle_charge_dispute_closed
+        from apps.billing.topups.models import TopUpAttempt
+        from apps.billing.wallets import operations as wallet_ops
+        from core.vocabulary import GRANT_SOURCE_CHECKOUT
+        attempt = TopUpAttempt.objects.create(
+            customer=customer, billing_owner_id=customer.id, amount_micros=top_up,
+            trigger="manual", status="succeeded", stripe_charge_id=f"ch_{key}")
+        wallet_ops.credit_top_up(
+            customer_id=customer.id, tenant=tenant, amount_micros=top_up,
+            idempotency_key=f"topup:cs_{key}", source=GRANT_SOURCE_CHECKOUT,
+            source_reference=str(attempt.id), description="Stripe top-up")
+        lost = MagicMock()
+        lost.data.object.id = f"dp_{key}"
+        lost.data.object.charge = f"ch_{key}"
+        lost.data.object.status = "lost"
+        lost.data.object.amount = disputed_minor
+        lost.data.object.currency = "usd"
+        lost.account = tenant.stripe_connected_account_id
+        handle_charge_dispute_closed(lost)
+
+    def _credit(self, tenant, customer, amount_micros, key):
+        """A credit as it commits in life: the credit hook runs on commit."""
+        from apps.billing.wallets import operations as wallet_ops
+        with patch("apps.platform.events.tasks.process_single_event"), \
+                self.captureOnCommitCallbacks(execute=True):
+            wallet_ops.credit(customer_id=customer.id, tenant=tenant,
+                              amount_micros=amount_micros, idempotency_key=key)
+
+    def _hourly_pass(self):
+        from apps.billing.invoicing.tasks import reconcile_invoice_payment_status
+        reconcile_invoice_payment_status()
+
+    def _standing(self, customer):
+        customer.refresh_from_db()
+        return customer.status, customer.suspension_reason
+
+    def _events(self, customer, kind):
+        return list(OutboxEvent.objects.filter(
+            event_type=kind, payload__customer_id=str(customer.id)).values_list(
+                "payload", flat=True))
+
+    def _stopped(self, customer):
+        return OutboxEvent.objects.filter(
+            event_type="customer.stopped", payload__owner_id=str(customer.id)).count()
+
+    def _saved_states(self, customer):
+        """Every ``(status, suspension_reason)`` the customer's row is SAVED with
+        from here on (``post_save``: the reactivation site writes through
+        ``save()``) — so a write of ``active`` undone in the same transaction
+        would still show."""
+        from django.db.models.signals import post_save
+        states = []
+
+        def record(sender, instance, **kwargs):
+            if instance.pk == customer.pk:
+                states.append((instance.status, instance.suspension_reason))
+
+        post_save.connect(record, sender=Customer, weak=False)
+        self.addCleanup(post_save.disconnect, record, sender=Customer)
+        return states
+
+    # -- 1. nothing else stands: C2's reactivation, unchanged ------------------
+
+    def test_a_payment_failure_alone_reactivates_once_and_notifies_the_roster_once(self):
+        tenant = self._prepaid("off")
+        biz, seat = self._seat(tenant, "only", 5_000_000)
+        self._usage_row(tenant, seat, "in_only")
+        self._fail(tenant, _usage_obj("in_only"))
+        self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
+        self.notified.clear()
+        self._pay(tenant, _usage_obj("in_only"))
+        self.assertEqual(self._standing(seat), ("active", ""))
+        [reactivated] = self._events(seat, "customer.reactivated")
+        self.assertEqual(reactivated["reason_code"], reasons.PAYMENT_FAILED)
+        self.assertEqual([b.id for b in self.notified], [biz.id])
+
+    # -- 2, 3, 4, 7. a money cause stands: the hand-over, with no hold ---------
+
+    def test_without_a_hold_a_floor_crossed_under_off_takes_over_when_the_invoice_is_paid(self):
+        tenant = self._prepaid("off")
+        biz, seat = self._seat(tenant, "off", 5_000_000)
+        self._usage_row(tenant, seat, "in_off")
+        self._fail(tenant, _usage_obj("in_off"))
+        self._billed_while_suspended(tenant, seat, 8_000_000, "u_off")     # 5M - 8M = -3M
+        # The level test suspends only an active owner: nothing recorded it.
+        self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
+        self.notified.clear()
+        saved = self._saved_states(seat)
+
+        self._pay(tenant, _usage_obj("in_off"))
+        self.assertEqual(self._standing(seat), ("suspended", reasons.HARD_FLOOR))
+        self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])        # never active
+        self.assertEqual(self._events(seat, "customer.reactivated"), [])
+        self.assertEqual(len(self._events(seat, "customer.suspended")), 1)  # the failure's
+        self.assertEqual(self.notified, [])
+        # The hourly AR pass re-asks only `payment_failed` owners: it leaves it.
+        self._hourly_pass()
+        self.assertEqual(self._standing(seat), ("suspended", reasons.HARD_FLOOR))
+
+        # The floor's own recovery: a credit back over the floor, once.
+        self._credit(tenant, seat, 10_000_000, "cr_off")
+        self.assertEqual(self._standing(seat), ("active", ""))
+        [reactivated] = self._events(seat, "customer.reactivated")
+        self.assertEqual(reactivated["reason_code"], reasons.HARD_FLOOR)
+        self.assertEqual([b.id for b in self.notified], [biz.id])
+
+    def test_without_a_hold_a_floor_crossed_under_enforcing_takes_over_when_the_invoice_is_paid(self):
+        """A lost dispute's claw-back opens no stop line (it is not mirrored to
+        the live counter), so under ``enforcing`` too it is the floor read that
+        holds the customer."""
+        from apps.billing.gating.services.stop_signal_service import StopSignalService
+        tenant = self._prepaid("enforcing")
+        biz, seat = self._seat(tenant, "enf", 0)
+        self._usage_row(tenant, seat, "in_enf")
+        self._fail(tenant, _usage_obj("in_enf"))
+        self._topped_up_then_lost_dispute(tenant, seat, "enf", top_up=5_000_000,
+                                          disputed_minor=800)       # 5M - 8M = -3M
+        self.assertEqual(StopSignalService.open_stop_lines(seat.id), [])
+        self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
+        self.notified.clear()
+        saved = self._saved_states(seat)
+
+        self._pay(tenant, _usage_obj("in_enf"))
+        self.assertEqual(self._standing(seat), ("suspended", reasons.HARD_FLOOR))
+        self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])
+        self.assertEqual(self._events(seat, "customer.reactivated"), [])
+        self.assertEqual(self.notified, [])
+
+        self._credit(tenant, seat, 10_000_000, "cr_enf")    # the credit hook's `resume`
+        self.assertEqual(self._standing(seat), ("active", ""))
+        [reactivated] = self._events(seat, "customer.reactivated")
+        self.assertEqual(reactivated["reason_code"], reasons.HARD_FLOOR)
+        self.assertEqual([b.id for b in self.notified], [biz.id])
+
+    def test_without_a_hold_an_already_open_floor_line_takes_over_and_is_not_reopened(self):
+        """Under ``enforcing`` the in-flight usage crosses the floor and the
+        durable lane opens the floor's stop line — its fold skips an owner
+        already suspended, so the line holds an owner whose reason is still
+        ``payment_failed``. Before the repair, paying the invoice made it
+        ``active`` with that line open, and the hourly reconcile's
+        ``drive_stop`` (the line already stopped) never suspended it again."""
+        from apps.billing.gating.services.stop_signal_service import StopSignalService
+        tenant = self._prepaid("enforcing")
+        biz, seat = self._seat(tenant, "line", 5_000_000)
+        self._usage_row(tenant, seat, "in_line")
+        self._fail(tenant, _usage_obj("in_line"))
+        self._billed_while_suspended(tenant, seat, 8_000_000, "u_line")    # crosses the floor
+        [line] = StopSignalService.open_stop_lines(seat.id)
+        self.assertEqual(line["reason"], reasons.HARD_FLOOR)
+        self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
+        stopped = self._stopped(seat)
+        self.notified.clear()
+        saved = self._saved_states(seat)
+
+        self._pay(tenant, _usage_obj("in_line"))
+        self.assertEqual(self._standing(seat), ("suspended", reasons.HARD_FLOOR))
+        self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])
+        self.assertEqual(StopSignalService.open_stop_lines(seat.id), [line])  # the same episode
+        self.assertEqual(self._stopped(seat), stopped)                        # none opened again
+        self.assertEqual(self._events(seat, "customer.reactivated"), [])
+        self.assertEqual(self.notified, [])
+
+        # The canonical stop recovery: a credit back over the floor resumes the
+        # line, which closes the episode and makes the one real reactivation.
+        self._credit(tenant, seat, 10_000_000, "cr_line")
+        self.assertEqual(StopSignalService.open_stop_lines(seat.id), [])
+        self.assertEqual(self._standing(seat), ("active", ""))
+        [reactivated] = self._events(seat, "customer.reactivated")
+        self.assertEqual(reactivated["reason_code"], reasons.HARD_FLOOR)
+        self.assertEqual([b.id for b in self.notified], [biz.id])
+
+    def test_without_a_hold_an_already_open_pool_line_takes_over_on_its_own_word(self):
+        from apps.billing.gating.services.live_counter import LiveCounter
+        from apps.billing.gating.services.stop_signal_service import (
+            CLEAR_RECONCILED, LINE_CUSTOMER_SPEND_POOL, StopSignalService, control_id_of)
+        from core.vocabulary import TRIGGER_SOURCE_ENFORCEMENT_PATROL
+        tenant = self._prepaid("enforcing")
+        biz, seat = self._seat(tenant, "pool", 5_000_000)
+        self._usage_row(tenant, seat, "in_pool")
+        self._fail(tenant, _usage_obj("in_pool"))
+        StopSignalService.drive_stop(                     # the pool's line, opened by its patrol
+            seat.id, tenant, line=LINE_CUSTOMER_SPEND_POOL,
+            control_id=control_id_of(LINE_CUSTOMER_SPEND_POOL, seat.id, tenant),
+            trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+            stop_bound_micros=0, stop_measured_micros=0)
+        self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
+        self.notified.clear()
+        saved = self._saved_states(seat)
+
+        self._pay(tenant, _usage_obj("in_pool"))
+        self.assertEqual(self._standing(seat),
+                         ("suspended", reasons.CUSTOMER_SPEND_POOL))
+        self.assertEqual(saved, [("suspended", reasons.CUSTOMER_SPEND_POOL)])
+        self.assertEqual(self._events(seat, "customer.reactivated"), [])
+        self.assertEqual(self.notified, [])
+
+        LiveCounter.resume(seat.id, tenant, line=LINE_CUSTOMER_SPEND_POOL,
+                           clear_reason=CLEAR_RECONCILED)
+        self.assertEqual(self._standing(seat), ("active", ""))
+        [reactivated] = self._events(seat, "customer.reactivated")
+        self.assertEqual(reactivated["reason_code"], reasons.CUSTOMER_SPEND_POOL)
+        self.assertEqual([b.id for b in self.notified], [biz.id])
+
+    # -- 5. C2's multi-invoice and historical-owner rules, unchanged -----------
+
+    def test_while_another_failure_of_the_owner_remains_no_hand_over_is_attempted(self):
+        """One usage and one subscription invoice of the same historical owner
+        fail; paying the first writes nothing at all — the remaining failure
+        answers before the money question is ever asked — and paying the last
+        hands over to the floor."""
+        tenant = self._prepaid("off")
+        biz, seat = self._seat(tenant, "two", 5_000_000)
+        self._usage_row(tenant, seat, "in_two_usage")
+        self._subscription_row(tenant, seat, "in_two_sub", "sub_two")
+        self._fail(tenant, _usage_obj("in_two_usage"))
+        self._fail(tenant, _sub_obj("in_two_sub", "sub_two"))
+        self._billed_while_suspended(tenant, seat, 8_000_000, "u_two")
+        saved = self._saved_states(seat)
+
+        self._pay(tenant, _usage_obj("in_two_usage"))
+        self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
+        self.assertEqual(saved, [])
+        self._pay(tenant, _sub_obj("in_two_sub", "sub_two"))
+        self.assertEqual(self._standing(seat), ("suspended", reasons.HARD_FLOOR))
+        self.assertEqual(saved, [("suspended", reasons.HARD_FLOOR)])
+        self.assertEqual(self._events(seat, "customer.reactivated"), [])
+
+    # -- 6. hold -> payment failure -> money cause -> active -------------------
+
+    def test_a_released_hold_hands_over_to_the_failure_then_the_floor_then_active(self):
+        from apps.billing.gating.services import manual_hold
+        tenant = self._prepaid("off")
+        biz, seat = self._seat(tenant, "seq", 5_000_000)
+        self._usage_row(tenant, seat, "in_seq")
+        manual_hold.place_manual_hold(seat.id, operator="op-1")      # the roster, once
+        self._fail(tenant, _usage_obj("in_seq"))                     # keeps the hold's reason
+        self._billed_while_suspended(tenant, seat, 8_000_000, "u_seq")   # past the floor
+        self.assertEqual(self._standing(seat), ("suspended", ""))
+        saved = self._saved_states(seat)
+
+        # The hold resolves: the unresolved payment failure takes over.
+        self.assertEqual(manual_hold.release_manual_hold(seat.id, operator="op-1"),
+                         manual_hold.HANDED_OVER)
+        self.assertEqual(self._standing(seat), ("suspended", reasons.PAYMENT_FAILED))
+        # The payment failure resolves: the floor takes over.
+        self._pay(tenant, _usage_obj("in_seq"))
+        self.assertEqual(self._standing(seat), ("suspended", reasons.HARD_FLOOR))
+        self.assertEqual(self._events(seat, "customer.reactivated"), [])
+        # The floor resolves: the one real transition.
+        self._credit(tenant, seat, 10_000_000, "cr_seq")
+        self.assertEqual(self._standing(seat), ("active", ""))
+
+        self.assertEqual(saved, [("suspended", reasons.PAYMENT_FAILED),
+                                 ("suspended", reasons.HARD_FLOOR), ("active", "")])
+        [reactivated] = self._events(seat, "customer.reactivated")
+        self.assertEqual(reactivated["reason_code"], reasons.HARD_FLOOR)
+        self.assertEqual(len(self._events(seat, "customer.suspended")), 1)   # the hold's
+        self.assertEqual([b.id for b in self.notified], [biz.id, biz.id])    # hold, reactivation

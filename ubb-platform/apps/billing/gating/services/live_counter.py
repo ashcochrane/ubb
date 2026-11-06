@@ -716,9 +716,12 @@ class LiveCounter:
           measured. The floor's word, not ``dispute_lost``: the bound reached
           is the floor's, and both lift by the same durable rule.
 
-        Only a manual hold's release asks it: an automatic recovery is already
-        called only once its own condition cleared, and the C2 rules for
-        those are unchanged."""
+        Two clears ask it, the two whose own resolved condition says nothing
+        about money: a manual hold's release (§7 item 41, Ruling B) and the
+        payment-failure clear (§7 item 43). The money recoveries (``resume``,
+        the credit hook, the hourly pass) run only once the money condition
+        itself cleared, and hand over to a standing payment failure instead
+        (RULED Q4)."""
         surviving = (StopSignalService.open_stop_lines(owner.id)
                      if enforcing(tenant) else [])
         if surviving:
@@ -754,25 +757,27 @@ class LiveCounter:
         concurrently is either seen here or, arriving later, meets an owner
         already active and suspends it.
 
-        ⚠ ``check_money_causes`` — A MANUAL HOLD'S RELEASE REMOVES THE MANUAL
-        CAUSE; IT NEVER FORCES ACTIVE (PLAN §7 item 41, Ruling B). Every
-        automatic clear is called once its own condition resolved; an
-        operator's release is not, and a system condition may have arisen
-        under the hold that no suspend path recorded (each suspends only an
-        ``active`` owner — the drawdown's level test, a stop line's fold, a
-        lost dispute's claw-back). So that release also asks, under this same
-        lock and AFTER the payment-failure rule, ``_standing_money_cause``: a
-        stop line still open (``enforcing``), or a wallet past its floor. One
-        that stands takes over as the cause — the reason changes, the status
-        does not — and its own recovery (``resume``, the credit hook, the
-        hourly pass) lifts it. Nothing is announced for such a hand-over, here
-        or for a payment failure: the customer entered no new state (no
+        ⚠ ``check_money_causes`` — WHEN ONE CONDITION RESOLVES, THE CUSTOMER
+        BECOMES ACTIVE ONLY IF NO OTHER SYSTEM CONDITION STILL STANDS (PLAN §7
+        items 41 and 43). A system condition can arise while a customer is
+        already suspended with nothing recorded — every suspend path suspends
+        only an ``active`` owner (the drawdown's level test, a stop line's
+        fold, a lost dispute's claw-back, a payment failure). So the two
+        clears whose own resolved condition says nothing about money — a
+        manual hold's release (Ruling B) and the payment-failure clear (item
+        43) — also ask, under this same lock and AFTER the payment-failure
+        rule, ``_standing_money_cause``: a stop line still open
+        (``enforcing``), or a wallet past its floor. One that stands takes
+        over the single reason — the reason changes, the status does not —
+        and its own recovery (``resume``, the credit hook, the hourly pass)
+        lifts it. Nothing is announced for such a hand-over, here or for a
+        payment failure: the customer entered no new state (no
         ``customer.reactivated``, no ``customer.suspended``, no roster change).
-        A payment failure is asked first, so where one and a money cause
-        both stand the reason is ``payment_failed`` (Ruling B's words) — and
-        the AR clear, which asks no money cause (C2, unchanged), can later
-        reactivate while the money cause stands: a reading the PLAN puts to
-        the owner (§7 item 41, as built).
+        The payment failure is asked first, so while one is unresolved the
+        reason stays ``payment_failed`` even beside a latent money condition
+        (Ruling B's words); the money cause takes over only when that failure
+        itself resolves. One stored reason, deterministic hand-overs: hold →
+        payment failure → money cause → ``active``.
 
         Emits ``customer.reactivated`` EXACTLY ONCE, in the same transaction
         as the status write, only when the status actually changes — carrying
@@ -881,8 +886,23 @@ class LiveCounter:
         which the reactivation site checks under the owner's lock. A ``hard_floor``,
         ``customer_spend_pool``, ``dispute_lost``, manual or unknown
         suspension is left standing: a paid or voided invoice resolves none of
-        those. Returns True when the row moved."""
-        return LiveCounter._maybe_unsuspend(owner_id, clearable=(reasons.PAYMENT_FAILED,))
+        those.
+
+        ⚠ A PAYMENT RECOVERY IS A CAUSE HAND-OVER, NOT AN UNCONDITIONAL
+        ACTIVATION (PLAN §7 item 43, owner/consultant ruling 2026-11-06 on C4
+        reading 13). A money condition can arise while the owner is suspended
+        for a payment failure — no suspend path records a cause on an owner
+        already suspended — so once the last qualifying failure resolves, the
+        site also asks, under the same lock, the one money question
+        (``_standing_money_cause``). One that stands takes over the single
+        ``suspension_reason``; the status stays ``suspended``, nothing is
+        announced and no roster changes, and that cause's own recovery brings
+        the owner back later with the one real ``customer.reactivated``. The
+        mirror of RULED Q4: money recovery hands over to a standing payment
+        failure; payment recovery hands over to a standing money cause.
+        Returns True only when the row moved to ``active``."""
+        return LiveCounter._maybe_unsuspend(
+            owner_id, clearable=(reasons.PAYMENT_FAILED,), check_money_causes=True)
 
     @staticmethod
     def resume(owner_id, tenant, *, line, clear_reason, balance_micros=None) -> bool:

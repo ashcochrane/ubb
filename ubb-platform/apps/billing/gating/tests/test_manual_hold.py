@@ -410,9 +410,10 @@ class AReleaseNeverForcesActiveTest(_ManualHoldCase):
     def test_a_payment_failure_and_a_wallet_past_its_floor_leave_payment_failed(self):
         """Both stand. The payment failure is asked first (RULED Q4, and Ruling
         B's "the resulting suspension_reason is payment_failed"), so that is
-        the reason, and the customer stays suspended either way. What the AR
-        clear does later while the floor still stands is a reading put to the
-        owner (PLAN §7 item 41, as built), not pinned here."""
+        the reason, and the customer stays suspended either way. When that
+        failure later resolves, the floor takes over (PLAN §7 item 43) — the
+        whole sequence is pinned in ``api/v1/tests/test_wave5a_ar_capstone.py``
+        (``TestAPaymentRecoveryHandsOverToAStandingMoneyCause``)."""
         tenant = self._prepaid("off")
         customer = self._funded(tenant, "both", 5_000_000)
         manual_hold.place_manual_hold(customer.id, operator="op-1")
