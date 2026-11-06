@@ -92,7 +92,15 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
    - `apps.billing.stripe.receiver` — the **one** receiver core both endpoints are built on
      (verification with the receiver's own secret, the mode gate, per-receiver dedup with the
      CAS retry, dispatch, error classification), parameterised by receiver, handler map and
-     secret (added by R10 Stage C1b);
+     secret (added by R10 Stage C1b). Since R10 Stage C4 (2026-11) it also holds the
+     **receiver registry**: each endpoint module, as it loads, registers its receiver's handler
+     map and wallet-subject flag (`register_receiver`), and the billing `reprocess_webhook`
+     command runs a retrieved Event through the same core (`process_stripe_event`) with the map
+     it reads back (`registered_receiver`). That is dependency inversion inside the kit, not a
+     new edge: the billing handler map lives in the composition layer (`api/v1/webhooks.py`),
+     which no product module may import, so the composition layer hands it to the kit. The
+     command composes the deployment by loading the project URLconf (as `manage.py check`
+     does), which imports the endpoint modules that register;
    - `apps.billing.connectors.stripe.invoice_routing` — the AR state-transition table + invoice
      URL refresh helpers, which `apps/subscriptions/ports.py` builds on; since R10 Stage C2
      (2026-11) also the AR row state of a failure stamp — which statuses settle a stamped
@@ -131,23 +139,25 @@ The dependency matrix, numbered exactly as enforced by `test_product_boundaries.
   in a way that couldn't survive a network hop being inserted.
 - **The hooks registry is synchronous coupling by another name — intentionally.** The F3 pass was
   required to be behavior-identical, and the seat-quantity push must bind to the roster change's
-  own transaction commit. Migrating seat sync fully to the outbox is the recorded next step:
-  `CustomerDeleted` is already emitted at the soft-delete site
-  (`apps/platform/customers/models.py`), but the Stripe-webhook suspend paths
-  (`apps/billing/connectors/stripe/webhooks.py`) call the hook directly and would need a
-  customer-suspended event emitted at those sites first.
+  own transaction commit. The hook stays the seat-roster channel: R10 Stage C4 (2026-11-04,
+  RULED Q8) weighed the outbox as the vehicle that would guarantee a failed push converges and
+  rejected it, because the outbox dead-letters an event after five retries
+  (`apps/platform/events/tasks.py`). Convergence is an hourly reconciler instead (below).
 
 ## Recorded follow-ups
 
-- `api/v1/platform_endpoints.py` still calls `sync_seat_quantity_on_commit` directly on seat
-  creation (line ~65). That is a *legal* direction (composition layer -> product) but
-  inconsistent with the hook registry used everywhere else — candidate cleanup.
-- There is **no periodic seat-quantity reconciler** today. The `seats.py` docstring used to claim
-  an "hourly subscription sync" backstop that does not exist (fixed in the same commit as this
-  ADR). The push is full-state (live seat count, not a delta), so any missed push self-corrects
-  on the next roster change — but a roster that goes quiet after a failed push stays wrong until
-  then. Adding a real seat reconcile task (or completing the outbox migration above, whose
-  sweeper retries provide the same guarantee) is the recorded next step.
+Both follow-ups recorded here were closed by R10 Stage C4 (A-2, RULED Q8):
+
+- ~~`api/v1/platform_endpoints.py` calls `sync_seat_quantity_on_commit` directly on seat
+  creation.~~ It notifies the roster hook (`notify_seat_roster_changed`), as every other roster
+  change does — and every roster change now does: seat creation, soft-delete, every suspension and
+  the one reactivation site, each once inside its own transaction.
+- ~~There is no periodic seat-quantity reconciler.~~ `reconcile_subscription_seat_quantities`
+  (`apps/subscriptions/tasks.py`, hourly, after the mirror reconciler) pushes the live seat count
+  wherever it differs from the mirrored seat item, under a deterministic idempotency key per
+  divergence episode (the seat item's last successful write), so a push that failed after the
+  roster committed converges with no further roster change — including when the same count recurs
+  after another quantity landed.
 
 ## Branch decision record (2026-06-12): `feat/ubb-ui-dashboard` status
 

@@ -216,7 +216,7 @@ class CustomerContextTest(RailActivated, StopContextTestBase):
 
     def test_suspended_owner_without_episode_tags_suspended(self):
         self.customer.status = "suspended"
-        self.customer.suspension_reason = "fraud"
+        self.customer.suspension_reason = ""   # a manual hold (R10 Stage C4)
         ctx = self._build(None, None)
         self.assertEqual(ctx, [{
             "limit": "suspended", "stop_scope": "customer",

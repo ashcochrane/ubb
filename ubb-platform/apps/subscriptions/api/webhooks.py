@@ -3,55 +3,64 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
-from apps.billing.connectors.stripe.invoice_routing import livemode_filter
+from apps.billing.connectors.stripe.invoice_routing import event_livemode, livemode_filter
 from apps.billing.stripe.services.stripe_service import field
 from apps.subscriptions.models import StripeSubscription
-from apps.subscriptions.stripe.items import (
-    _period_end, _period_start, _product_name, mirrored_amounts)
+from apps.subscriptions.stripe.binding import (
+    AMBIGUOUS, UNRESOLVED, AmbiguousMirrorOwner, create_bound_mirror, log_unbound,
+    mutable_facts, resolve_new_mirror_owner, stripe_customer_id_of)
+from apps.subscriptions.stripe.items import _period_end, _period_start, _product_name, mirrored_amounts
 from apps.platform.customers.models import Customer
 
 logger = logging.getLogger(__name__)
 
 
 def handle_subscription_created(event):
-    """New subscription on tenant's Connected Account -- create local mirror."""
+    """New subscription on a tenant's connected account: bind its mirror once.
+
+    THE EXISTING MIRROR IS LOOKED UP FIRST (R10 Stage C4, PLAN §7 item 37).
+    When one exists, by Stripe subscription id, this delivery is a replay or
+    arrived after the sync or UBB's own subscribe bound it. Its binding
+    stands and nothing is re-resolved, so duplicate Stripe customer ids can
+    never make it fail. Nothing is rewritten either: a ``created`` event
+    carries the subscription as it was at creation, older than anything the
+    mirror has since been told.
+
+    A subscription with no mirror binds through the one shared resolver
+    (``apps/subscriptions/stripe/binding.py``), in the event's namespace:
+    its connected account, its livemode and the charged Stripe customer id.
+    Exactly one holder binds the mirror to that customer and its tenant. No
+    holder (``Customer.DoesNotExist``) or several (``AmbiguousMirrorOwner``)
+    raises, so the receiver records a retryable failure and Stripe
+    redelivers; no mirror is guessed.
+    """
     stripe_sub = event.data.object
+    sub_id = field(stripe_sub, "id")
+    if StripeSubscription.objects.filter(stripe_subscription_id=sub_id).exists():
+        return
+
     connected_account = event.account
-
-    try:
-        customer = Customer.objects.get(
-            stripe_customer_id=stripe_sub.customer,
-            tenant__stripe_connected_account_id=connected_account,
-            **livemode_filter(event),
-        )
-    except Customer.DoesNotExist:
-        logger.warning(
-            "Subscription created for unknown customer",
-            extra={"data": {
-                "stripe_customer_id": stripe_sub.customer,
-                "connected_account": connected_account,
-            }},
-        )
-        raise  # Re-raise so webhook framework retries
-
-    money = mirrored_amounts(stripe_sub)
-    StripeSubscription.objects.get_or_create(
-        stripe_subscription_id=stripe_sub.id,
-        defaults={
-            "tenant": customer.tenant,
-            "customer": customer,
-            "stripe_product_name": _product_name(stripe_sub),
-            "status": stripe_sub.status,
-            "amount_micros": money.amount_micros,
-            "currency": money.currency,
-            "source_amount_minor": money.source_amount_minor,
-            "interval": money.interval,
-            "current_period_start": _period_start(stripe_sub),
-            "current_period_end": _period_end(stripe_sub),
-            "last_synced_at": timezone.now(),
-            "quantity": money.seat_qty,
-        },
-    )
+    livemode = event_livemode(event)
+    stripe_customer_id = stripe_customer_id_of(stripe_sub)
+    resolution = resolve_new_mirror_owner(
+        connected_account=connected_account, livemode=livemode,
+        stripe_customer_id=stripe_customer_id)
+    if resolution.outcome in (UNRESOLVED, AMBIGUOUS):
+        log_unbound(resolution, stripe_subscription_id=sub_id,
+                    stripe_customer_id=stripe_customer_id,
+                    connected_account=connected_account, livemode=livemode,
+                    via="webhook")
+        if resolution.outcome == AMBIGUOUS:
+            raise AmbiguousMirrorOwner(
+                f"{len(resolution.holders)} customers hold Stripe customer "
+                f"{stripe_customer_id} on {connected_account}; subscription "
+                f"{sub_id} binds to none of them")
+        raise Customer.DoesNotExist(
+            f"no customer holds Stripe customer {stripe_customer_id} on "
+            f"{connected_account}; subscription {sub_id} is not mirrored")
+    create_bound_mirror(
+        sub_id, customer_id=resolution.customer_id, tenant_id=resolution.tenant_id,
+        facts=mutable_facts(stripe_sub))
 
 
 def handle_subscription_updated(event):

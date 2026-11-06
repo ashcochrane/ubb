@@ -102,10 +102,11 @@ class SubscriptionInvoice(BaseModel):
     tenant = models.ForeignKey(
         "tenants.Tenant", on_delete=models.CASCADE, related_name="subscription_invoices"
     )
-    #: The local customer the subscription / Stripe mirror names — for a mirror
-    #: built from Stripe, whichever local customer holds the charged Stripe
-    #: customer id, which can be a seat. NOT the economic owner: that is
-    #: `billing_owner` below, and the two are deliberately distinct.
+    #: The local customer the subscription's mirror is bound to — for a mirror
+    #: UBB discovered on Stripe, the one local customer that held the charged
+    #: Stripe customer id when it bound (R10 Stage C4), which can be a seat.
+    #: NOT the economic owner: that is `billing_owner` below, and the two are
+    #: deliberately distinct.
     customer = models.ForeignKey(
         "customers.Customer", on_delete=models.CASCADE, related_name="subscription_invoices"
     )

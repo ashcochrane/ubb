@@ -693,7 +693,47 @@ class LiveCounter:
     BALANCE_SUSPEND_REASONS = (reasons.HARD_FLOOR, reasons.DISPUTE_LOST)
 
     @staticmethod
-    def _maybe_unsuspend(owner_id, *, clearable=None) -> bool:
+    def _standing_money_cause(owner, tenant):
+        """The money cause that holds ``owner`` suspended NOW, or None: the
+        gate every money lift already passes, read as ``resume`` reads it (R10
+        Stage C4, PLAN §7 item 41, Ruling B). No new calculation — the
+        composition of the two existing reads:
+
+        - under ``enforcing``, an OPEN STOP LINE holds the owner, on that
+          line's word, in line order — the word ``resume`` re-points the fast
+          flag to while a line survives (``open_stop_lines``: "the one read
+          every lifting path makes"). Only under ``enforcing``: the ledger's
+          lines are that mode's controls (signals exist only there, #42), and
+          nothing lifts a line under ``off`` — a row left behind by a mode flip
+          whose silent close failed must not hand a customer to a cause no
+          ``off`` lane would ever clear;
+        - else, where the tenant's mode keeps a wallet, a DURABLE balance past
+          its floor holds the wallet's holder, on the floor's word — the D15
+          gate ``resume`` and the ``off`` lanes share
+          (``_durable_floor_recovered``). A pooled seat is not its own floor's
+          subject (its business is, and every floor path suspends that
+          business), so only the customer that is its own billing owner is
+          measured. The floor's word, not ``dispute_lost``: the bound reached
+          is the floor's, and both lift by the same durable rule.
+
+        Two clears ask it, the two whose own resolved condition says nothing
+        about money: a manual hold's release (§7 item 41, Ruling B) and the
+        payment-failure clear (§7 item 43). The money recoveries (``resume``,
+        the credit hook, the gating floor pass in
+        ``apps/billing/gating/tasks.py``) run only once the money condition
+        itself cleared, and hand over to a standing payment failure instead
+        (RULED Q4)."""
+        surviving = (StopSignalService.open_stop_lines(owner.id)
+                     if enforcing(tenant) else [])
+        if surviving:
+            return surviving[0]["reason"]
+        if (holds_a_wallet(tenant) and owner.resolve_billing_owner().id == owner.id
+                and not LiveCounter._durable_floor_recovered(owner.id, tenant)):
+            return reasons.HARD_FLOOR
+        return None
+
+    @staticmethod
+    def _maybe_unsuspend(owner_id, *, clearable=None, check_money_causes=False) -> bool:
         """THE ONE SITE THAT MOVES A CUSTOMER ``suspended -> active`` (R10
         Stage C2, RULED Q3). Durably reactivate an owner suspended for one of
         the ``clearable`` reasons (the enforcing money pair by default), once
@@ -703,8 +743,9 @@ class LiveCounter:
         this decides WHETHER the row actually moves. Serializes on the owner
         Customer row (the same row the suspend paths lock), and the winning
         suspended->active transition guard prevents flip-flop. NEVER
-        un-suspends an admin/fraud suspension (suspension_reason not in the
-        clearable set).
+        un-suspends a reason outside the ``clearable`` set: a manual hold (the
+        empty reason) is lifted only by its own release (``clear_manual_hold``,
+        called by the operator workflow), never by an automatic recovery.
 
         ⚠ A STANDING PAYMENT FAILURE HOLDS THE OWNER (RULED Q4, the
         multi-invoice rule). Under the same row lock, before the row moves,
@@ -717,6 +758,30 @@ class LiveCounter:
         concurrently is either seen here or, arriving later, meets an owner
         already active and suspends it.
 
+        ⚠ ``check_money_causes`` — WHEN ONE CONDITION RESOLVES, THE CUSTOMER
+        BECOMES ACTIVE ONLY IF NO OTHER SYSTEM CONDITION STILL STANDS (PLAN §7
+        items 41 and 43). A system condition can arise while a customer is
+        already suspended with nothing recorded on its row — every suspend
+        path suspends only an ``active`` owner (the drawdown's level test, a
+        stop line's fold, a lost dispute's claw-back, a payment failure); a
+        line opened then lives in the signal ledger, which is what is read
+        here. So the two
+        clears whose own resolved condition says nothing about money — a
+        manual hold's release (Ruling B) and the payment-failure clear (item
+        43) — also ask, under this same lock and AFTER the payment-failure
+        rule, ``_standing_money_cause``: a stop line still open
+        (``enforcing``), or a wallet past its floor. One that stands takes
+        over the single reason — the reason changes, the status does not —
+        and its own recovery (``resume``, the credit hook, the gating floor
+        pass) lifts it. Nothing is announced for such a hand-over, here or for a
+        payment failure: the customer entered no new state (no
+        ``customer.reactivated``, no ``customer.suspended``, no roster change).
+        The payment failure is asked first, so while one is unresolved the
+        reason stays ``payment_failed`` even beside a latent money condition
+        (Ruling B's words); the money cause takes over only when that failure
+        itself resolves. One stored reason, deterministic hand-overs: hold →
+        payment failure → money cause → ``active``.
+
         Emits ``customer.reactivated`` EXACTLY ONCE, in the same transaction
         as the status write, only when the status actually changes — carrying
         the reason being left and the wallet's balance where one applies.
@@ -726,6 +791,7 @@ class LiveCounter:
         from django.db import transaction
         from apps.billing.gating.services.stop_signal_service import announced_balance
         from apps.billing.queries import a_payment_failure_remains_for
+        from apps.platform.customers.hooks import notify_if_a_seat
         from apps.platform.customers.models import Customer
         from apps.platform.events.outbox import write_event
         from apps.platform.events.schemas import CustomerReactivated
@@ -743,6 +809,12 @@ class LiveCounter:
                         owner.suspension_reason = reasons.PAYMENT_FAILED
                         owner.save(update_fields=["suspension_reason", "updated_at"])
                     return False
+                if check_money_causes:
+                    standing = LiveCounter._standing_money_cause(owner, owner.tenant)
+                    if standing is not None:
+                        owner.suspension_reason = standing
+                        owner.save(update_fields=["suspension_reason", "updated_at"])
+                        return False
                 left = owner.suspension_reason
                 owner.status = "active"
                 owner.suspension_reason = ""
@@ -751,6 +823,9 @@ class LiveCounter:
                     tenant_id=str(owner.tenant_id), customer_id=str(owner.id),
                     reason_code=left,
                     balance_micros=announced_balance(owner.id, owner.tenant)))
+                # A reactivated seat rejoins its business's active roster
+                # (R10 Stage C4, A-2): notified inside this transaction.
+                notify_if_a_seat(owner)
                 return True
         except Exception:
             logger.warning("live_counter.unsuspend_failed",
@@ -783,6 +858,27 @@ class LiveCounter:
                 owner_id, clearable=LiveCounter.BALANCE_SUSPEND_REASONS)
         return False
 
+    #: THE MANUAL HOLD's reason: none (R10 Stage C4, PLAN §7 item 41). An
+    #: accountable operator's suspension is recorded as ``suspended`` with an
+    #: EMPTY reason — the glossary's *manual hold* — and no automatic recovery
+    #: ever lifts it; only its own release does.
+    MANUAL_HOLD_REASON = ""
+
+    @staticmethod
+    def clear_manual_hold(owner_id) -> bool:
+        """An operator's release of a MANUAL HOLD (R10 Stage C4, PLAN §7 item
+        41), through the one reactivation site like every other clear: only a
+        customer suspended with the manual hold's empty reason moves, so a
+        ``hard_floor``, ``customer_spend_pool``, ``payment_failed`` or
+        ``dispute_lost`` suspension is never cleared by it. The release removes
+        the MANUAL cause and lets the system decide what holds now (Ruling B):
+        a standing payment failure (RULED Q4), a stop line still open
+        (``enforcing``) or a wallet past its floor takes over as the cause, and
+        the customer stays suspended with nothing announced. Returns True only
+        when the row moved to ``active``."""
+        return LiveCounter._maybe_unsuspend(
+            owner_id, clearable=(LiveCounter.MANUAL_HOLD_REASON,), check_money_causes=True)
+
     @staticmethod
     def clear_payment_failed_suspension(owner_id) -> bool:
         """The AR clear (R10 Stage C2, F-6, RULED Q4 and §7 item 26): asked
@@ -793,8 +889,23 @@ class LiveCounter:
         which the reactivation site checks under the owner's lock. A ``hard_floor``,
         ``customer_spend_pool``, ``dispute_lost``, manual or unknown
         suspension is left standing: a paid or voided invoice resolves none of
-        those. Returns True when the row moved."""
-        return LiveCounter._maybe_unsuspend(owner_id, clearable=(reasons.PAYMENT_FAILED,))
+        those.
+
+        ⚠ A PAYMENT RECOVERY IS A CAUSE HAND-OVER, NOT AN UNCONDITIONAL
+        ACTIVATION (PLAN §7 item 43, owner/consultant ruling 2026-11-06 on C4
+        reading 13). A money condition can arise while the owner is suspended
+        for a payment failure — no suspend path records a cause on an owner
+        already suspended — so once the last qualifying failure resolves, the
+        site also asks, under the same lock, the one money question
+        (``_standing_money_cause``). One that stands takes over the single
+        ``suspension_reason``; the status stays ``suspended``, nothing is
+        announced and no roster changes, and that cause's own recovery brings
+        the owner back later with the one real ``customer.reactivated``. The
+        mirror of RULED Q4: money recovery hands over to a standing payment
+        failure; payment recovery hands over to a standing money cause.
+        Returns True only when the row moved to ``active``."""
+        return LiveCounter._maybe_unsuspend(
+            owner_id, clearable=(reasons.PAYMENT_FAILED,), check_money_causes=True)
 
     @staticmethod
     def resume(owner_id, tenant, *, line, clear_reason, balance_micros=None) -> bool:

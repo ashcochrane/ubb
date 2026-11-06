@@ -6,7 +6,7 @@ stop transition (StopSignalService.drive_stop, reached from the fast lane's
 _set_stop) — the async drawdown handler no longer reads the stop flag, so a
 crossing observed by several lanes suspends and emits exactly once.
 suspension_reason records WHY; only a monetary reason is auto-cleared on
-recovery, so a top-up never silently un-suspends an admin/fraud suspension.
+recovery, so a top-up never silently un-suspends a manual hold.
 """
 import uuid
 from dataclasses import asdict
@@ -116,13 +116,13 @@ class TestUnsuspendOnRecovery:
         assert c.status == "active"
         assert c.suspension_reason == ""
 
-    def test_credit_recovery_does_not_unsuspend_nonmoney_reason(self):
+    def test_credit_recovery_does_not_lift_a_manual_hold(self):
         t = _tenant(mode="prepaid", enf="enforcing")
         c = Customer.objects.create(tenant=t, external_id="c1")
         Wallet.objects.create(customer=c, balance_micros=5_000_000)
         LiveCounter.debit(c.id, t, 6_000_000, now=timezone.now())
         c.status = "suspended"
-        c.suspension_reason = "fraud_review"  # admin suspension
+        c.suspension_reason = ""  # a manual hold (R10 Stage C4, PLAN §7 item 41)
         c.save(update_fields=["status", "suspension_reason"])
         LiveCounter.credit(c.id, t, 10_000_000)
         c.refresh_from_db()

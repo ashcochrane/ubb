@@ -1,6 +1,6 @@
 from django.db import models, transaction
 
-from apps.platform.customers.hooks import notify_seat_roster_changed
+from apps.platform.customers.hooks import notify_if_a_seat
 from core.models import BaseModel
 from core.soft_delete import SoftDeleteMixin
 
@@ -69,7 +69,7 @@ class Customer(SoftDeleteMixin, BaseModel):
     billing_topology = models.CharField(max_length=10, choices=BILLING_TOPOLOGY_CHOICES, blank=True, default="")
     # Tier-2 P6b (D15): why the customer was suspended. Set on every suspend;
     # only a MONETARY reason is auto-cleared on recovery, so a top-up never
-    # silently un-suspends an admin/fraud suspension. A monetary reason is the
+    # silently un-suspends a manual hold. A monetary reason is the
     # stop that opened the episode, in that stop's own word (slice 6 §9,
     # `reasons.HARD_FLOOR` / `reasons.CUSTOMER_SPEND_POOL`; the pair is
     # `LiveCounter._MONEY_SUSPEND_REASONS`). Since R10 Stage C2 two causes no
@@ -78,7 +78,10 @@ class Customer(SoftDeleteMixin, BaseModel):
     # failure remains) and `reasons.DISPUTE_LOST` (cleared when the durable
     # balance is back at the floor). Every clear goes through
     # `LiveCounter._maybe_unsuspend`, which announces `customer.reactivated`.
-    # "" when active / suspended for an unrecorded reason.
+    # "" when active, and "" on a suspension is the MANUAL HOLD (R10 Stage C4,
+    # PLAN §7 item 41): placed and released only through the operator workflow
+    # (`apps/billing/gating/services/manual_hold.py`), never by an automatic
+    # recovery. Neither this field nor `status` is editable in the admin.
     suspension_reason = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:
@@ -114,8 +117,7 @@ class Customer(SoftDeleteMixin, BaseModel):
                 tenant_id=str(self.tenant_id),
                 customer_id=str(self.id),
             ))
-            if self.account_type == "seat" and self.parent_id:
-                notify_seat_roster_changed(self.parent)
+            notify_if_a_seat(self)
 
     def __str__(self):
         return f"Customer({self.external_id})"

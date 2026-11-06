@@ -8,7 +8,9 @@ product. Code anchors are relative to `ubb-platform/`.
 
 **Tenant**:
 A UBB customer organization — the top-level isolation boundary every domain row is scoped to,
-carrying its product set, billing mode, and Stripe linkage. (`apps/platform/tenants/models.py:Tenant`)
+carrying its product set, billing mode, and Stripe linkage. Deleting one is not a supported v1
+operation: no tenant teardown exists, and the Django admin, whose delete would cascade a hard
+delete to every customer, offers none (R10 Stage C4). (`apps/platform/tenants/models.py:Tenant`)
 
 **Sandbox**:
 A tenant's test-mode sibling that inherits its shape but never any real Stripe linkage, so
@@ -122,17 +124,40 @@ and relationships across the tenant boundary. Changing any of them requires a fu
 designed workflow with defined economic cutover semantics. (`apps/platform/customers/admin.py:CustomerAdmin`)
 
 **Seat roster**:
-The live set of seats under a business; adding/removing a seat is a roster change, broadcast
-synchronously to registered listeners. (`apps/platform/customers/hooks.py`)
+The live set of active seats under a business. A seat created, soft-deleted, suspended or reactivated
+is a roster change, broadcast once to registered listeners inside the transaction that made it
+(R10 Stage C4). (`apps/platform/customers/hooks.py`)
 
 **Customer status**:
 `active`, `suspended`, or `closed`. `suspension_reason` says why (a `reason_code` word: `hard_floor`,
-`customer_spend_pool`, `payment_failed`, `dispute_lost`, or "" for a manual/unknown suspension).
+`customer_spend_pool`, `payment_failed`, `dispute_lost`, or "" for a **manual hold**).
 Only a suspension whose condition has resolved auto-clears — the durable balance back at the floor,
 the pool's line lifted, every failed invoice paid or voided — through the one reactivation site
 (`LiveCounter._maybe_unsuspend`), which emits `customer.reactivated` exactly once on the real
-`suspended → active` transition; a top-up never silently un-suspends an admin/fraud suspension, and
-a paid or voided invoice never clears a money suspension (R10 Stage C2).
+`suspended → active` transition; a top-up never silently un-suspends a manual hold, and
+a paid or voided invoice never clears a money suspension (R10 Stage C2). There is one stored
+reason, and the customer becomes `active` only when no system condition still stands: a payment
+failure still standing takes over the reason when a money cause or a manual hold resolves, and a
+money cause still standing (a stop line open under `enforcing`, its own wallet past its floor)
+takes over when a payment failure or a manual hold resolves — the customer stays `suspended` and
+nothing is announced; between two stop lines the suspension stands until every line has lifted
+(R10 Stage C4). Status, reason and
+`deleted_at` are changed only by the workflows that own their side effects — never as raw fields in
+the Django admin, where they are read-only (R10 Stage C4). Closing a customer is not a supported v1
+transition.
+
+**Manual hold**:
+An accountable operator's suspension of one active customer — `suspended` with an empty reason —
+which no automatic recovery lifts. It is placed and released only through `manage.py
+set_customer_manual_hold`, which never overwrites or clears a system cause. **Releasing** one
+removes the manual cause and lets the system decide what holds now — it never forces the customer
+active: a system condition still standing (a payment failure, a stop line still open under
+`enforcing`, a wallet past its floor) becomes the cause and the customer stays suspended, and
+`customer.reactivated` records only a real transition to `active` (R10 Stage C4). The operator's id
+is logged on every outcome; a durable audit record of a hold and its release is owed by C5.
+(`apps/billing/gating/services/manual_hold.py`)
+_Avoid_: "admin suspension", "fraud suspension" as distinct states; editing `status` to hold a customer;
+"release" meaning "make active".
 
 ## Membership & identity
 

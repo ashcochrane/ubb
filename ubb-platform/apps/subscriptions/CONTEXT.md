@@ -12,15 +12,28 @@ A read-only local reflection of one Stripe subscription; Stripe stays the source
 only reflects its status/amount/period. (`apps/subscriptions/models.py:StripeSubscription`)
 _Avoid_: treating the mirror as authoritative over Stripe.
 
+**Mirror binding**:
+Whose subscription a mirror is — its `customer` and `tenant` — fixed when the mirror is first written
+and never rewritten by a sync, a webhook replay or a reconciliation (R10 Stage C4). A subscription UBB
+opened binds the owner UBB opened it for. One UBB discovers on Stripe binds only to the **one** live
+customer holding its Stripe customer id in its namespace (connected account + livemode, across every
+tenant holding that account). No holder is *unresolved* and several are *ambiguous*: neither binds, and
+the ambiguity is logged as `subscription.mirror_ambiguous`. Removing the ambiguity lets the next sync
+bind it. (`apps/subscriptions/stripe/binding.py`)
+_Avoid_: rebinding a mirror; picking one of several holders; one tenant's sync writing another's mirror.
+
 **Subscription invoice**:
 A synced row per Stripe subscription invoice, tracked for revenue attribution and AR status.
 It names two customers, deliberately distinct (R10 Stage C2, PLAN §7 item 27): `customer`, the local
-customer the subscription / Stripe mirror names (for a mirror built from Stripe, whichever local
-customer holds the charged Stripe customer id — possibly a seat); and `billing_owner`, the **historical
+customer the subscription's **mirror binding** names (for a mirror UBB discovered on Stripe, the one
+customer that held the charged Stripe customer id when it bound — possibly a seat); and `billing_owner`, the **historical
 billing owner** — what UBB's declared topology resolved when the invoice first entered UBB, required and
 declared FROZEN, kept by the database rule `trg_subscription_invoice_declared_transitions`
 (`migrations/0002_the_database_rules.py`). A pooled seat holding its own Stripe customer id: `customer` = the seat,
 `billing_owner` = its business. Payment-failure suspension and recovery read `billing_owner` only.
+An invoice that arrives before its subscription's mirror is bound is not recorded and not
+acknowledged: it is retried — by Stripe's redelivery, or by the operator's `reprocess_webhook` — until
+the mirror binds, and then recorded once (R10 Stage C4).
 (`apps/subscriptions/models.py:SubscriptionInvoice`)
 _Avoid_: re-deriving an invoice's owner from today's topology or from the Stripe customer holder.
 
@@ -65,8 +78,19 @@ business's billed seat quantity.
 
 **Seat quantity sync**:
 Pushing the full *live* seat count (never a delta) to Stripe on a roster change, bound to that
-change's transaction commit. (`apps/subscriptions/orchestration/seats.py`)
+change's transaction commit; a failed push is logged and never fails the change.
+(`apps/subscriptions/orchestration/seats.py`)
 _Avoid_: pushing deltas — always full state.
+
+**Seat quantity convergence**:
+The guarantee that a business's billed seat quantity comes to equal its live roster with no further
+roster change and no operator: an hourly pass pushes the live count wherever it differs from the
+mirrored seat item, under one idempotency key per **divergence episode** — identified by the seat
+item's last successful write — so an unresolved mismatch retried replays one key, and the same count
+recurring after another quantity landed is a new request (R10 Stage C4, RULED Q8; owner/consultant
+ruling 2026-11-05).
+(`apps/subscriptions/tasks.py:reconcile_subscription_seat_quantities`)
+_Avoid_: relying on the next roster change to repair a failed push.
 
 ## Unit economics / margin
 

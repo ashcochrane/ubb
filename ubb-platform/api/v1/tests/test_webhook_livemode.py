@@ -124,11 +124,13 @@ class HandlerLivemodeRoutingTest(_SharedAccountFixture):
         sub.get = lambda k, d=None: {"currency": "usd", "status": "active"}.get(k, d)
         from django.utils import timezone as djtz
         now = djtz.now()
-        with patch("apps.subscriptions.api.webhooks.mirrored_amounts",
+        # A new mirror is written by the shared binding module (R10 Stage C4),
+        # which reads the money and the period there.
+        with patch("apps.subscriptions.stripe.binding.mirrored_amounts",
                    return_value=MirroredAmount("usd", 100, 1_000_000, 1, "month")), \
-             patch("apps.subscriptions.api.webhooks._period_start", return_value=now), \
-             patch("apps.subscriptions.api.webhooks._period_end", return_value=now), \
-             patch("apps.subscriptions.api.webhooks._product_name", return_value="Plan"):
+             patch("apps.subscriptions.stripe.binding._period_start", return_value=now), \
+             patch("apps.subscriptions.stripe.binding._period_end", return_value=now), \
+             patch("apps.subscriptions.stripe.binding._product_name", return_value="Plan"):
             handle_subscription_created(event)
         mirror = StripeSubscription.objects.get(stripe_subscription_id="sub_modeshared")
         self.assertEqual(mirror.tenant_id, self.sandbox.id)

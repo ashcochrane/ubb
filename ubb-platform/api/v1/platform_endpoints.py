@@ -7,6 +7,7 @@ from core.identifiers import UUIDIdentifier
 from core.problems import Problem, ProblemOut
 from apps.platform.audit.ledger import record as audit_record
 from apps.platform.audit.marker import records_audit
+from apps.platform.customers.hooks import notify_seat_roster_changed
 from apps.platform.customers.models import Customer
 from core.vocabulary import (
     AUDIT_ACTION_CUSTOMER_CREATED,
@@ -100,11 +101,12 @@ def create_customer(request, payload: CreateCustomerRequest):
                 parent=parent,
                 billing_topology=topology,
             )
-            # Roster grew: push the new live seat count to Stripe on commit so the
-            # subscription's per-seat quantity stays in lock-step with the roster.
+            # Roster grew: tell the roster's listeners, inside this transaction,
+            # through the platform hook every roster change uses (ADR-001's
+            # recorded cleanup, R10 Stage C4 A-2). Subscriptions' listener
+            # pushes the new live seat count to Stripe on commit.
             if at == "seat" and parent is not None:
-                from apps.subscriptions.orchestration.seats import sync_seat_quantity_on_commit
-                sync_seat_quantity_on_commit(parent)
+                notify_seat_roster_changed(parent)
             # Audit the new customer in the same transaction (ADR-004).
             audit_record(
                 action=AUDIT_ACTION_CUSTOMER_CREATED, tenant_id=tenant.id,

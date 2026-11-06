@@ -75,7 +75,7 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,660 of 2,830 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,670 of 2,840 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
@@ -3100,6 +3100,35 @@ measurement_key:
     # (`tenant_billing/management/commands/set_platform_billing_customer.py`)
     # and the two empty package files its `management/commands` directory
     # needs. None names a quantity.
+    #
+    # 2026-11-04, R10 pre-Ash billing readiness Stage C4 (the subscriptions
+    # integrity slice): 2,660 of 2,830 -> 2,663 of 2,833 tracked files
+    # (`units` UNMOVED, 46 files / 137 occurrences). Three files arrived, all
+    # swept: the one resolver that binds a subscription mirror once
+    # (`apps/subscriptions/stripe/binding.py`) and the two test modules that
+    # pin it and the invoice that waits for it
+    # (`apps/subscriptions/tests/test_mirror_identity.py`,
+    # `api/v1/tests/test_an_invoice_waits_for_its_mirror.py`). None names a
+    # quantity.
+    #
+    # 2026-11-05, R10 Stage C4's review repair (PLAN §7 item 41, the manual
+    # hold): 2,663 of 2,833 -> 2,668 of 2,838 tracked files (`units`
+    # UNMOVED, 46 files / 137 occurrences). Five files arrived, all swept:
+    # the one manual-hold service (`apps/billing/gating/services/
+    # manual_hold.py`), its operator command
+    # (`apps/billing/gating/management/commands/set_customer_manual_hold.py`)
+    # with the two empty package files its `management/commands` directory
+    # needs, and the tests that pin it
+    # (`apps/billing/gating/tests/test_manual_hold.py`). None names a quantity.
+    #
+    # 2026-11-05, R10 Stage C4's final rulings (Ruling C, the Tenant admin
+    # deletes nothing): 2,668 of 2,838 -> 2,670 of 2,840 tracked files
+    # (`units` UNMOVED, 46 files / 137 occurrences). Two files arrived, both
+    # swept: the tests that pin it
+    # (`apps/platform/tenants/tests/test_a_tenant_is_not_deleted_through_the_admin.py`)
+    # and the Tenant admin's shared form-post helper they and the payment
+    # rail's admin tests use (`apps/platform/tenants/tests/_helpers.py`). None
+    # names a quantity.
 
     - term: units
       retired_as: >-

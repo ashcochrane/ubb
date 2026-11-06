@@ -11,7 +11,7 @@ from django.views.decorators.http import require_POST
 from apps.billing.gating.services.live_counter import LiveCounter
 from apps.billing.invoicing.models import Invoice
 from apps.billing.stripe.models import WEBHOOK_RECEIVER_BILLING
-from apps.billing.stripe.receiver import receive_stripe_event
+from apps.billing.stripe.receiver import receive_stripe_event, register_receiver
 from apps.subscriptions.stripe.items import paid_amounts
 from apps.billing.locking import lock_invoice
 
@@ -81,13 +81,16 @@ def stripe_webhook_test(request):
         request, secret=settings.STRIPE_TEST_WEBHOOK_SECRET, is_test_endpoint=True)
 
 
+#: This receiver moves wallet money, so the wallet boundary's refusal is one
+#: of its named, non-retryable outcomes.
+_REFUSES_WITHOUT_A_WALLET_SUBJECT = True
+
+
 def _stripe_webhook(request, *, secret, is_test_endpoint):
     return receive_stripe_event(
         request, receiver=WEBHOOK_RECEIVER_BILLING, handlers=WEBHOOK_HANDLERS,
         secret=secret, is_test_endpoint=is_test_endpoint,
-        # This receiver moves wallet money, so the wallet boundary's refusal
-        # is one of its named, non-retryable outcomes.
-        refuses_without_a_wallet_subject=True)
+        refuses_without_a_wallet_subject=_REFUSES_WITHOUT_A_WALLET_SUBJECT)
 
 
 # --- AR payment-status reconcile (Wave-5a) ---------------------------------
@@ -132,7 +135,21 @@ def _reconcile_customer_invoice(event, *, new_status):
             **livemode_filter(event),
         ).first()
         if not sub:
-            return
+            # AN INVOICE THAT ARRIVES BEFORE ITS MIRROR IS NOT PROCESSED (R10
+            # Stage C4, PLAN §7 item 36). Its subscription has no bound
+            # mirror yet — the `created` webhook, the sync or UBB's own
+            # subscribe has not bound it — so there is no customer and no
+            # billing owner to record it under, and none is guessed.
+            # Acknowledging it would lose it: nothing else creates a
+            # subscription invoice. It raises before anything of this event
+            # is written, so the receiver records a retryable failure (500)
+            # and Stripe redelivers, or an operator re-runs it with
+            # `reprocess_webhook`, once the mirror binds. Payment-failure
+            # handling is a different path and unchanged: an unmatched
+            # failure still suspends nobody.
+            raise StripeSubscription.DoesNotExist(
+                f"invoice {inv.id} belongs to subscription {sub_id}, which has no "
+                f"bound mirror on {acct} yet; retry once it binds")
         # What Stripe sent, kept exactly — its integer and its currency — and
         # an amount in UBB's one currency only where the policy admits it
         # (#564). A connected account may hold a subscription in a currency UBB
@@ -374,3 +391,11 @@ WEBHOOK_HANDLERS = {
     "payment_intent.succeeded": handle_payment_intent_succeeded,
     "payment_intent.payment_failed": handle_payment_intent_payment_failed,
 }
+
+# The billing receiver's dispatch, declared to the receiver core for the
+# `reprocess_webhook` command (R10 Stage C4, PLAN §7 item 36): the command is
+# a billing module and may not import this one, so this module registers
+# itself as it loads, and the map is read at call time as the view reads it.
+register_receiver(
+    WEBHOOK_RECEIVER_BILLING, handlers=lambda: WEBHOOK_HANDLERS,
+    refuses_without_a_wallet_subject=_REFUSES_WITHOUT_A_WALLET_SUBJECT)

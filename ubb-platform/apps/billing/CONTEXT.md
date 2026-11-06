@@ -703,7 +703,10 @@ The one dedup table for both webhook receivers, keyed **per receiver**: unique b
 `(receiver, stripe_event_id)`, so a Stripe event delivered to both endpoints is processed by the
 receiver that owns its type and recorded `skipped` by the other, independently; a redelivery to
 one receiver is deduplicated there; a retryable failure on one is never buried by the other's row.
-`reprocess_webhook --receiver <name> <event id>` resets one receiver's failed row.
+`reprocess_webhook --receiver <name> --tenant <id> <event id>` re-runs one receiver's failed,
+retryable row now: it retrieves the Event from Stripe under the tenant's key and connected account,
+refuses one that disagrees with the row or the tenant, and runs it through the same receiver core
+and the same row a delivery would (R10 Stage C4). Stripe keeps an Event for 30 days.
 (`apps/billing/stripe/models.py`)
 
 **AR transition table**:
@@ -729,7 +732,11 @@ owner being the invoice's HISTORICAL owner, fixed when it entered UBB (a usage i
 `customer`; a subscription invoice's `billing_owner`), never today's topology — a paid
 or a voided invoice settles its own failure, void being a resolved AR condition and not a payment,
 and the hourly AR pass re-asks the same decision for every `payment_failed` owner so one failed
-delivery never strands it — and a paid or voided invoice never clears any other reason), `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
+delivery never strands it — and a paid or voided invoice never clears any other reason; since R10
+Stage C4 a payment recovery is a cause hand-over, not an unconditional activation: a money cause
+still standing when the last failure resolves — a stop line open under `enforcing`, or the wallet
+past its floor — takes over the one reason with nothing announced, as a standing payment failure
+takes over from a money recovery), `credit_grant_expired`, `customer_spend_pool.threshold_reached`,
 `wallet_policy.soft_floor_crossed` / `wallet_policy.soft_floor_cleared`, `customer.stopped` /
 `customer.stop_cleared` (each carrying `control_family` and `control_id`, #458). (The platform kernel emits `task.killed` from the verdict-driven kill flow, and `task.expired` from
 either sweeper — the name carries the state entered, so a subscriber alerting on spend incidents

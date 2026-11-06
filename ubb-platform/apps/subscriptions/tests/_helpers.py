@@ -154,6 +154,71 @@ def a_stripe_subscription(id, customer, status, *, items, currency="usd", **extr
         a_subscription_dict(id, customer, status, items=items, currency=currency, **extra), SK)
 
 
+class CapturedLog:
+    """Every record one logger emits while open, read directly: ``caplog``
+    cannot see this project's ``apps.*`` loggers (the project's LOGGING sets
+    ``propagate: False`` on them). Use as ``with CapturedLog(name) as log:``."""
+
+    def __init__(self, logger_name):
+        import logging
+
+        class _Handler(logging.Handler):
+            def emit(handler, record):
+                self.records.append(record)
+
+        self.logger = logging.getLogger(logger_name)
+        self.handler = _Handler()
+        self.records = []
+
+    def __enter__(self):
+        import logging
+        self.level = self.logger.level
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.addHandler(self.handler)
+        return self
+
+    def __exit__(self, *exc):
+        self.logger.removeHandler(self.handler)
+        self.logger.setLevel(self.level)
+
+    def messages(self):
+        return [r.getMessage() for r in self.records]
+
+    def named(self, message):
+        return [r for r in self.records if r.getMessage() == message]
+
+
+def clear_stripe_customer_id_in_the_admin(customer):
+    """Clear a customer's Stripe customer id through the Django admin change
+    form: the supported maintenance path for it, since no public endpoint
+    edits it (R10 Stage C4, item-30 tests 6 and 12-14; the form shape is C3's,
+    ``apps/platform/customers/tests/test_models.py``). The form requires
+    non-empty ``metadata``, so the customer must carry some."""
+    import json
+    from django.contrib.auth import get_user_model
+    from django.test import Client
+    from django.urls import reverse
+
+    operator = get_user_model().objects.create_superuser(
+        username=f"operator-{customer.external_id}", email="operator@example.com",
+        password="pw")
+    http = Client()
+    http.force_login(operator)
+    response = http.post(
+        reverse("admin:customers_customer_change", args=[customer.pk]),
+        {"tenant": str(customer.tenant_id), "external_id": customer.external_id,
+         "stripe_customer_id": "", "status": customer.status,
+         "metadata": json.dumps(customer.metadata), "account_type": customer.account_type,
+         "parent": str(customer.parent_id) if customer.parent_id else "",
+         "billing_topology": customer.billing_topology,
+         "suspension_reason": customer.suspension_reason,
+         "deleted_at_0": "", "deleted_at_1": ""})
+    assert response.status_code == 302, (
+        response.context["adminform"].form.errors if response.context else response.status_code)
+    customer.refresh_from_db()
+    assert customer.stripe_customer_id == ""
+
+
 def a_subscription_event(event_id, kind, sub_dict, *, account=None, livemode=True):
     """A GENUINE ``stripe.Event`` whose ``data.object`` is a real
     ``stripe.Subscription`` — the object ``Webhook.construct_event`` hands a

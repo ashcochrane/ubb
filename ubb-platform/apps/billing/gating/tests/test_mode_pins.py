@@ -274,14 +274,16 @@ class TestOffRecoversAMoneySuspensionFromDurableTruth:
         assert not _reactivated(c).exists()
         self._no_enforcement_artefacts(c)
 
-    def test_a_fraud_suspension_is_never_lifted(self, django_capture_on_commit_callbacks):
+    def test_a_manual_hold_is_never_lifted(self, django_capture_on_commit_callbacks):
+        # A manual hold is `suspended` with an EMPTY reason (R10 Stage C4, PLAN
+        # §7 item 41); only its own release lifts it, never a credit.
         t, c, _ = self._suspended_on_the_floor()
-        Customer.objects.filter(id=c.id).update(suspension_reason="fraud_review")
+        Customer.objects.filter(id=c.id).update(suspension_reason="")
         with _committing(django_capture_on_commit_callbacks):
             wallet_ops.credit(customer_id=c.id, tenant=t, amount_micros=10_000_000,
                               idempotency_key="cr1")
         c.refresh_from_db()
-        assert (c.status, c.suspension_reason) == ("suspended", "fraud_review")
+        assert (c.status, c.suspension_reason) == ("suspended", "")
         assert not _reactivated(c).exists()
 
     def test_a_credit_never_lifts_a_pool_suspension_under_off(self, django_capture_on_commit_callbacks):

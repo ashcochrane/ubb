@@ -29,7 +29,8 @@ The rules:
   owner's (#459), and is itemised after the owner's lines, always late
   (#609): the recording's acknowledgement reads it too, and names the
   owner's stop over it.
-  An owner suspended with NO open episode (admin/fraud) marks ``suspended``
+  An owner suspended with NO open episode (a manual hold, a payment-failure or
+  lost-dispute suspension) marks ``suspended``
   — with a null ``tripped_at``: suspension carries no durable timestamp,
   and inventing one would be a lie. The soft-floor line never marks (§F —
   work completing past the soft line is permitted, not "past limit").
@@ -164,8 +165,9 @@ def _customer_contexts(owner, customer, tenant, opened_episodes, task_id,
     out = _open_line_entries(owner.id, tenant, task_id, subtask_id,
                              opened_episodes)
     if not out and owner.status == "suspended":
-        # Suspension without an open floor episode — admin/fraud, or a
-        # money suspension whose episode already cleared. No durable
+        # Suspension without an open floor episode — a manual hold, a
+        # payment-failure or lost-dispute suspension (no stop line opens
+        # those), or a money suspension whose episode already cleared. No durable
         # suspension timestamp exists, so tripped_at is honestly null.
         out = [_entry(limit=reasons.SUSPENDED, stop_scope=STOP_SCOPE_CUSTOMER,
                       tripped_at=None, episode_seq=None,
