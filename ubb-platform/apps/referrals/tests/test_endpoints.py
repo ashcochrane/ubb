@@ -21,6 +21,131 @@ class ReferralsEndpointTestBase(TestCase):
         self.headers = {"HTTP_AUTHORIZATION": f"Bearer {self.api_key}"}
 
 
+class TheUpdateRefusesAFigureOfTheWrongUnitTest(ReferralsEndpointTestBase):
+    """A-3 (RULED Q9), enforced on PATCH /referrals/program after C5's final
+    handwritten review: exactly one reward figure is valid for the RESULTING
+    reward type, and a figure the caller supplies that does not belong to it
+    is REFUSED (422 `validation_error`, the stored row untouched) — never
+    silently dropped. Only the figure already stored for the OLD type is
+    cleared, automatically, during a legitimate type change."""
+
+    def _program(self, **fields):
+        return ReferralProgram.objects.create(tenant=self.tenant, **fields)
+
+    def _patch(self, body):
+        return self.http_client.patch(
+            "/api/v1/referrals/program", data=json.dumps(body),
+            content_type="application/json", **self.headers)
+
+    def _stored(self, program):
+        program.refresh_from_db()
+        return (program.reward_type, program.reward_amount_micros,
+                program.reward_share_basis_points, program.estimated_cost_basis_points)
+
+    def assert_refused(self, response, program, before):
+        """The one problem shape (`_helpers.assert_problem`), and the stored
+        row exactly as it was: a refusal writes nothing."""
+        assert_problem(response, "validation_error", 422)
+        self.assertEqual(self._stored(program), before)
+
+    def _changed(self, program, body, expected):
+        self.assertEqual((body["reward_type"], body["reward_amount_micros"],
+                          body["reward_share_basis_points"]), expected[:3])
+        self.assertEqual(self._stored(program), expected)
+
+    def test_a_flat_fee_program_refuses_a_supplied_share(self):
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_share_basis_points": 500}), program, before)
+
+    def test_a_revenue_share_program_refuses_a_supplied_amount(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_amount_micros": 1_000_000}), program, before)
+
+    def test_a_profit_share_program_refuses_a_supplied_amount(self):
+        program = self._program(reward_type="profit_share", reward_share_basis_points=2500,
+                                estimated_cost_basis_points=2000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_amount_micros": 1_000_000}), program, before)
+
+    def test_both_figures_are_refused_whichever_type_results_from_a_flat_fee(self):
+        """Whichever type results, one of the two does not belong to it."""
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        before = self._stored(program)
+        with self.subTest("the same type, both figures"):
+            self.assert_refused(self._patch({"reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+        with self.subTest("a change to a share, both figures"):
+            self.assert_refused(self._patch({"reward_type": "revenue_share",
+                                             "reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+
+    def test_both_figures_are_refused_whichever_type_results_from_a_share(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000)
+        before = self._stored(program)
+        with self.subTest("the same type, both figures"):
+            self.assert_refused(self._patch({"reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+        with self.subTest("a change to a flat fee, both figures"):
+            self.assert_refused(self._patch({"reward_type": "flat_fee",
+                                             "reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+
+    def test_a_flat_fee_becomes_a_revenue_share_and_the_old_amount_is_cleared(self):
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        resp = self._patch({"reward_type": "revenue_share", "reward_share_basis_points": 1000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("revenue_share", None, 1000, None))
+
+    def test_a_revenue_share_becomes_a_flat_fee_and_the_old_share_is_cleared(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1500,
+                                estimated_cost_basis_points=1000)
+        resp = self._patch({"reward_type": "flat_fee", "reward_amount_micros": 7_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("flat_fee", 7_000_000, None, 1000))
+
+    def test_a_profit_share_becomes_a_flat_fee_and_the_old_share_is_cleared(self):
+        program = self._program(reward_type="profit_share", reward_share_basis_points=1500,
+                                estimated_cost_basis_points=1000)
+        resp = self._patch({"reward_type": "flat_fee", "reward_amount_micros": 7_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("flat_fee", 7_000_000, None, 1000))
+
+    def test_a_type_change_without_the_new_types_figure_is_refused(self):
+        """Clearing the old figure never leaves a type with no figure: the
+        row would then fail the one rule, and nothing is written."""
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_type": "revenue_share"}), program, before)
+
+    def test_an_ordinary_same_type_share_update_succeeds(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000)
+        resp = self._patch({"reward_share_basis_points": 2000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("revenue_share", None, 2000, None))
+
+    def test_an_ordinary_same_type_flat_fee_update_succeeds(self):
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        resp = self._patch({"reward_amount_micros": 9_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("flat_fee", 9_000_000, None, None))
+
+    def test_an_unrelated_field_update_keeps_the_valid_reward_figure(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000,
+                                attribution_window_days=30)
+        resp = self._patch({"attribution_window_days": 60, "max_reward_micros": 50_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        program.refresh_from_db()
+        self.assertEqual((program.attribution_window_days, program.max_reward_micros),
+                         (60, 50_000_000))
+        self.assertEqual(self._stored(program), ("revenue_share", None, 1000, None))
+
+
 class TestProgramEndpoints(ReferralsEndpointTestBase):
     def test_create_program(self):
         resp = self.http_client.post(

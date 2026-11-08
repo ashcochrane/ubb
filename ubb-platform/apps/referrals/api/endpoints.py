@@ -149,7 +149,24 @@ def update_program(request, payload: ProgramUpdateRequest):
     if not program:
         raise Problem("not_found", "No active referral program found")
 
+    # EXACTLY ONE REWARD FIGURE, BY THE RESULTING TYPE (A-3, RULED Q9; the
+    # final handwritten review of C5), two cases never conflated. B: a figure
+    # STORED for the OLD type is cleared FIRST, before the body is applied,
+    # so a legitimate type change sheds the old unit by itself. A: a figure
+    # the CALLER supplied (non-null; a null keeps the route's "omitted"
+    # meaning) is applied as any field is, so one that does not belong to the
+    # resulting type sits on the row and the one canonical rule — the create
+    # body's — refuses it by name, before anything is written. Nothing a
+    # caller sends is silently dropped.
+    old_type = program.reward_type
+    resulting_type = payload.reward_type if payload.reward_type is not None else old_type
     update_fields = ["updated_at"]
+    if resulting_type != old_type:
+        old_figure = ("reward_amount_micros" if old_type == REWARD_TYPE_FLAT_FEE
+                      else "reward_share_basis_points")
+        if getattr(program, old_figure) is not None:
+            setattr(program, old_figure, None)
+            update_fields.append(old_figure)
     for field_name in [
         "reward_type", "reward_amount_micros", "reward_share_basis_points",
         "attribution_window_days", "reward_window_days", "max_reward_micros",
@@ -160,18 +177,6 @@ def update_program(request, payload: ProgramUpdateRequest):
         if value is not None:
             setattr(program, field_name, value)
             update_fields.append(field_name)
-    # Exactly one reward figure, by the (possibly new) type (A-3) — the one
-    # rule the create body enforces, asked of the row as it would be stored.
-    # A type change drops the figure the old scheme used first, so the stored
-    # row never carries a figure in the wrong unit; a missing figure for the
-    # new scheme is refused.
-    if program.reward_type == REWARD_TYPE_FLAT_FEE:
-        dropped = "reward_share_basis_points"
-    else:
-        dropped = "reward_amount_micros"
-    if getattr(program, dropped) is not None:
-        setattr(program, dropped, None)
-        update_fields.append(dropped)
     try:
         one_reward_figure_by_type(program.reward_type, program.reward_amount_micros,
                                   program.reward_share_basis_points)
