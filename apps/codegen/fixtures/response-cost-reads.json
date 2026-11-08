@@ -4,8 +4,8 @@
       "schema_version": 1,
       "renderer_contract_version": 3,
       "target": "python_sdk",
-      "sdk_major_version": 4,
-      "configuration_fingerprint": "sha256:5f215b1e1007003b67a85893e5656905329b0261e267db60263246e3175d2ec9",
+      "sdk_major_version": 5,
+      "configuration_fingerprint": "sha256:5d9a241c1c79a3ca00b62224b1626e17e560b9565579b703bd95e666df70e404",
       "readiness": "complete",
       "calls": [
         {
@@ -588,8 +588,8 @@
       "schema_version": 1,
       "renderer_contract_version": 3,
       "target": "python_sdk",
-      "sdk_major_version": 4,
-      "configuration_fingerprint": "sha256:733a6a6126ac4bc416cbe36e98a41149eca0d89614358e01ecdacca33e0ec7c2",
+      "sdk_major_version": 5,
+      "configuration_fingerprint": "sha256:ad71e92a4badfcee816915744175289fd33dfedbd85c520fd8f22c8106e5220c",
       "readiness": "complete",
       "calls": [
         {
@@ -1172,8 +1172,8 @@
       "schema_version": 1,
       "renderer_contract_version": 3,
       "target": "python_sdk",
-      "sdk_major_version": 4,
-      "configuration_fingerprint": "sha256:c09a3c0d355653428917d82e6f151be2d667a036a4a267e85a9c756748f7d9b2",
+      "sdk_major_version": 5,
+      "configuration_fingerprint": "sha256:995e9c622be13fb6e917d5dfbc37de0451c826888e267a6b83d01b5f761ec440",
       "readiness": "complete",
       "calls": [
         {

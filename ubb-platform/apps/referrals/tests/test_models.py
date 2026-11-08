@@ -15,7 +15,7 @@ class TestReferralProgram:
         program = ReferralProgram.objects.create(
             tenant=tenant,
             reward_type="revenue_share",
-            reward_value=0.10,
+            reward_share_basis_points=1000,
         )
         program.refresh_from_db()
         assert program.reward_type == "revenue_share"
@@ -25,11 +25,11 @@ class TestReferralProgram:
     def test_one_program_per_tenant(self):
         tenant = Tenant.objects.create(name="test", products=["metering", "referrals"])
         ReferralProgram.objects.create(
-            tenant=tenant, reward_type="flat_fee", reward_value=1_000_000,
+            tenant=tenant, reward_type="flat_fee", reward_amount_micros=1_000_000,
         )
         with pytest.raises(IntegrityError):
             ReferralProgram.objects.create(
-                tenant=tenant, reward_type="revenue_share", reward_value=0.10,
+                tenant=tenant, reward_type="revenue_share", reward_share_basis_points=1000,
             )
 
 
@@ -77,7 +77,7 @@ class TestReferral:
             referred_customer=referred,
             referral_code_used=referrer.referral_code,
             snapshot_reward_type="revenue_share",
-            snapshot_reward_value=0.10,
+            snapshot_reward_share_basis_points=1000,
         )
         referral.refresh_from_db()
         assert referral.status == "active"
@@ -88,7 +88,7 @@ class TestReferral:
         Referral.objects.create(
             tenant=tenant, referrer=referrer, referred_customer=referred,
             referral_code_used="REF-X",
-            snapshot_reward_type="flat_fee", snapshot_reward_value=1000,
+            snapshot_reward_type="flat_fee", snapshot_reward_amount_micros=1000,
         )
         # Another referrer in same tenant can't refer the same customer
         c3 = Customer.objects.create(tenant=tenant, external_id="referrer2")
@@ -97,7 +97,7 @@ class TestReferral:
             Referral.objects.create(
                 tenant=tenant, referrer=referrer2, referred_customer=referred,
                 referral_code_used="REF-Y",
-                snapshot_reward_type="flat_fee", snapshot_reward_value=1000,
+                snapshot_reward_type="flat_fee", snapshot_reward_amount_micros=1000,
             )
 
     def test_snapshot_preserves_config(self):
@@ -106,15 +106,15 @@ class TestReferral:
             tenant=tenant, referrer=referrer, referred_customer=referred,
             referral_code_used="REF-X",
             snapshot_reward_type="profit_share",
-            snapshot_reward_value=0.50,
+            snapshot_reward_share_basis_points=5000,
             snapshot_max_reward_micros=100_000_000,
-            snapshot_estimated_cost_percentage=0.20,
+            snapshot_estimated_cost_basis_points=2000,
         )
         referral.refresh_from_db()
         assert referral.snapshot_reward_type == "profit_share"
-        assert float(referral.snapshot_reward_value) == 0.50
+        assert referral.snapshot_reward_share_basis_points == 5000
         assert referral.snapshot_max_reward_micros == 100_000_000
-        assert float(referral.snapshot_estimated_cost_percentage) == 0.20
+        assert referral.snapshot_estimated_cost_basis_points == 2000
 
 
 @pytest.mark.django_db
@@ -127,7 +127,7 @@ class TestRewardAccumulator:
         referral = Referral.objects.create(
             tenant=tenant, referrer=referrer, referred_customer=c2,
             referral_code_used="REF-X",
-            snapshot_reward_type="flat_fee", snapshot_reward_value=1000,
+            snapshot_reward_type="flat_fee", snapshot_reward_amount_micros=1000,
         )
         acc = ReferralRewardAccumulator.objects.create(referral=referral)
         assert acc.total_earned_micros == 0

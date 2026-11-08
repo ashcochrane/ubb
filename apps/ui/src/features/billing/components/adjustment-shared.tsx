@@ -21,7 +21,7 @@ export function LastResultLine({
   if (!result) return null;
   return (
     <p className="text-[12px] text-text-secondary">
-      Done — <span className="font-mono">{result.external_id}</span> balance is now{" "}
+      Done — <span className="font-mono">{result.customer_id}</span> balance is now{" "}
       <span className="font-medium text-text-primary">
         {formatMicros(result.new_balance_micros, currency)}
       </span>{" "}
@@ -52,9 +52,9 @@ export function AdjustmentSharedFields({
   return (
     <>
       <FormField
-        label="Customer external ID"
+        label="Platform Customer UUID"
         error={errors.customer}
-        hint="The ID your systems use for this customer (as sent in usage events) — not the UBB UUID."
+        hint="The id UBB answered when the customer was created — the UUID in the customer's page address. The route takes nothing else."
       >
         {(id) => <Input id={id} className="font-mono" disabled={!isAdmin} {...customer} />}
       </FormField>

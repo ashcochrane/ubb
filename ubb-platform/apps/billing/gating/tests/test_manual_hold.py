@@ -31,6 +31,10 @@ from apps.platform.customers.models import Customer
 from apps.platform.events.models import OutboxEvent
 from apps.platform.tenants.models import Tenant
 from apps.platform.work import reasons
+from core.vocabulary import (
+    AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_RELEASED,
+    AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_SET,
+)
 
 #: Every cause a system path suspends for, each owned by its own recovery.
 SYSTEM_CAUSES = (reasons.HARD_FLOOR, reasons.CUSTOMER_SPEND_POOL,
@@ -477,3 +481,159 @@ class TheOperatorCommandTest(_ManualHoldCase):
             with self.subTest(name), self.assertRaisesMessage(CommandError, message):
                 self._run(*args)
         self.assertEqual(self.standing(self.solo), ("active", ""))
+
+
+class TheDurableManualHoldAuditTest(_ManualHoldCase):
+    """THE DURABLE MANUAL-HOLD AUDIT (R10 Stage C5, PLAN §7 item 42, FINAL
+    2026-11-06). Two closed `audit_action` values, written through the normal
+    ledger under the operator actor on the `customer` record, by the one
+    manual-hold service:
+
+    - `customer.manual_hold_set` ONLY when a hold is actually established;
+    - `customer.manual_hold_released` whenever THIS call actually removed a
+      hold — both when the customer became active and when a standing system
+      cause took over — recording the resulting status and reason.
+
+    No row for a no-op, a refusal or a failed/rolled-back operation (those
+    stay in the operational log); no attempt/refusal/failure action; each row
+    commits with its state change or not at all."""
+
+    SET = AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_SET
+    RELEASED = AUDIT_ACTION_CUSTOMER_MANUAL_HOLD_RELEASED
+
+    def rows(self, customer, action=None):
+        from apps.platform.audit.models import AuditRecord
+        qs = AuditRecord.objects.filter(resource_type="customer",
+                                        resource_id=str(customer.id)).order_by("created_at")
+        if action is not None:
+            qs = qs.filter(action=action)
+        return list(qs)
+
+    def assert_one(self, customer, action, operator, status, reason):
+        [row] = self.rows(customer, action)
+        self.assertEqual((row.actor_kind, row.actor_id), ("operator", operator))
+        self.assertEqual(row.tenant_id, customer.tenant_id)
+        self.assertEqual(row.metadata["customer_id"], str(customer.id))
+        self.assertEqual(row.metadata["operator"], operator)
+        self.assertEqual((row.metadata["resulting_status"],
+                          row.metadata["resulting_suspension_reason"]), (status, reason))
+        return row
+
+    def test_a_hold_writes_exactly_one_set_row_under_the_operator(self):
+        manual_hold.place_manual_hold(self.seat.id, operator="op-11")
+        self.assert_one(self.seat, self.SET, "op-11", "suspended", "")
+        self.assertEqual(self.rows(self.seat, self.RELEASED), [])
+        self.assertEqual(len(self.rows(self.seat)), 1)
+
+    def test_an_already_held_refused_or_failed_hold_writes_nothing(self):
+        manual_hold.place_manual_hold(self.solo.id, operator="op-1")
+        manual_hold.place_manual_hold(self.solo.id, operator="op-2")     # already held
+        self.assertEqual(len(self.rows(self.solo, self.SET)), 1)
+        for cause in SYSTEM_CAUSES:                                       # a system cause
+            with self.subTest(cause):
+                self.suspend_for(self.seat, cause)
+                with self.assertRaises(manual_hold.ManualHoldRefused):
+                    manual_hold.place_manual_hold(self.seat.id, operator="op-3")
+                self.assertEqual(self.rows(self.seat), [])
+        Customer.objects.filter(id=self.seat.id).update(status="closed", suspension_reason="")
+        with self.assertRaises(manual_hold.ManualHoldRefused):           # closed
+            manual_hold.place_manual_hold(self.seat.id, operator="op-4")
+        deleted = Customer.objects.create(tenant=self.tenant, external_id="gone")
+        deleted.soft_delete()
+        with self.assertRaises(manual_hold.ManualHoldRefused):           # deleted
+            manual_hold.place_manual_hold(deleted.id, operator="op-5")
+        self.assertEqual(self.rows(self.seat) + self.rows(deleted), [])
+        # Failed: the state change raises inside the atomic — nothing survives.
+        with patch("apps.billing.gating.services.manual_hold.notify_if_a_seat",
+                   side_effect=RuntimeError("boom")), self.assertRaises(RuntimeError):
+            manual_hold.place_manual_hold(self.business.id, operator="op-6")
+        self.assertEqual(self.standing(self.business), ("active", ""))
+        self.assertEqual(self.rows(self.business), [])
+
+    def test_a_release_that_reactivates_writes_one_released_row_recording_active(self):
+        manual_hold.place_manual_hold(self.seat.id, operator="op-1")
+        self.assertEqual(manual_hold.release_manual_hold(self.seat.id, operator="op-12"),
+                         manual_hold.RELEASED)
+        row = self.assert_one(self.seat, self.RELEASED, "op-12", "active", "")
+        self.assertEqual(row.metadata["outcome"], "released")
+        self.assertEqual(len(self.events(self.seat, "customer.reactivated")), 1)
+
+    def test_a_release_handed_over_to_a_payment_failure_records_suspended_and_the_cause(self):
+        manual_hold.place_manual_hold(self.solo.id, operator="op-1")
+        self.stand_a_payment_failure(self.solo)
+        self.assertEqual(manual_hold.release_manual_hold(self.solo.id, operator="op-13"),
+                         manual_hold.HANDED_OVER)
+        row = self.assert_one(self.solo, self.RELEASED, "op-13", "suspended",
+                              reasons.PAYMENT_FAILED)
+        self.assertEqual(row.metadata["outcome"], "handed_over")
+        self.assertEqual(self.events(self.solo, "customer.reactivated"), [])
+
+    def test_a_release_handed_over_to_a_money_cause_records_it(self):
+        """A wallet past its floor under `off`, and an open stop line under
+        `enforcing` — the two standing money causes the release hands over
+        to, each recorded as what the customer is now, with no
+        `customer.reactivated`."""
+        from django.core.cache import cache
+        from apps.billing.gating.services.stop_signal_service import (
+            LINE_HARD_FLOOR, StopSignalService, control_id_of)
+        from apps.billing.wallets.models import Wallet
+        from apps.platform.tenants.tests._rails import activate_the_rail
+        from core.vocabulary import TRIGGER_SOURCE_ENFORCEMENT_PATROL
+        activate_the_rail()
+        cache.clear()
+        for mode, stand in (("off", "floor"), ("enforcing", "line")):
+            with self.subTest(mode):
+                tenant = Tenant.objects.create(
+                    name=f"Audit {mode}", products=["metering", "billing"],
+                    billing_mode="prepaid", enforcement_mode=mode)
+                customer = Customer.objects.create(tenant=tenant, external_id=f"c-{mode}")
+                Wallet.objects.create(customer=customer, balance_micros=5_000_000)
+                manual_hold.place_manual_hold(customer.id, operator="op-1")
+                if stand == "floor":
+                    bill_in_flight_usage(tenant, customer, 8_000_000, f"u-{mode}")
+                else:
+                    StopSignalService.drive_stop(
+                        customer.id, tenant, line=LINE_HARD_FLOOR,
+                        control_id=control_id_of(LINE_HARD_FLOOR, customer.id, tenant),
+                        trigger_source=TRIGGER_SOURCE_ENFORCEMENT_PATROL,
+                        stop_bound_micros=0, stop_measured_micros=0)
+                outcome = manual_hold.release_manual_hold(customer.id, operator="op-14")
+                self.assertEqual((outcome, outcome.cause),
+                                 (manual_hold.HANDED_OVER, reasons.HARD_FLOOR))
+                self.assert_one(customer, self.RELEASED, "op-14", "suspended",
+                                reasons.HARD_FLOOR)
+                self.assertEqual(self.events(customer, "customer.reactivated"), [])
+
+    def test_an_already_active_refused_or_failed_release_writes_nothing(self):
+        manual_hold.release_manual_hold(self.solo.id, operator="op-1")          # already active
+        self.suspend_for(self.seat, reasons.HARD_FLOOR)
+        with self.assertRaises(manual_hold.ManualHoldRefused):                # a system cause
+            manual_hold.release_manual_hold(self.seat.id, operator="op-2")
+        manual_hold.place_manual_hold(self.business.id, operator="op-1")
+        with patch("apps.billing.gating.services.live_counter.LiveCounter.clear_manual_hold",
+                   return_value=False), self.assertRaises(manual_hold.ManualHoldFailed):
+            manual_hold.release_manual_hold(self.business.id, operator="op-3")  # failed
+        self.assertEqual(self.rows(self.solo), [])
+        self.assertEqual(self.rows(self.seat), [])
+        self.assertEqual(self.rows(self.business, self.RELEASED), [])
+        self.assertEqual(self.standing(self.business), ("suspended", ""))
+
+    def test_a_state_change_rolled_back_after_the_audit_call_leaves_no_row(self):
+        """The ledger row commits WITH the state change: a failure after the
+        record is written, inside the same transaction, takes it with it."""
+        manual_hold.place_manual_hold(self.solo.id, operator="op-1")
+        self.assertEqual(len(self.rows(self.solo, self.SET)), 1)
+        # The audit row is written for real (the wrapped `_audit` runs), then
+        # the service's own transaction fails before it commits.
+        real_audit = manual_hold._audit
+
+        def audit_then_fail(*args, **kwargs):
+            real_audit(*args, **kwargs)
+            raise RuntimeError("after the audit, before the commit")
+
+        with patch.object(manual_hold, "_audit", side_effect=audit_then_fail), \
+                self.assertRaisesMessage(RuntimeError, "after the audit"):
+            manual_hold.release_manual_hold(self.solo.id, operator="op-15")
+        self.assertEqual(self.rows(self.solo, self.RELEASED), [])
+        self.assertEqual(self.standing(self.solo), ("suspended", ""))   # rolled back too
+        self.assertEqual(self.events(self.solo, "customer.reactivated"), [])

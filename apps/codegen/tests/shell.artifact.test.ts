@@ -1012,11 +1012,11 @@ describe("what the shell renderer refuses", () => {
     // nothing to refuse — and the header says what the document says.
     const module = only(
       render(changed((b) => {
-        b.sdk_major_version = 4;
+        b.sdk_major_version = 5;
       })),
       "module",
     ).contents;
 
-    expect(module).toContain("# sdk_major_version = 4\n");
+    expect(module).toContain("# sdk_major_version = 5\n");
   });
 });

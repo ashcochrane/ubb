@@ -607,7 +607,7 @@ class TwoLinesAtOnceTest(RailActivated, PoolTestBase):
         # The wallet recovers: the floor's line clears and the pool still holds.
         with mock.patch(DOORBELL), self.captureOnCommitCallbacks(execute=True):
             credited = self.http.post("/api/v1/billing/credit", data=json.dumps({
-                "customer_id": self.customer.external_id,
+                "customer_id": str(self.customer.id),
                 "amount_micros": 20_000_000, "source": "topup",
                 "reference": "tp1", "idempotency_key": "tp1"}), **self._headers())
         self.assertEqual(credited.status_code, 200, credited.content)

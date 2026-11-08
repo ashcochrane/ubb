@@ -157,9 +157,11 @@ export function useBalance(customerId: string, enabled = true) {
   });
 }
 
-export function useTransactionsList(customerId: string) {
-  return useCursorList(["billing", "transactions", customerId], (cursor) =>
-    customersApi.listTransactions(customerId, cursor),
+export function useTransactionsList(customerId: string, enabled = true) {
+  return useCursorList(
+    ["billing", "transactions", customerId],
+    (cursor) => customersApi.listTransactions(customerId, cursor),
+    { enabled },
   );
 }
 
@@ -309,12 +311,12 @@ export function useWithdraw(customerId: string) {
   );
 }
 
-/** Takes the EXTERNAL id in body.customer_id. */
+/** Takes the platform Customer UUID in body.customer_id (F-13). */
 export function useCreditWallet() {
   return useBillingMutation((body: CreditRequest) => customersApi.creditWallet(body));
 }
 
-/** Takes the EXTERNAL id in body.customer_id. */
+/** Takes the platform Customer UUID in body.customer_id (F-13). */
 export function useDebitWallet() {
   return useBillingMutation((body: DebitRequest) => customersApi.debitWallet(body));
 }

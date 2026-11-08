@@ -13,6 +13,7 @@ from apps.platform.customers.models import Customer
 from apps.platform.event_types.tests._helpers import (
     DECLARED, declares_a_caller_supplied_cost)
 from apps.billing.wallets.models import Wallet
+from apps.platform.tenants.tests._rails import RailActivated
 
 
 class TestMeteringOnlyTenant(TestCase):
@@ -97,13 +98,14 @@ class TestMeteringOnlyTenant(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
-class TestMeteringBillingTenant(TestCase):
+class TestMeteringBillingTenant(RailActivated, TestCase):
     """Tenant with products=["metering", "billing"] can use billing endpoints but not referrals/subscriptions."""
 
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Metering+Billing", products=["metering", "billing"]
+            name="Metering+Billing", products=["metering", "billing"],
+            billing_mode="prepaid",  # the wallet holder (R10 Stage C5, F-12)
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"
@@ -172,13 +174,14 @@ class TestMeteringBillingTenant(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
-class TestBothProductsTenant(TestCase):
+class TestBothProductsTenant(RailActivated, TestCase):
     """Tenant with products=["metering", "billing"] can use both endpoints."""
 
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
-            name="Both Products", products=["metering", "billing"]
+            name="Both Products", products=["metering", "billing"],
+            billing_mode="prepaid",  # the wallet holder (R10 Stage C5, F-12)
         )
         self.key_obj, self.raw_key = TenantApiKey.create_key(
             self.tenant, label="test"

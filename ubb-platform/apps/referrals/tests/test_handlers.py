@@ -13,7 +13,7 @@ from apps.referrals.handlers import handle_usage_recorded_referrals
 
 @pytest.mark.django_db
 class TestUsageRecordedHandler:
-    def _setup(self, reward_type="revenue_share", reward_value=0.10, **kwargs):
+    def _setup(self, reward_type="revenue_share", reward_amount_micros=None, reward_share_basis_points=1000, **kwargs):
         tenant = Tenant.objects.create(
             name="test", products=["metering", "referrals"],
         )
@@ -25,7 +25,8 @@ class TestUsageRecordedHandler:
             tenant=tenant, referrer=referrer, referred_customer=referred_cust,
             referral_code_used=referrer.referral_code,
             snapshot_reward_type=reward_type,
-            snapshot_reward_value=reward_value,
+            snapshot_reward_amount_micros=reward_amount_micros,
+            snapshot_reward_share_basis_points=reward_share_basis_points,
             **kwargs,
         )
         ReferralRewardAccumulator.objects.create(referral=referral)
@@ -34,7 +35,7 @@ class TestUsageRecordedHandler:
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_accumulates_revenue_share(self, mock_task):
-        tenant, _, referred, referral = self._setup("revenue_share", 0.10)
+        tenant, _, referred, referral = self._setup("revenue_share", reward_share_basis_points=1000)
 
         handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
             pricing_status_reason=None,
@@ -52,7 +53,7 @@ class TestUsageRecordedHandler:
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_accumulates_multiple_events(self, mock_task):
-        tenant, _, referred, referral = self._setup("revenue_share", 0.10)
+        tenant, _, referred, referral = self._setup("revenue_share", reward_share_basis_points=1000)
 
         for i in range(3):
             handle_usage_recorded_referrals(f"evt-outbox-{i}", asdict(UsageRecorded(
@@ -70,7 +71,7 @@ class TestUsageRecordedHandler:
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_flat_fee_paid_once(self, mock_task):
-        tenant, _, referred, referral = self._setup("flat_fee", 5_000_000)
+        tenant, _, referred, referral = self._setup("flat_fee", reward_amount_micros=5_000_000, reward_share_basis_points=None)
 
         handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
             pricing_status_reason=None,
@@ -114,7 +115,7 @@ class TestUsageRecordedHandler:
         )))
 
     def test_skips_zero_cost(self):
-        tenant, _, referred, referral = self._setup("revenue_share", 0.10)
+        tenant, _, referred, referral = self._setup("revenue_share", reward_share_basis_points=1000)
 
         handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
             pricing_status_reason=None,
@@ -131,7 +132,7 @@ class TestUsageRecordedHandler:
     @patch("apps.platform.events.tasks.process_single_event")
     def test_respects_max_reward_cap(self, mock_task):
         tenant, _, referred, referral = self._setup(
-            "revenue_share", 0.10,
+            "revenue_share", reward_share_basis_points=1000,
             snapshot_max_reward_micros=150_000,
         )
 
@@ -165,7 +166,7 @@ class TestUsageRecordedHandler:
     def test_cap_enforcement_under_lock(self, mock_task):
         """Cap check uses select_for_update to prevent over-cap payouts."""
         tenant, _, referred, referral = self._setup(
-            "revenue_share", 0.10,
+            "revenue_share", reward_share_basis_points=1000,
             snapshot_max_reward_micros=120_000,
         )
 
@@ -197,7 +198,7 @@ class TestUsageRecordedHandler:
 
     @patch("apps.platform.events.tasks.process_single_event")
     def test_profit_share_with_raw_cost(self, mock_task):
-        tenant, _, referred, referral = self._setup("profit_share", 0.50)
+        tenant, _, referred, referral = self._setup("profit_share", reward_share_basis_points=5000)
 
         handle_usage_recorded_referrals("evt-outbox-1", asdict(UsageRecorded(
             pricing_status_reason=None,
@@ -215,7 +216,7 @@ class TestUsageRecordedHandler:
 
     def test_expired_referral_skipped(self):
         tenant, _, referred, referral = self._setup(
-            "revenue_share", 0.10,
+            "revenue_share", reward_share_basis_points=1000,
             reward_window_ends_at=timezone.now() - timezone.timedelta(days=1),
         )
 
@@ -239,7 +240,7 @@ class TestUsageRecordedHandler:
         """Folded into #603: `None <= 0` was a `TypeError` in this outbox
         handler for every posting whose price UBB did not resolve — the
         defect #351 fixed in billing's handler and never here."""
-        tenant, _, referred, referral = self._setup("revenue_share", 0.10)
+        tenant, _, referred, referral = self._setup("revenue_share", reward_share_basis_points=1000)
 
         handle_usage_recorded_referrals("evt-outbox-u", asdict(UsageRecorded(
             pricing_status_reason=None,
@@ -262,7 +263,7 @@ class TestUsageRecordedHandler:
         with its reason); rewarding it would reverse a referrer's reward,
         negative money v1 does not carry (ADR-0020 §5)."""
         from core.exceptions import NegativeKnownPriceRefused
-        tenant, _, referred, referral = self._setup("revenue_share", 0.10)
+        tenant, _, referred, referral = self._setup("revenue_share", reward_share_basis_points=1000)
 
         with pytest.raises(NegativeKnownPriceRefused, match="below zero"):
             handle_usage_recorded_referrals("evt-outbox-n", asdict(UsageRecorded(

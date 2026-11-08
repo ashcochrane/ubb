@@ -21,13 +21,138 @@ class ReferralsEndpointTestBase(TestCase):
         self.headers = {"HTTP_AUTHORIZATION": f"Bearer {self.api_key}"}
 
 
+class TheUpdateRefusesAFigureOfTheWrongUnitTest(ReferralsEndpointTestBase):
+    """A-3 (RULED Q9), enforced on PATCH /referrals/program after C5's final
+    handwritten review: exactly one reward figure is valid for the RESULTING
+    reward type, and a figure the caller supplies that does not belong to it
+    is REFUSED (422 `validation_error`, the stored row untouched) — never
+    silently dropped. Only the figure already stored for the OLD type is
+    cleared, automatically, during a legitimate type change."""
+
+    def _program(self, **fields):
+        return ReferralProgram.objects.create(tenant=self.tenant, **fields)
+
+    def _patch(self, body):
+        return self.http_client.patch(
+            "/api/v1/referrals/program", data=json.dumps(body),
+            content_type="application/json", **self.headers)
+
+    def _stored(self, program):
+        program.refresh_from_db()
+        return (program.reward_type, program.reward_amount_micros,
+                program.reward_share_basis_points, program.estimated_cost_basis_points)
+
+    def assert_refused(self, response, program, before):
+        """The one problem shape (`_helpers.assert_problem`), and the stored
+        row exactly as it was: a refusal writes nothing."""
+        assert_problem(response, "validation_error", 422)
+        self.assertEqual(self._stored(program), before)
+
+    def _changed(self, program, body, expected):
+        self.assertEqual((body["reward_type"], body["reward_amount_micros"],
+                          body["reward_share_basis_points"]), expected[:3])
+        self.assertEqual(self._stored(program), expected)
+
+    def test_a_flat_fee_program_refuses_a_supplied_share(self):
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_share_basis_points": 500}), program, before)
+
+    def test_a_revenue_share_program_refuses_a_supplied_amount(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_amount_micros": 1_000_000}), program, before)
+
+    def test_a_profit_share_program_refuses_a_supplied_amount(self):
+        program = self._program(reward_type="profit_share", reward_share_basis_points=2500,
+                                estimated_cost_basis_points=2000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_amount_micros": 1_000_000}), program, before)
+
+    def test_both_figures_are_refused_whichever_type_results_from_a_flat_fee(self):
+        """Whichever type results, one of the two does not belong to it."""
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        before = self._stored(program)
+        with self.subTest("the same type, both figures"):
+            self.assert_refused(self._patch({"reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+        with self.subTest("a change to a share, both figures"):
+            self.assert_refused(self._patch({"reward_type": "revenue_share",
+                                             "reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+
+    def test_both_figures_are_refused_whichever_type_results_from_a_share(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000)
+        before = self._stored(program)
+        with self.subTest("the same type, both figures"):
+            self.assert_refused(self._patch({"reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+        with self.subTest("a change to a flat fee, both figures"):
+            self.assert_refused(self._patch({"reward_type": "flat_fee",
+                                             "reward_amount_micros": 6_000_000,
+                                             "reward_share_basis_points": 500}),
+                                program, before)
+
+    def test_a_flat_fee_becomes_a_revenue_share_and_the_old_amount_is_cleared(self):
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        resp = self._patch({"reward_type": "revenue_share", "reward_share_basis_points": 1000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("revenue_share", None, 1000, None))
+
+    def test_a_revenue_share_becomes_a_flat_fee_and_the_old_share_is_cleared(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1500,
+                                estimated_cost_basis_points=1000)
+        resp = self._patch({"reward_type": "flat_fee", "reward_amount_micros": 7_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("flat_fee", 7_000_000, None, 1000))
+
+    def test_a_profit_share_becomes_a_flat_fee_and_the_old_share_is_cleared(self):
+        program = self._program(reward_type="profit_share", reward_share_basis_points=1500,
+                                estimated_cost_basis_points=1000)
+        resp = self._patch({"reward_type": "flat_fee", "reward_amount_micros": 7_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("flat_fee", 7_000_000, None, 1000))
+
+    def test_a_type_change_without_the_new_types_figure_is_refused(self):
+        """Clearing the old figure never leaves a type with no figure: the
+        row would then fail the one rule, and nothing is written."""
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        before = self._stored(program)
+        self.assert_refused(self._patch({"reward_type": "revenue_share"}), program, before)
+
+    def test_an_ordinary_same_type_share_update_succeeds(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000)
+        resp = self._patch({"reward_share_basis_points": 2000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("revenue_share", None, 2000, None))
+
+    def test_an_ordinary_same_type_flat_fee_update_succeeds(self):
+        program = self._program(reward_type="flat_fee", reward_amount_micros=5_000_000)
+        resp = self._patch({"reward_amount_micros": 9_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self._changed(program, resp.json(), ("flat_fee", 9_000_000, None, None))
+
+    def test_an_unrelated_field_update_keeps_the_valid_reward_figure(self):
+        program = self._program(reward_type="revenue_share", reward_share_basis_points=1000,
+                                attribution_window_days=30)
+        resp = self._patch({"attribution_window_days": 60, "max_reward_micros": 50_000_000})
+        self.assertEqual(resp.status_code, 200, resp.content)
+        program.refresh_from_db()
+        self.assertEqual((program.attribution_window_days, program.max_reward_micros),
+                         (60, 50_000_000))
+        self.assertEqual(self._stored(program), ("revenue_share", None, 1000, None))
+
+
 class TestProgramEndpoints(ReferralsEndpointTestBase):
     def test_create_program(self):
         resp = self.http_client.post(
             "/api/v1/referrals/program",
             data=json.dumps({
                 "reward_type": "revenue_share",
-                "reward_value": 0.10,
+                "reward_share_basis_points": 1000,
                 "attribution_window_days": 30,
                 "reward_window_days": 365,
             }),
@@ -41,7 +166,7 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_get_program(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=5_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=5_000_000,
         )
         resp = self.http_client.get(
             "/api/v1/referrals/program", **self.headers,
@@ -57,20 +182,20 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_update_program(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         resp = self.http_client.patch(
             "/api/v1/referrals/program",
-            data=json.dumps({"reward_value": 0.20}),
+            data=json.dumps({"reward_share_basis_points": 2000}),
             content_type="application/json",
             **self.headers,
         )
         self.assertEqual(resp.status_code, 200)
-        self.assertAlmostEqual(resp.json()["reward_value"], 0.20)
+        self.assertEqual(resp.json()["reward_share_basis_points"], 2000)
 
     def test_deactivate_program(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=1_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=1_000_000,
         )
         resp = self.http_client.delete(
             "/api/v1/referrals/program", **self.headers,
@@ -80,7 +205,7 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_reactivate_program(self):
         program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=1_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=1_000_000,
             status="deactivated",
         )
         resp = self.http_client.post(
@@ -91,25 +216,68 @@ class TestProgramEndpoints(ReferralsEndpointTestBase):
 
     def test_duplicate_program_409(self):
         ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="flat_fee", reward_value=1_000_000,
+            tenant=self.tenant, reward_type="flat_fee", reward_amount_micros=1_000_000,
         )
         resp = self.http_client.post(
             "/api/v1/referrals/program",
             data=json.dumps({
                 "reward_type": "revenue_share",
-                "reward_value": 0.10,
+                "reward_share_basis_points": 1000,
             }),
             content_type="application/json",
             **self.headers,
         )
         assert_problem(resp, "conflict", 409)
 
+    def _post_program(self, body):
+        return self.http_client.post(
+            "/api/v1/referrals/program", data=json.dumps(body),
+            content_type="application/json", **self.headers,
+        )
+
+    def test_a_share_above_ten_thousand_basis_points_is_refused(self):
+        resp = self._post_program({
+            "reward_type": "revenue_share",
+            "reward_share_basis_points": 10001,
+        })
+        self.assertEqual(resp.status_code, 422, resp.content)
+        # Refused for the share's bound — the field is named — not for some
+        # other missing figure (the pre-C5 contract refused `reward_value`).
+        self.assertIn("reward_share_basis_points", resp.content.decode())
+        self.assertNotIn("reward_value", resp.content.decode())
+        self.assertFalse(ReferralProgram.objects.filter(tenant=self.tenant).exists())
+        # The whole, 10000 basis points, is the inclusive maximum.
+        whole = self._post_program({"reward_type": "revenue_share",
+                                    "reward_share_basis_points": 10_000})
+        self.assertEqual(whole.status_code, 200, whole.content)
+        self.assertEqual(whole.json()["reward_share_basis_points"], 10_000)
+
+    def test_a_flat_fee_program_needs_its_amount_and_no_share(self):
+        no_amount = self._post_program({"reward_type": "flat_fee"})
+        self.assertEqual(no_amount.status_code, 422, no_amount.content)
+
+        both = self._post_program({
+            "reward_type": "flat_fee",
+            "reward_amount_micros": 5_000_000,
+            "reward_share_basis_points": 1000,
+        })
+        self.assertEqual(both.status_code, 422, both.content)
+        self.assertFalse(ReferralProgram.objects.filter(tenant=self.tenant).exists())
+
+        ok = self._post_program({
+            "reward_type": "flat_fee", "reward_amount_micros": 5_000_000,
+        })
+        self.assertEqual(ok.status_code, 200, ok.content)
+        body = ok.json()
+        self.assertEqual(body["reward_amount_micros"], 5_000_000)
+        self.assertIsNone(body["reward_share_basis_points"])
+
 
 class TestReferrerEndpoints(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         self.customer = Customer.objects.create(
             tenant=self.tenant, external_id="cust-1",
@@ -176,7 +344,7 @@ class TestAttributionEndpoint(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
             reward_window_days=365,
         )
         self.referrer_customer = Customer.objects.create(
@@ -265,7 +433,7 @@ class TestRewardEndpoints(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         self.referrer_customer = Customer.objects.create(
             tenant=self.tenant, external_id="referrer",
@@ -281,7 +449,7 @@ class TestRewardEndpoints(ReferralsEndpointTestBase):
             referred_customer=self.referred,
             referral_code_used=self.referrer.referral_code,
             snapshot_reward_type="revenue_share",
-            snapshot_reward_value=0.10,
+            snapshot_reward_share_basis_points=1000,
         )
         ReferralRewardAccumulator.objects.create(
             referral=self.referral,
@@ -350,7 +518,7 @@ class TestRevocationEndpoint(ReferralsEndpointTestBase):
             tenant=self.tenant, referrer=referrer,
             referred_customer=referred_cust,
             referral_code_used="REF-X",
-            snapshot_reward_type="flat_fee", snapshot_reward_value=1000,
+            snapshot_reward_type="flat_fee", snapshot_reward_amount_micros=1000,
         )
 
         resp = self.http_client.delete(
@@ -393,7 +561,7 @@ class TestAnalyticsEarningsWindow(ReferralsEndpointTestBase):
     def setUp(self):
         super().setUp()
         self.program = ReferralProgram.objects.create(
-            tenant=self.tenant, reward_type="revenue_share", reward_value=0.10,
+            tenant=self.tenant, reward_type="revenue_share", reward_share_basis_points=1000,
         )
         referrer_cust = Customer.objects.create(
             tenant=self.tenant, external_id="referrer",
@@ -409,7 +577,7 @@ class TestAnalyticsEarningsWindow(ReferralsEndpointTestBase):
             referred_customer=referred,
             referral_code_used=self.referrer.referral_code,
             snapshot_reward_type="revenue_share",
-            snapshot_reward_value=0.10,
+            snapshot_reward_share_basis_points=1000,
         )
         # All-time accumulator total deliberately disagrees with every window
         # to prove windowed earnings are ledger-sourced.

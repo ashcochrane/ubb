@@ -1430,10 +1430,19 @@ CONCEPTS_IN_THE_CONTRACT = {
     "grant_kind": Published(5, ENUM),
     "grant_status": Published(1, ENUM),             # GrantOut
     "grant_source": Published(1, ENUM),             # GrantOut
-    "usage_invoice_status": Published(2, ENUM),     # the two invoice reads
+    # The three usage-invoice reads since R10 Stage C5 (F-15): the one shared
+    # base every usage-invoice route serialises reaches `/me` too.
+    "usage_invoice_status": Published(3, ENUM),
     # Nullable — absent on every invoice that was not skipped — so the marker
-    # sits on the union's string member.
-    "skip_reason": Published(2, ENUM),
+    # sits on the union's string member. Three since C5, as above.
+    "skip_reason": Published(3, ENUM),
+    # R10 Stage C5 (F-15): the receivable's standing behind a pushed usage
+    # invoice, on the same three reads — nullable (null = not yet collectible),
+    # so the marker sits on the union's string member.
+    "usage_invoice_payment_status": Published(3, ENUM),
+    # R10 Stage C5 (F-5): the one value a top-up's declared 202 carries — one
+    # component (`TopUpAcceptedResponse`) both top-up routes answer with.
+    "top_up_request_status": Published(1, ENUM),
     "tenant_invoice_status": Published(1, ENUM),    # TenantInvoiceOut
     "billing_period_status": Published(1, ENUM),    # TenantBillingPeriodOut
     "reward_type": Published(4, ENUM),              # create, update, two reads
@@ -2039,8 +2048,13 @@ def test_each_concept_is_advertised_on_the_schemas_that_carry_it(spec):
                           "credit_grant.expiring", "credit_grant.expired"})
     placed("grant_status", {"GrantOut"})
     placed("grant_source", {"GrantOut"})
-    placed("usage_invoice_status", {"UsageInvoiceOut", "TenantUsageInvoiceOut"})
-    placed("skip_reason", {"UsageInvoiceOut", "TenantUsageInvoiceOut"})
+    # R10 Stage C5 (F-15): one shared usage-invoice base on all three reads.
+    placed("usage_invoice_status",
+           {"UsageInvoiceOut", "TenantUsageInvoiceOut", "MeUsageInvoiceOut"})
+    placed("skip_reason", {"UsageInvoiceOut", "TenantUsageInvoiceOut", "MeUsageInvoiceOut"})
+    placed("usage_invoice_payment_status",
+           {"UsageInvoiceOut", "TenantUsageInvoiceOut", "MeUsageInvoiceOut"})
+    placed("top_up_request_status", {"TopUpAcceptedResponse"})  # R10 Stage C5 (F-5)
     placed("tenant_invoice_status", {"TenantInvoiceOut"})
     placed("billing_period_status", {"TenantBillingPeriodOut"})
     placed("reward_type", {"ProgramCreateRequest", "ProgramUpdateRequest",

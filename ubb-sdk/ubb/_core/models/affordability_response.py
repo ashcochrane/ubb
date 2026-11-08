@@ -42,8 +42,11 @@ class AffordabilityResponse:
     floor is null where no wind-down line applies to the work asked about —
     contained work under a running parent, a tenant not enforcing, or none
     configured. The two balance figures are null where the answer was made
-    before a wallet was read (a standing refusal); the two floors are null
-    there too, and for a postpaid tenant, which has no wallet floors.
+    before a wallet was read (a standing refusal) AND off the wallet lane
+    altogether — a tenant whose billing mode keeps no wallet (`external`,
+    `postpaid`) has no balance to report, so null, never zero: an absent
+    wallet is not a zero-balance wallet (R10 Stage C5, F-12, RULED Q12).
+    The two floors are null there too, and wherever no wallet floor applies.
 
         Attributes:
             allowed (bool):

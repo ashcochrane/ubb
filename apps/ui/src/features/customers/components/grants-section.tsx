@@ -44,7 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useHasRole } from "@/hooks/use-current-role";
-import { useIsPostpaid, useTenantCurrency } from "@/hooks/use-tenant-config";
+import { useHoldsAWallet, useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
 import { grantKindLabel, grantSourceLabel, grantStatusLabel } from "../lib/grants";
 
@@ -58,14 +58,16 @@ const STATUS_FILTERS = ["all", "active", "depleted", "expired", "voided"];
 export function GrantsSection({ customerId }: { customerId: string }) {
   const currency = useTenantCurrency();
   const isAdmin = useHasRole("admin");
-  const postpaid = useIsPostpaid();
+  // Grants top up a wallet, so they exist only where the billing mode keeps
+  // one (F-12): off the wallet lane the list is not fetched (it would 403).
+  const walleted = useHoldsAWallet();
   const [status, setStatus] = React.useState("all");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [voidTarget, setVoidTarget] = React.useState<GrantOut | null>(null);
   const list = useGrantsList(
     customerId,
     status === "all" ? undefined : status,
-    !postpaid,
+    walleted,
   );
   const voidMutation = useVoidGrant(customerId);
 
@@ -80,7 +82,7 @@ export function GrantsSection({ customerId }: { customerId: string }) {
     }
   };
 
-  if (postpaid) {
+  if (!walleted) {
     return (
       <Card>
         <CardHeader>
@@ -90,10 +92,9 @@ export function GrantsSection({ customerId }: { customerId: string }) {
           <Alert>
             <Info />
             <AlertDescription>
-              Credit grants aren't used under postpaid billing — there's no
-              prepaid wallet for a grant to top up. Usage is invoiced through
-              Stripe at period close instead; switch to prepaid in Settings →
-              Billing to use grants again.
+              Credit grants aren't used under this workspace's billing mode —
+              there's no prepaid wallet for a grant to top up. Switch to
+              prepaid in Settings → Billing to use grants.
             </AlertDescription>
           </Alert>
         </CardContent>

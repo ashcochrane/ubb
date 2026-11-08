@@ -10,9 +10,25 @@ A tenant's single (one-per-tenant) referral scheme configuration — reward type
 and reward windows, caps, and fraud limits. (`apps/referrals/models.py:ReferralProgram`)
 
 **Reward type**:
-How a reward is computed — `flat_fee` (fixed, paid once), `revenue_share` (fraction of referred
-spend), or `profit_share` (fraction of spend minus provider cost).
-(`apps/referrals/models.py:REWARD_TYPE_CHOICES`)
+How a reward is computed — `flat_fee` (a fixed amount, paid exactly once per referral),
+`revenue_share` (a share of referred spend), or `profit_share` (a share of spend minus provider
+cost). (`apps/referrals/models.py:REWARD_TYPE_CHOICES`)
+
+**Reward figure**:
+Each scheme's figure in ONE explicit integer unit (R10 Stage C5, A-3, RULED Q9): a flat fee is
+`reward_amount_micros` (micros); a share is `reward_share_basis_points` (basis points, 1..10000,
+10000 = the whole, applied by dividing by 10,000 exactly in Decimal and rounding half-up to a
+whole micro); a profit share's fallback cost estimate is `estimated_cost_basis_points`
+(0..10000). Exactly one of the two reward figures is set, by the type. Snapshotted onto the
+referral as `snapshot_*`. Never a decimal fraction or a percentage: the console's percent entry
+converts to basis points (× 100) at the form. (`apps/referrals/rewards/services.py:share_of`)
+_Avoid_: "reward value", "estimated cost percentage" — the retired one-column encodings.
+
+**Flat fee paid once**:
+A `flat_fee` referral earns its fee exactly once — by the real-time handler on the first rewarded
+posting (`flat_fee_paid`), and by the batch reconciler on exactly one ledger row (the first period
+reconciled with spend), never once per metered event or per period.
+(`apps/referrals/rewards/reconciliation.py:reconcile_referral`)
 
 **Attribution window**:
 How long a referral link stays valid for attribution, measured from referrer creation.

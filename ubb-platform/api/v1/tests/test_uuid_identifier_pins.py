@@ -21,6 +21,7 @@ from django.test import Client, TestCase
 from api.v1.tests.test_problem_contract import assert_problem
 from apps.platform.customers.models import Customer
 from apps.platform.tenants.models import Tenant, TenantApiKey
+from apps.platform.tenants.tests._rails import RailActivated
 
 # Every path-channel operation of the issue's 22 (18 of them here; the
 # other three are the two query ops below and the referrers body op, and the
@@ -70,12 +71,16 @@ QUERY_OPERATIONS = [
 ]
 
 
-class UUIDIdentifierPinBase(TestCase):
+class UUIDIdentifierPinBase(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant = Tenant.objects.create(
             name="UUIDPins",
             products=["metering", "billing", "referrals"],
+            # The wallet reads these pins exercise (balance, transactions)
+            # answer only where a wallet is held (R10 Stage C5, F-12); a
+            # malformed path id is still refused at the router boundary.
+            billing_mode="prepaid",
         )
         _, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
         self.auth = {"HTTP_AUTHORIZATION": f"Bearer {self.raw_key}"}

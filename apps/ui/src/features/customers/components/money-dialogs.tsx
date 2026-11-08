@@ -1,6 +1,15 @@
 // Top-up + withdraw dialogs. Idempotency keys are generated per dialog-open
 // and REUSED on retry after a failure (replay-safe); a new key only appears
 // on the next open (mutations close the dialog on success).
+//
+// A top-up has two answers (R10 Stage C5, F-5): a checkout to open, or an
+// ACCEPTED request — the workspace has no Stripe connector, so the request
+// was recorded and handed to the tenant to settle out of band. The second
+// opens nothing. Its `status` is the registry's closed `top_up_request_status`,
+// and this file is the console's declared consumer of that concept: the
+// status is worded from the catalogue through its generated label keys, and
+// the branch is decided by `../lib/top-up` against the generated value list —
+// never a spelled-out token anywhere.
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -21,16 +30,22 @@ import {
 import { Input } from "@/components/ui/input";
 import { useTenantCurrency } from "@/hooks/use-tenant-config";
 import { formatMicros } from "@/lib/format";
+import { labelMap } from "@/lib/localisation";
+import { TOP_UP_REQUEST_STATUS_LABEL_KEYS } from "@/lib/vocabulary";
 
 import { useTopUp, useWithdraw } from "../api/queries";
 import type { BalanceResponse } from "../api/types";
 import { toMicros } from "../lib/helpers";
+import { isTopUpAccepted } from "../lib/top-up";
 import {
   topUpSchema,
   withdrawSchema,
   type TopUpForm,
   type WithdrawForm,
 } from "../lib/schemas";
+
+/** The catalogue's words for an accepted top-up request's status. */
+const topUpRequestStatusLabel = labelMap(TOP_UP_REQUEST_STATUS_LABEL_KEYS);
 
 function useIdempotencyKey(open: boolean): string {
   const [key, setKey] = React.useState(() => crypto.randomUUID());
@@ -65,8 +80,16 @@ export function TopUpDialog({
         cancel_url: window.location.href,
         idempotency_key: idempotencyKey,
       });
-      window.open(result.checkout_url, "_blank", "noopener");
-      toast.success("Stripe Checkout opened in a new tab");
+      if (isTopUpAccepted(result)) {
+        // Nothing to open: the request is recorded and handed to the
+        // workspace to settle; the wallet moves when it does.
+        toast.success(topUpRequestStatusLabel(result.status), {
+          description: result.message,
+        });
+      } else {
+        window.open(result.checkout_url, "_blank", "noopener");
+        toast.success("Stripe Checkout opened in a new tab");
+      }
       form.reset();
       onOpenChange(false);
     } catch {
@@ -80,8 +103,10 @@ export function TopUpDialog({
         <DialogHeader>
           <DialogTitle>Top up balance</DialogTitle>
           <DialogDescription>
-            Opens Stripe Checkout in a new tab. The wallet is credited when the
-            payment completes.
+            Opens Stripe Checkout in a new tab; the wallet is credited when the
+            payment completes. Where this workspace has no Stripe connector,
+            the request is recorded for you to settle out of band instead, and
+            nothing opens.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={(event) => void submit(event)} className="space-y-3">

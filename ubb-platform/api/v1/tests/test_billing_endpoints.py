@@ -12,7 +12,7 @@ from apps.platform.tenants.tests._rails import RailActivated
 from apps.metering.usage.tests._helpers import a_posting
 
 
-class BillingProductGatingTest(TestCase):
+class BillingProductGatingTest(RailActivated, TestCase):
     def setUp(self):
         self.http_client = Client()
         self.tenant_no_billing = Tenant.objects.create(
@@ -22,7 +22,10 @@ class BillingProductGatingTest(TestCase):
             self.tenant_no_billing, label="test"
         )
         self.tenant_with_billing = Tenant.objects.create(
-            name="Has Billing", products=["metering", "billing"]
+            name="Has Billing", products=["metering", "billing"],
+            # The wallet-only reads below (balance, transactions) answer only
+            # where a wallet is held (R10 Stage C5, F-12).
+            billing_mode="prepaid",
         )
         self.key_obj_yes, self.raw_key_yes = TenantApiKey.create_key(
             self.tenant_with_billing, label="test"
@@ -112,7 +115,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "cust_debit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 1_500_000,
                 "reference": "evt_123",
                 "idempotency_key": "idem_evt_123",
@@ -129,7 +132,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "cust_debit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 3_000_000,
                 "reference": "evt_456",
                 "idempotency_key": "idem_evt_456",
@@ -144,7 +147,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "cust_debit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 2_000_000,
                 "reference": "evt_789",
                 "idempotency_key": "idem_evt_789",
@@ -164,7 +167,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "nonexistent",
+                "customer_id": str(uuid.uuid4()),
                 "amount_micros": 1_000_000,
                 "reference": "ref_1",
                 "idempotency_key": "idem_d_ref_1",
@@ -183,7 +186,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "cust_debit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 500_000,
                 "reference": "ref_2",
                 "idempotency_key": "idem_d_ref_2",
@@ -201,7 +204,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "cust_debit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 500_000,
                 "reference": "ref_3",
                 "idempotency_key": "idem_d_ref_3",
@@ -213,8 +216,8 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
 
     # --- floor guard (Phase 1): debit respects the overdraft floor by default ---
 
-    def _debit(self, external_id, amount, key, allow_negative=None):
-        body = {"customer_id": external_id, "amount_micros": amount,
+    def _debit(self, customer, amount, key, allow_negative=None):
+        body = {"customer_id": str(customer.id), "amount_micros": amount,
                 "reference": "od", "idempotency_key": key}
         if allow_negative is not None:
             body["allow_negative"] = allow_negative
@@ -226,7 +229,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
     def test_debit_blocked_when_it_would_overdraw(self):
         c = Customer.objects.create(tenant=self.tenant, external_id="od_1")
         Wallet.objects.create(customer=c, balance_micros=1_000_000)
-        resp = self._debit("od_1", 2_000_000, "od_k1")
+        resp = self._debit(c, 2_000_000, "od_k1")
         self.assertEqual(resp.status_code, 409)
         self.assertEqual(resp["Content-Type"], "application/problem+json")
         body = resp.json()
@@ -238,7 +241,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
     def test_debit_allow_negative_forces_overdraw(self):
         c = Customer.objects.create(tenant=self.tenant, external_id="od_2")
         Wallet.objects.create(customer=c, balance_micros=1_000_000)
-        resp = self._debit("od_2", 2_000_000, "od_k2", allow_negative=True)
+        resp = self._debit(c, 2_000_000, "od_k2", allow_negative=True)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -1_000_000)
 
@@ -247,7 +250,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         c = Customer.objects.create(tenant=self.tenant, external_id="od_3")
         Wallet.objects.create(customer=c, balance_micros=1_000_000)
         CustomerBillingProfile.objects.create(customer=c, min_balance_micros=5_000_000)
-        resp = self._debit("od_3", 3_000_000, "od_k3")  # -> -2M, floor -5M: allowed
+        resp = self._debit(c, 3_000_000, "od_k3")  # -> -2M, floor -5M: allowed
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(Wallet.objects.get(customer=c).balance_micros, -2_000_000)
 
@@ -261,7 +264,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         self.tenant.billing_mode = "postpaid"
         self.tenant.save()
         c = Customer.objects.create(tenant=self.tenant, external_id="od_4")
-        resp = self._debit("od_4", 1_000_000, "od_k4", allow_negative=True)
+        resp = self._debit(c, 1_000_000, "od_k4", allow_negative=True)
         self.assertEqual(resp.status_code, 403)
         self.assertEqual(resp["Content-Type"], "application/problem+json")
         body = resp.json()
@@ -277,7 +280,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
         from apps.billing.wallets.models import WalletTransaction
         resp = self.http_client.post(
             "/api/v1/billing/debit",
-            data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(self.customer.id), "amount_micros": 1_000_000,
                              "reference": "adj", "idempotency_key": "attr_k1",
                              "movement_reason": "correction", "actor": "ops@acme.co"}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
@@ -289,7 +292,7 @@ class BillingDebitEndpointTest(RailActivated, TestCase):
     def test_debit_rejects_unknown_movement_reason(self):
         resp = self.http_client.post(
             "/api/v1/billing/debit",
-            data=json.dumps({"customer_id": "cust_debit_1", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(self.customer.id), "amount_micros": 1_000_000,
                              "reference": "adj", "idempotency_key": "attr_k2",
                              "movement_reason": "bogus"}),
             content_type="application/json", HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
@@ -316,7 +319,7 @@ class BillingCreditEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({
-                "customer_id": "cust_credit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 5_000_000,
                 "source": "manual_adjustment",
                 "reference": "adj_001",
@@ -334,7 +337,7 @@ class BillingCreditEndpointTest(RailActivated, TestCase):
         self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({
-                "customer_id": "cust_credit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 7_000_000,
                 "source": "promo",
                 "reference": "promo_001",
@@ -350,7 +353,7 @@ class BillingCreditEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({
-                "customer_id": "cust_credit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 3_000_000,
                 "source": "goodwill",
                 "reference": "gw_001",
@@ -371,7 +374,7 @@ class BillingCreditEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({
-                "customer_id": "nonexistent",
+                "customer_id": str(uuid.uuid4()),
                 "amount_micros": 1_000_000,
                 "source": "test",
                 "reference": "ref_1",
@@ -391,7 +394,7 @@ class BillingCreditEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({
-                "customer_id": "cust_credit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 500_000,
                 "source": "test",
                 "reference": "ref_2",
@@ -410,7 +413,7 @@ class BillingCreditEndpointTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({
-                "customer_id": "cust_credit_1",
+                "customer_id": str(self.customer.id),
                 "amount_micros": 500_000,
                 "source": "test",
                 "reference": "ref_3",
@@ -425,7 +428,7 @@ class BillingCreditEndpointTest(RailActivated, TestCase):
         from apps.billing.wallets.models import WalletTransaction
         response = self.http_client.post(
             "/api/v1/billing/credit",
-            data=json.dumps({"customer_id": "cust_credit_1", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(self.customer.id), "amount_micros": 1_000_000,
                              "source": "manual", "reference": "adj",
                              "idempotency_key": "attr_c1",
                              "movement_reason": "goodwill", "actor": "ops@acme.co"}),
@@ -456,7 +459,7 @@ class DebitCreditHardeningTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "no_wallet_debit",
+                "customer_id": str(customer.id),
                 "amount_micros": 1_000_000,
                 "reference": "ref_lazy",
                 "idempotency_key": "idem_d_lazy",
@@ -476,7 +479,7 @@ class DebitCreditHardeningTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/credit",
             data=json.dumps({
-                "customer_id": "no_wallet_credit",
+                "customer_id": str(customer.id),
                 "amount_micros": 5_000_000,
                 "source": "promo",
                 "reference": "ref_lazy",
@@ -496,7 +499,7 @@ class DebitCreditHardeningTest(RailActivated, TestCase):
         Wallet.objects.create(customer=customer, balance_micros=10_000_000)
 
         payload = json.dumps({
-            "customer_id": "idemp_debit",
+            "customer_id": str(customer.id),
             "amount_micros": 2_000_000,
             "reference": "ref_1",
             "idempotency_key": "debit_idem_1",
@@ -526,7 +529,7 @@ class DebitCreditHardeningTest(RailActivated, TestCase):
         Wallet.objects.create(customer=customer, balance_micros=0)
 
         payload = json.dumps({
-            "customer_id": "idemp_credit",
+            "customer_id": str(customer.id),
             "amount_micros": 3_000_000,
             "source": "promo",
             "reference": "ref_1",
@@ -558,7 +561,7 @@ class DebitCreditHardeningTest(RailActivated, TestCase):
         response = self.http_client.post(
             "/api/v1/billing/debit",
             data=json.dumps({
-                "customer_id": "lock_debit",
+                "customer_id": str(customer.id),
                 "amount_micros": 1_000_000,
                 "reference": "ref_lock",
                 "idempotency_key": "idem_ref_lock",
@@ -573,10 +576,10 @@ class DebitCreditHardeningTest(RailActivated, TestCase):
         self.assertEqual(txn.balance_after_micros, 4_000_000)
 
     def test_debit_requires_idempotency_key(self):
-        Customer.objects.create(tenant=self.tenant, external_id="need_key_d")
+        customer = Customer.objects.create(tenant=self.tenant, external_id="need_key_d")
         resp = self.http_client.post(
             "/api/v1/billing/debit",
-            data=json.dumps({"customer_id": "need_key_d", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(customer.id), "amount_micros": 1_000_000,
                              "reference": "ref_nokey"}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -584,10 +587,10 @@ class DebitCreditHardeningTest(RailActivated, TestCase):
         self.assertEqual(resp.status_code, 422)
 
     def test_credit_requires_idempotency_key(self):
-        Customer.objects.create(tenant=self.tenant, external_id="need_key_c")
+        customer = Customer.objects.create(tenant=self.tenant, external_id="need_key_c")
         resp = self.http_client.post(
             "/api/v1/billing/credit",
-            data=json.dumps({"customer_id": "need_key_c", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(customer.id), "amount_micros": 1_000_000,
                              "source": "x", "reference": "ref_nokey"}),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {self.raw_key}",
@@ -1243,7 +1246,7 @@ class PooledSeatBillingSurfaceTest(RailActivated, TestCase):
         Wallet.objects.create(customer=self.pooled_biz, balance_micros=10_000_000)
         r = self.http_client.post(
             "/api/v1/billing/debit",
-            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 2_000_000,
+            data=json.dumps({"customer_id": str(self.pooled_seat.id), "amount_micros": 2_000_000,
                              "reference": "r1", "idempotency_key": "dk1"}),
             content_type="application/json", **self._auth())
         self.assertEqual(r.status_code, 200)
@@ -1256,7 +1259,7 @@ class PooledSeatBillingSurfaceTest(RailActivated, TestCase):
         Wallet.objects.create(customer=self.alloc_seat, balance_micros=5_000_000)
         r = self.http_client.post(
             "/api/v1/billing/debit",
-            data=json.dumps({"customer_id": "seat_alloc", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(self.alloc_seat.id), "amount_micros": 1_000_000,
                              "reference": "r1", "idempotency_key": "dk_alloc"}),
             content_type="application/json", **self._auth())
         self.assertEqual(r.status_code, 200)
@@ -1268,12 +1271,12 @@ class PooledSeatBillingSurfaceTest(RailActivated, TestCase):
         Wallet.objects.create(customer=self.pooled_biz, balance_micros=10_000_000)
         self.http_client.post(
             "/api/v1/billing/debit",
-            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(self.pooled_seat.id), "amount_micros": 1_000_000,
                              "reference": "r1", "idempotency_key": "dk_audit"}),
             content_type="application/json", **self._auth())
         rec = AuditRecord.objects.get(action="wallet.debited")
         self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
-        self.assertEqual(rec.metadata["customer_id"], "seat_pooled")
+        self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
         self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
 
     # ---------- credit ----------
@@ -1281,7 +1284,7 @@ class PooledSeatBillingSurfaceTest(RailActivated, TestCase):
     def test_credit_pooled_seat_moves_business_wallet_no_second_wallet(self):
         r = self.http_client.post(
             "/api/v1/billing/credit",
-            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 3_000_000,
+            data=json.dumps({"customer_id": str(self.pooled_seat.id), "amount_micros": 3_000_000,
                              "source": "manual", "reference": "r1",
                              "idempotency_key": "ck1"}),
             content_type="application/json", **self._auth())
@@ -1293,7 +1296,7 @@ class PooledSeatBillingSurfaceTest(RailActivated, TestCase):
     def test_credit_allocated_seat_unchanged(self):
         r = self.http_client.post(
             "/api/v1/billing/credit",
-            data=json.dumps({"customer_id": "seat_alloc", "amount_micros": 2_000_000,
+            data=json.dumps({"customer_id": str(self.alloc_seat.id), "amount_micros": 2_000_000,
                              "source": "manual", "reference": "r1",
                              "idempotency_key": "ck_alloc"}),
             content_type="application/json", **self._auth())
@@ -1305,13 +1308,13 @@ class PooledSeatBillingSurfaceTest(RailActivated, TestCase):
         from apps.platform.audit.models import AuditRecord
         self.http_client.post(
             "/api/v1/billing/credit",
-            data=json.dumps({"customer_id": "seat_pooled", "amount_micros": 1_000_000,
+            data=json.dumps({"customer_id": str(self.pooled_seat.id), "amount_micros": 1_000_000,
                              "source": "manual", "reference": "r1",
                              "idempotency_key": "ck_audit"}),
             content_type="application/json", **self._auth())
         rec = AuditRecord.objects.get(action="wallet.credited")
         self.assertEqual(rec.resource_id, str(self.pooled_seat.id))
-        self.assertEqual(rec.metadata["customer_id"], "seat_pooled")
+        self.assertEqual(rec.metadata["customer_id"], str(self.pooled_seat.id))
         self.assertEqual(rec.metadata["owner_id"], str(self.pooled_biz.id))
 
     # ---------- withdraw ----------
@@ -1559,10 +1562,10 @@ class NoWalletSubjectRoutesTest(RailActivated, TestCase):
         cid = customer.id
         return {
             "POST /billing/credit": ("post", "/api/v1/billing/credit", {
-                "customer_id": customer.external_id, "amount_micros": 1_000_000,
+                "customer_id": str(customer.id), "amount_micros": 1_000_000,
                 "source": "manual", "reference": "r", "idempotency_key": "k_credit"}),
             "POST /billing/debit": ("post", "/api/v1/billing/debit", {
-                "customer_id": customer.external_id, "amount_micros": 1_000_000,
+                "customer_id": str(customer.id), "amount_micros": 1_000_000,
                 "reference": "r", "idempotency_key": "k_debit", "allow_negative": True}),
             "POST …/withdraw": ("post", f"/api/v1/billing/customers/{cid}/withdraw", {
                 "amount_micros": 1_000_000, "idempotency_key": "k_withdraw"}),
@@ -1605,3 +1608,272 @@ class NoWalletSubjectRoutesTest(RailActivated, TestCase):
         config = self._call(raw, "put", "/api/v1/billing/postpaid-config",
                             {"consolidate_with_subscription": False})
         self.assertEqual(config.status_code, 200, config.content)
+
+    def test_every_wallet_only_read_refuses_by_name(self):
+        """R10 Stage C5 (F-12): the wallet-only READS — balance, transactions,
+        grants — are refused by the same door as the writes where no wallet
+        is: `feature_not_enabled` with the one detail naming the mode, and
+        nothing written (no zero-balance wallet invented to be read)."""
+        for mode, (tenant, raw, customer) in self.postures.items():
+            cid = customer.id
+            for route, path in {
+                "GET …/balance": f"/api/v1/billing/customers/{cid}/balance",
+                "GET …/transactions": f"/api/v1/billing/customers/{cid}/transactions",
+                "GET …/grants": f"/api/v1/billing/customers/{cid}/grants",
+            }.items():
+                with self.subTest(mode=mode, route=route):
+                    self._refused(self._call(raw, "get", path), mode)
+                    self._nothing_written(tenant, customer)
+
+    def test_the_affordability_balance_figures_are_null_off_the_wallet_lane(self):
+        """R10 Stage C5 (F-12): the affordability answer stays (it is not a
+        wallet read — it asks whether work may start), but off the wallet
+        lane its balance figures are `null`, never a `0` that would report a
+        wallet the mode never held."""
+        for mode, (tenant, raw, customer) in self.postures.items():
+            with self.subTest(mode=mode):
+                afford = self._call(
+                    raw, "get", f"/api/v1/billing/customers/{customer.id}/affordability")
+                self.assertEqual(afford.status_code, 200, afford.content)
+                answer = afford.json()
+                self.assertTrue(answer["allowed"])
+                self.assertIsNone(answer["balance_micros"])
+                self.assertIsNone(answer["available_micros"])
+                self.assertIsNone(answer["min_balance_micros"])
+                self.assertIsNone(answer["soft_min_balance_micros"])
+                self._nothing_written(tenant, customer)
+
+
+class TheCreditAndDebitNameThePlatformUuidTest(RailActivated, TestCase):
+    """R10 Stage C5 (F-13, RULED Q13): `POST /billing/credit` and
+    `POST /billing/debit` name the customer by its PLATFORM UUID — the same
+    identifier every other billing route takes in its path — never by the
+    tenant's external id. The body channel is typed `UUID`, so an external id
+    is a validation error before any lookup; a well-formed UUID that names
+    no customer of the tenant is `not_found`; and there is no server-side
+    fallback from the external id, so an external id that happens to be a
+    UUID string is not a second way to name the row.
+    """
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="UUID Tenant", products=["metering", "billing"],
+            billing_mode="prepaid")
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(
+            tenant=self.tenant, external_id="acme-customer-7")
+        Wallet.objects.create(customer=self.customer, balance_micros=5_000_000)
+
+    def _post(self, route, body):
+        return self.http_client.post(
+            f"/api/v1/billing/{route}", data=json.dumps(body),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+    def _credit_body(self, customer_id, key):
+        return {"customer_id": customer_id, "amount_micros": 1_000_000,
+                "source": "manual", "reference": "r", "idempotency_key": key}
+
+    def _debit_body(self, customer_id, key):
+        return {"customer_id": customer_id, "amount_micros": 1_000_000,
+                "reference": "r", "idempotency_key": key}
+
+    def test_the_platform_uuid_is_accepted_and_audited_as_the_uuid(self):
+        from apps.platform.audit.models import AuditRecord
+        uuid_str = str(self.customer.id)
+        credited = self._post("credit", self._credit_body(uuid_str, "k_c"))
+        self.assertEqual(credited.status_code, 200, credited.content)
+        debited = self._post("debit", self._debit_body(uuid_str, "k_d"))
+        self.assertEqual(debited.status_code, 200, debited.content)
+        self.assertEqual(Wallet.objects.get(customer=self.customer).balance_micros,
+                         5_000_000)
+        for action in ("wallet.credited", "wallet.debited"):
+            with self.subTest(action=action):
+                rec = AuditRecord.objects.get(action=action)
+                self.assertEqual(rec.metadata["customer_id"], uuid_str)
+                self.assertEqual(rec.resource_id, uuid_str)
+
+    def test_the_external_id_is_a_validation_error_and_an_unknown_uuid_is_not_found(self):
+        from apps.billing.wallets.models import WalletTransaction
+        for route, body_of in (("credit", self._credit_body), ("debit", self._debit_body)):
+            with self.subTest(route=route, named_by="external_id"):
+                r = self._post(route, body_of(self.customer.external_id, f"k_ext_{route}"))
+                self.assertEqual(r.status_code, 422, r.content)
+                self.assertEqual(r["Content-Type"], "application/problem+json")
+                self.assertEqual(r.json()["code"], "validation_error")
+            with self.subTest(route=route, named_by="unknown_uuid"):
+                r = self._post(route, body_of(str(uuid.uuid4()), f"k_unk_{route}"))
+                self.assertEqual(r.status_code, 404, r.content)
+                self.assertEqual(r.json()["code"], "not_found")
+        self.assertEqual(Wallet.objects.get(customer=self.customer).balance_micros,
+                         5_000_000)
+        self.assertFalse(WalletTransaction.objects.filter(
+            wallet__customer=self.customer).exists())
+
+    def test_no_fallback_finds_a_customer_by_an_external_id_shaped_like_a_uuid(self):
+        looks_like_a_uuid = str(uuid.uuid4())
+        other = Customer.objects.create(tenant=self.tenant, external_id=looks_like_a_uuid)
+        self.assertNotEqual(str(other.id), looks_like_a_uuid)
+        Wallet.objects.create(customer=other, balance_micros=5_000_000)
+        for route, body_of in (("credit", self._credit_body), ("debit", self._debit_body)):
+            with self.subTest(route=route):
+                r = self._post(route, body_of(looks_like_a_uuid, f"k_shape_{route}"))
+                self.assertEqual(r.status_code, 404, r.content)
+                self.assertEqual(r.json()["code"], "not_found")
+        self.assertEqual(Wallet.objects.get(customer=other).balance_micros, 5_000_000)
+
+
+class ARefundAnswersOneDurableIdTest(RailActivated, TestCase):
+    """R10 Stage C5 (F-14, RULED Q14): `POST …/refund` answers `refund_id` =
+    the refund WalletTransaction's own id on the first call AND on every
+    replay of the same idempotency key (it used to answer the usage event id
+    on a replay), and a key already spent by a NON-refund transaction is a
+    `conflict`, never replayed as if it were a refund.
+    """
+
+    def setUp(self):
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Refund Tenant", products=["metering", "billing"],
+            billing_mode="prepaid")
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="ref_1")
+        self.wallet = Wallet.objects.create(customer=self.customer, balance_micros=5_000_000)
+        self.event = a_posting(
+            tenant=self.tenant, customer=self.customer, idempotency_key="idem_refund_1",
+            provider_cost_micros=1_000_000, billed_cost_micros=1_000_000)
+
+    def _post(self, path, body):
+        return self.http_client.post(
+            path, data=json.dumps(body), content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.raw_key}")
+
+    def _refund(self, key):
+        return self._post(
+            f"/api/v1/billing/customers/{self.customer.id}/refund",
+            {"usage_event_id": str(self.event.id), "idempotency_key": key})
+
+    def test_a_refund_replay_answers_the_same_refund_id(self):
+        from apps.billing.wallets.models import WalletTransaction
+        first = self._refund("rk_same")
+        self.assertEqual(first.status_code, 200, first.content)
+        again = self._refund("rk_same")
+        self.assertEqual(again.status_code, 200, again.content)
+        refund_row = WalletTransaction.objects.get(
+            wallet=self.wallet, transaction_type="refund")
+        self.assertEqual(first.json()["refund_id"], str(refund_row.id))
+        self.assertEqual(again.json()["refund_id"], str(refund_row.id))
+        self.assertNotEqual(again.json()["refund_id"], str(self.event.id))
+        self.assertEqual(again.json()["balance_micros"], first.json()["balance_micros"])
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 6_000_000)  # moved once
+
+    def test_a_refund_key_belonging_to_a_non_refund_transaction_is_a_conflict(self):
+        from apps.billing.wallets.models import WalletTransaction
+        credited = self._post("/api/v1/billing/credit", {
+            "customer_id": str(self.customer.id), "amount_micros": 1_000_000,
+            "source": "manual", "reference": "r", "idempotency_key": "K_shared"})
+        self.assertEqual(credited.status_code, 200, credited.content)
+        r = self._refund("K_shared")
+        self.assertEqual(r.status_code, 409, r.content)
+        self.assertEqual(r["Content-Type"], "application/problem+json")
+        body = r.json()
+        self.assertEqual(body["code"], "conflict")
+        self.assertIn("non-refund", body["detail"])
+        self.assertFalse(WalletTransaction.objects.filter(
+            wallet=self.wallet, transaction_type="refund").exists())
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.balance_micros, 6_000_000)  # the credit only
+
+
+class TheUsageInvoiceRoutesShareOneShapeTest(RailActivated, TestCase):
+    """R10 Stage C5 (F-15, RULED Q15): the three usage-invoice routes project
+    the same durable row the same way. Every row carries one shared base;
+    the two TENANT routes add — and only add — the operator's push
+    bookkeeping (`push_attempts`, `last_attempt_error`); the end customer's
+    `/me` route never carries it. `payment_status` is `null` for a row not
+    yet collectible and otherwise one of open|paid|void|uncollectible.
+    """
+
+    BASE = frozenset({
+        "id", "customer_id", "external_id", "period_start", "period_end",
+        "currency", "total_billed_micros", "status", "skip_reason",
+        "stripe_invoice_id", "pushed_at", "payment_status", "paid_at",
+        "payment_failed_at", "hosted_invoice_url", "invoice_pdf", "created_at"})
+    OPERATOR_ONLY = frozenset({"push_attempts", "last_attempt_error"})
+
+    def setUp(self):
+        from datetime import date
+        from apps.billing.invoicing.models import CustomerUsageInvoice
+        from core.widget_auth import create_widget_token
+        self.http_client = Client()
+        self.tenant = Tenant.objects.create(
+            name="Shape Tenant", products=["metering", "billing"],
+            billing_mode="postpaid")
+        self.key_obj, self.raw_key = TenantApiKey.create_key(self.tenant, label="test")
+        self.customer = Customer.objects.create(tenant=self.tenant, external_id="shape_1")
+        self.token = create_widget_token(
+            self.tenant.widget_secret, str(self.customer.id), str(self.tenant.id))
+        self.pushed = CustomerUsageInvoice.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            period_start=date(2026, 5, 1), period_end=date(2026, 5, 31),
+            total_billed_micros=12_340_000, status="pushed",
+            payment_status="open", stripe_invoice_id="in_1", push_attempts=1)
+        self.not_yet_collectible = CustomerUsageInvoice.objects.create(
+            tenant=self.tenant, customer=self.customer,
+            period_start=date(2026, 6, 1), period_end=date(2026, 6, 30),
+            total_billed_micros=5_000_000, status="pending",
+            payment_status=None)
+
+    def _rows(self, path, token):
+        response = self.http_client.get(path, HTTP_AUTHORIZATION=f"Bearer {token}")
+        self.assertEqual(response.status_code, 200, response.content)
+        rows = response.json()["data"]
+        self.assertEqual(len(rows), 2, rows)
+        return {row["id"]: row for row in rows}
+
+    def test_the_three_usage_invoice_routes_share_one_base_shape(self):
+        from datetime import date
+        by_route = {
+            "GET …/customers/{id}/usage-invoices": self._rows(
+                f"/api/v1/billing/customers/{self.customer.id}/usage-invoices",
+                self.raw_key),
+            "GET …/tenant/usage-invoices": self._rows(
+                "/api/v1/billing/tenant/usage-invoices", self.raw_key),
+            "GET /me/usage-invoices": self._rows(
+                "/api/v1/me/usage-invoices", self.token),
+        }
+        for route, rows in by_route.items():
+            expected = (self.BASE if route.startswith("GET /me")
+                        else self.BASE | self.OPERATOR_ONLY)
+            for row_id, row in rows.items():
+                with self.subTest(route=route, row=row_id):
+                    self.assertEqual(set(row), expected)
+                    self.assertEqual(row["customer_id"], str(self.customer.id))
+                    self.assertEqual(row["external_id"], "shape_1")
+                    self.assertEqual(row["currency"], "usd")
+                    date.fromisoformat(row["period_start"])  # an ISO date
+                    date.fromisoformat(row["period_end"])
+            with self.subTest(route=route, row="pushed"):
+                row = rows[str(self.pushed.id)]
+                self.assertEqual(row["payment_status"], "open")
+                self.assertEqual(row["status"], "pushed")
+                self.assertEqual(row["stripe_invoice_id"], "in_1")
+                self.assertEqual(row["period_start"], "2026-05-01")
+                self.assertEqual(row["period_end"], "2026-05-31")
+            with self.subTest(route=route, row="not_yet_collectible"):
+                row = rows[str(self.not_yet_collectible.id)]
+                self.assertIsNone(row["payment_status"])
+                self.assertEqual(row["status"], "pending")
+                self.assertEqual(row["stripe_invoice_id"], "")
+        # The same row's `created_at` reads the same on all three routes.
+        for row_id in (str(self.pushed.id), str(self.not_yet_collectible.id)):
+            with self.subTest(row=row_id, field="created_at"):
+                stamps = {route: rows[row_id]["created_at"] for route, rows in by_route.items()}
+                self.assertEqual(len(set(stamps.values())), 1, stamps)
+                self.assertIsNotNone(next(iter(stamps.values())))
+        # The tenant rows carry the push bookkeeping the /me rows never do.
+        tenant_rows = by_route["GET …/tenant/usage-invoices"]
+        self.assertEqual(tenant_rows[str(self.pushed.id)]["push_attempts"], 1)
+        self.assertEqual(tenant_rows[str(self.pushed.id)]["last_attempt_error"], "")

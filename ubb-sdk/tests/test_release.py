@@ -1,14 +1,18 @@
-"""Release-identity pins for the SDK's first release, v4.0.0 (#190, ADR-0026).
+"""Release-identity pins for the SDK's current release, v5.0.0 (R10 billing
+readiness Stage C5, PLAN §5.5, RULED Q10 — the one deliberate major after the
+4.0.0 cut at the cutover, #190, ADR-0026).
 
-The release is cut at the cutover: an annotated tag, `sdk-v4.0.0`, and a wheel
-built reproducibly from it by the committed recipe (`release/build_wheel.py`,
-R2). Nothing was ever released before it — 3.0.0 was this tree's pre-release
-number (#85 folded the generated core and the problem+json error model into it),
-never tagged and never published. It must be stamped so a consumer can verify,
-from the installed package alone, *both* which SDK release they hold *and* which
-committed spec revision it was cut against. These pins guard that identity:
+A release is an annotated tag, `sdk-v<version>`, and a wheel built reproducibly
+from it by the committed recipe (`release/build_wheel.py`, R2); 4.0.0 was the
+first ever tagged, and 3.0.0 was this tree's pre-release number (#85 folded the
+generated core and the problem+json error model into it), never tagged and never
+published. The tag `sdk-v5.0.0` is cut by the owner on the merge commit that
+carries this version, exactly as `sdk-v4.0.0` was. It must be stamped so a
+consumer can verify, from the installed package alone, *both* which SDK release
+they hold *and* which committed spec revision it was cut against. These pins
+guard that identity:
 
-  * the SDK is v4.0.0;
+  * the SDK is v5.0.0;
   * pyproject's build version and the importable ``ubb.__version__`` never
     drift (a release that stamps one version but installs as another is a
     silent lie to the integrating tenant);
@@ -59,11 +63,13 @@ def _pyproject_version() -> str:
 
 
 class TestReleaseVersion:
-    """The SDK is v4.0.0, stamped consistently across build metadata and runtime."""
+    """The SDK is v5.0.0, stamped consistently across build metadata and runtime."""
 
-    def test_sdk_is_v4(self):
-        # The release cut at the cutover (#190): the first one ever tagged.
-        assert ubb.__version__ == "4.0.0"
+    def test_sdk_version_is_the_current_release(self):
+        # 5.0.0: R10 billing readiness Stage C5's one deliberate major (PLAN
+        # §5.5, RULED Q10). 4.0.0 was the release cut at the cutover (#190),
+        # the first one ever tagged. The number here moves with each release.
+        assert ubb.__version__ == "5.0.0"
 
     def test_pyproject_and_module_version_agree(self):
         assert _pyproject_version() == ubb.__version__
@@ -137,12 +143,12 @@ class TestTheReleaseRecipe:
     def test_planted_a_lightweight_or_misplaced_tag_is_refused(self):
         recipe = _recipe()
         commit = "a" * 40
-        recipe.refuse_unless_an_annotated_tag_on("sdk-v4.0.0", "tag", commit, commit)
+        recipe.refuse_unless_an_annotated_tag_on("sdk-v5.0.0", "tag", commit, commit)
         cases = (
-            (("sdk-v4.0.0", "commit", commit, commit), "not an annotated tag"),
-            (("sdk-v4.0.0", "tag", "b" * 40, commit), "not the expected commit"),
-            (("v4.0.0", "tag", commit, commit), "not an SDK release tag"),
-            (("sdk-v4.0.0", "tag", commit, "abc123"), "full 40-character"),
+            (("sdk-v5.0.0", "commit", commit, commit), "not an annotated tag"),
+            (("sdk-v5.0.0", "tag", "b" * 40, commit), "not the expected commit"),
+            (("v5.0.0", "tag", commit, commit), "not an SDK release tag"),
+            (("sdk-v5.0.0", "tag", commit, "abc123"), "full 40-character"),
         )
         for arguments, reason in cases:
             with pytest.raises(recipe.RefusedRelease, match=reason):
@@ -150,9 +156,9 @@ class TestTheReleaseRecipe:
 
     def test_planted_a_version_that_is_not_the_tags_is_refused(self):
         recipe = _recipe()
-        recipe.refuse_unless_the_version_is_the_tags("sdk-v4.0.0", 'version = "4.0.0"\n')
-        with pytest.raises(recipe.RefusedRelease, match="not 4.0.0"):
-            recipe.refuse_unless_the_version_is_the_tags("sdk-v4.0.0", 'version = "3.0.0"\n')
+        recipe.refuse_unless_the_version_is_the_tags("sdk-v5.0.0", 'version = "5.0.0"\n')
+        with pytest.raises(recipe.RefusedRelease, match="not 5.0.0"):
+            recipe.refuse_unless_the_version_is_the_tags("sdk-v5.0.0", 'version = "3.0.0"\n')
 
     def test_planted_a_dirty_export_is_refused(self):
         recipe = _recipe()
@@ -208,13 +214,13 @@ class TestTheReleaseRecipe:
         recipe = _recipe()
         lock = BUILD_REQUIREMENTS.read_bytes()
         identity = recipe.release_identity(
-            tag="sdk-v4.0.0", commit="a" * 40, epoch=1, python_version="3.13.14",
+            tag="sdk-v5.0.0", commit="a" * 40, epoch=1, python_version="3.13.14",
             platform_name="any", lock_bytes=lock,
             installed={"setuptools": "80.9.0", "build": "1.2.2.post1"},
             installer="26.1.2", recipe_bytes=b"recipe",
-            wheel_name="ubb_sdk-4.0.0-py3-none-any.whl", wheel_sha256="f" * 64)
+            wheel_name="ubb_sdk-5.0.0-py3-none-any.whl", wheel_sha256="f" * 64)
 
-        assert (identity["tag"], identity["commit"]) == ("sdk-v4.0.0", "a" * 40)
+        assert (identity["tag"], identity["commit"]) == ("sdk-v5.0.0", "a" * 40)
         assert identity["python"] == {"release": "3.13", "exact": "3.13.14"}
         assert identity["lock"]["path"] == "ubb-sdk/release/build-requirements.txt"
         assert identity["lock"]["sha256"] == hashlib.sha256(lock).hexdigest()
@@ -222,7 +228,7 @@ class TestTheReleaseRecipe:
         assert identity["installer"] == {"pip": "26.1.2",
                                          "in_the_build_environment": False}
         assert (identity["wheel"], identity["sha256"]) == (
-            "ubb_sdk-4.0.0-py3-none-any.whl", "f" * 64)
+            "ubb_sdk-5.0.0-py3-none-any.whl", "f" * 64)
         assert identity["builds_compared"] == 2
 
     def test_planted_two_different_builds_are_refused(self):

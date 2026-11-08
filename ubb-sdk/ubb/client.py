@@ -24,8 +24,11 @@ from ubb._core.models.customer_response import CustomerResponse
 from ubb._core.models.balance_response import BalanceResponse
 from ubb._core.models.refund_response import RefundResponse
 from ubb._core.models.status_response import StatusResponse
+from ubb._core.models.top_up_accepted_response import TopUpAcceptedResponse
 from ubb._core.models.top_up_checkout_response import TopUpCheckoutResponse
 from ubb._core.models.usage_event_out import UsageEventOut
+from ubb._core.models.usage_invoice_out import UsageInvoiceOut
+from ubb._core.types import UNSET, Unset
 from ubb._core.models.wallet_transaction_out import WalletTransactionOut
 from ubb._core.models.withdraw_response import WithdrawResponse
 from ubb._core.models.economics_out import EconomicsOut
@@ -466,11 +469,19 @@ class UBBClient:
     def update_tenant_config(self, *, billing_mode: str | None = None,
                               products: list[str] | None = None,
                               automatic_tax_enabled: bool | None = None,
-                              default_currency: str | None = None) -> dict:
+                              default_currency: str | None = None,
+                              enforcement_mode: str | Unset = UNSET,
+                              live_counter_maintenance_enabled: bool | Unset = UNSET,
+                              min_balance_micros: int | None | Unset = UNSET,
+                              soft_min_balance_micros: int | None | Unset = UNSET,
+                              default_task_cogs_ceiling_micros: int | None | Unset = UNSET,
+                              default_subtask_cogs_ceiling_micros: int | None | Unset = UNSET,
+                              max_task_starts_per_minute: int | None | Unset = UNSET,
+                              ) -> dict:
         """Update the tenant's own configuration.
 
-        Calls PATCH /api/v1/tenant/config with only the provided (non-None) fields.
-        Returns the updated config as a dict. ``automatic_tax_enabled=True``
+        Calls PATCH /api/v1/tenant/config with only the provided fields and
+        returns the updated config as a dict. ``automatic_tax_enabled=True``
         turns on Stripe Tax passthrough (subscriptions + usage invoices); the
         server preflights the connected account's Stripe Tax status when the
         tenant is charge-ready and rejects with 422 if Tax is not active.
@@ -479,6 +490,18 @@ class UBBClient:
         admits no other currency and converts none, so any other code is
         refused with ``UnsupportedCurrencyError`` (422) and the tenant's
         currency is unchanged.
+
+        The seven fields the route accepted and this method could not send
+        until SDK 5.0.0 (O-5) take the generated ``UNSET`` sentinel as their
+        default — the one way to tell "leave it out" from "set it to null",
+        which four of them admit (the route reads an explicit ``null`` as
+        "clear the figure"): ``enforcement_mode`` (``"off"`` / ``"enforcing"``,
+        ``ubb.vocabulary.ENFORCEMENT_MODE_VALUES``),
+        ``live_counter_maintenance_enabled``, ``min_balance_micros``,
+        ``soft_min_balance_micros``, ``default_task_cogs_ceiling_micros``,
+        ``default_subtask_cogs_ceiling_micros`` and
+        ``max_task_starts_per_minute``. Pass a value to set it, ``None`` to
+        clear a nullable one, and leave it ``UNSET`` to keep what is stored.
         """
         metering = self._require_metering()
         body = {}
@@ -490,6 +513,17 @@ class UBBClient:
             body["automatic_tax_enabled"] = automatic_tax_enabled
         if default_currency is not None:
             body["default_currency"] = default_currency
+        for name, value in (
+            ("enforcement_mode", enforcement_mode),
+            ("live_counter_maintenance_enabled", live_counter_maintenance_enabled),
+            ("min_balance_micros", min_balance_micros),
+            ("soft_min_balance_micros", soft_min_balance_micros),
+            ("default_task_cogs_ceiling_micros", default_task_cogs_ceiling_micros),
+            ("default_subtask_cogs_ceiling_micros", default_subtask_cogs_ceiling_micros),
+            ("max_task_starts_per_minute", max_task_starts_per_minute),
+        ):
+            if not isinstance(value, Unset):
+                body[name] = value
         r = metering._request(*ops.API_V1_TENANT_ENDPOINTS_UPDATE_TENANT_CONFIG, json=body)
         return r.json()
 
@@ -622,8 +656,12 @@ class UBBClient:
 
     def create_top_up(self, customer_id: str, amount_micros: int, *,
                       success_url: str, cancel_url: str,
-                      idempotency_key: str) -> TopUpCheckoutResponse:
-        """Create a top-up checkout session. Requires billing product.
+                      idempotency_key: str
+                      ) -> TopUpCheckoutResponse | TopUpAcceptedResponse:
+        """Start a top-up. Requires billing product. Answers a
+        ``TopUpCheckoutResponse`` (200, a checkout to open) or a
+        ``TopUpAcceptedResponse`` (202, handed to the tenant; nothing to open)
+        — branch with ``isinstance`` (SDK 5.0.0; ``BillingClient.create_top_up``).
         idempotency_key is REQUIRED (#78) — replays never double-charge."""
         return self._require_billing().create_top_up(
             customer_id, amount_micros, success_url, cancel_url,
@@ -631,10 +669,12 @@ class UBBClient:
         )
 
     def configure_auto_top_up(self, customer_id: str, is_enabled: bool,
-                              trigger_threshold_micros: int | None = None,
-                              top_up_amount_micros: int | None = None
+                              trigger_threshold_micros: int,
+                              top_up_amount_micros: int
                               ) -> StatusResponse:
-        """Configure auto top-up. Requires billing product.
+        """Configure auto top-up. Requires billing product. Every parameter
+        is required — the route requires all three fields even when
+        disabling (SDK 5.0.0; ``BillingClient.configure_auto_top_up``).
 
         The billing client's own parameters, under its names (#547): the
         facade spelled them `threshold`, `amount` and `enabled` until W5."""
@@ -689,8 +729,12 @@ class UBBClient:
     def get_customer_spend_pool_status(self, customer_id):
         return self._require_billing().get_customer_spend_pool_status(customer_id)
 
-    def get_usage_invoices(self, customer_id):
-        return self._require_billing().get_usage_invoices(customer_id)
+    def get_usage_invoices(self, customer_id: str, cursor: str | None = None,
+                           limit: int = 50) -> PaginatedResponse[UsageInvoiceOut]:
+        """One customer's usage invoices, in the page envelope (SDK 5.0.0;
+        `BillingClient.get_usage_invoices`). Requires billing product."""
+        return self._require_billing().get_usage_invoices(
+            customer_id, cursor=cursor, limit=limit)
 
     def get_postpaid_config(self):
         return self._require_billing().get_postpaid_config()

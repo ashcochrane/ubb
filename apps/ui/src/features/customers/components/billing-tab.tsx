@@ -1,3 +1,14 @@
+// The customer's Billing tab.
+//
+// ⚠ **NO WALLET IS NOT A ZERO WALLET (R10 Stage C5, F-12).** Only the
+// `prepaid` billing mode keeps a wallet; under `external` or `postpaid` the
+// wallet reads (balance, transactions, grants) answer 403 `feature_not_enabled`,
+// so this tab neither fetches them nor draws the panels there — it gates on
+// `useHoldsAWallet`, never on "not postpaid", and never probes for the 403.
+// What stays off the wallet lane is the non-wallet surface: the affordability
+// question, usage invoices, the customer spend pool, and the sections that
+// explain their own absence (grants, wallet policy, auto top-up).
+
 import * as React from "react";
 import { AlertTriangle, Info } from "lucide-react";
 import { Link } from "@tanstack/react-router";
@@ -9,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHasRole } from "@/hooks/use-current-role";
-import { useIsPostpaid } from "@/hooks/use-tenant-config";
+import { useHoldsAWallet } from "@/hooks/use-tenant-config";
 import { formatDate, formatMicros } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -27,18 +38,20 @@ const WRITE_HINT = "Requires the Write role.";
 
 type DialogKind = "top-up" | "withdraw" | "credit" | "debit" | "affordability" | null;
 
-export function BillingTab({
-  customerId,
-  externalId,
-}: {
-  customerId: string;
-  externalId: string;
-}) {
-  const balance = useBalance(customerId);
+export function BillingTab({ customerId }: { customerId: string }) {
+  const walleted = useHoldsAWallet();
+  // Not fetched at all where the mode keeps no wallet (the route would 403).
+  const balance = useBalance(customerId, walleted);
   const [dialog, setDialog] = React.useState<DialogKind>(null);
   const canWrite = useHasRole("write");
   const isAdmin = useHasRole("admin");
-  const postpaid = useIsPostpaid();
+
+  // A read at the Read floor (#463): every role may ask, in every mode.
+  const affordabilityButton = (
+    <Button size="sm" variant="outline" onClick={() => setDialog("affordability")}>
+      Check affordability
+    </Button>
+  );
 
   return (
     <div className="space-y-4">
@@ -47,7 +60,21 @@ export function BillingTab({
           <CardTitle>Balance</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {balance.isLoading ? (
+          {!walleted ? (
+            <>
+              <Alert data-testid="no-wallet-notice">
+                <Info />
+                <AlertTitle>No wallet under this workspace's billing mode</AlertTitle>
+                <AlertDescription>
+                  Only prepaid billing keeps a wallet. Balance, transactions,
+                  credit grants, top-up, withdraw and manual credit or debit
+                  don't apply here — and an absent wallet is not a zero
+                  balance, so no figure is shown.
+                </AlertDescription>
+              </Alert>
+              <div className="flex flex-wrap items-center gap-2">{affordabilityButton}</div>
+            </>
+          ) : balance.isLoading ? (
             <Skeleton className="h-20 w-full" />
           ) : balance.isError ? (
             <ErrorCard error={balance.error} onRetry={() => void balance.refetch()} />
@@ -136,25 +163,21 @@ export function BillingTab({
                 </Alert>
               )}
               <div className="flex flex-wrap items-center gap-2">
-                {!postpaid && (
-                  <>
-                    <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
-                      <Button size="sm" onClick={() => setDialog("top-up")} disabled={!canWrite}>
-                        Top up
-                      </Button>
-                    </DisabledHint>
-                    <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setDialog("withdraw")}
-                        disabled={!isAdmin}
-                      >
-                        Withdraw
-                      </Button>
-                    </DisabledHint>
-                  </>
-                )}
+                <DisabledHint disabled={!canWrite} hint={WRITE_HINT}>
+                  <Button size="sm" onClick={() => setDialog("top-up")} disabled={!canWrite}>
+                    Top up
+                  </Button>
+                </DisabledHint>
+                <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setDialog("withdraw")}
+                    disabled={!isAdmin}
+                  >
+                    Withdraw
+                  </Button>
+                </DisabledHint>
                 <DisabledHint disabled={!isAdmin} hint={ADMIN_HINT}>
                   <Button
                     size="sm"
@@ -175,26 +198,8 @@ export function BillingTab({
                     Manual debit
                   </Button>
                 </DisabledHint>
-                {/* A read at the Read floor (#463): every role may ask. */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDialog("affordability")}
-                >
-                  Check affordability
-                </Button>
+                {affordabilityButton}
               </div>
-              {postpaid && (
-                <Alert>
-                  <Info />
-                  <AlertDescription>
-                    Top-up and withdraw are hidden under postpaid — usage
-                    isn't drawn from a prepaid wallet here; it's invoiced
-                    through Stripe at period close instead. Manual credit and
-                    debit above still move the ledger directly.
-                  </AlertDescription>
-                </Alert>
-              )}
             </>
           ) : null}
         </CardContent>
@@ -206,29 +211,35 @@ export function BillingTab({
       <CustomerSpendPoolSection customerId={customerId} />
       <BillingConfigSection customerId={customerId} />
 
-      <TopUpDialog
-        customerId={customerId}
-        open={dialog === "top-up"}
-        onOpenChange={(open) => setDialog(open ? "top-up" : null)}
-      />
-      <WithdrawDialog
-        customerId={customerId}
-        balance={balance.data}
-        open={dialog === "withdraw"}
-        onOpenChange={(open) => setDialog(open ? "withdraw" : null)}
-      />
-      <AdjustDialog
-        direction="credit"
-        externalId={externalId}
-        open={dialog === "credit"}
-        onOpenChange={(open) => setDialog(open ? "credit" : null)}
-      />
-      <AdjustDialog
-        direction="debit"
-        externalId={externalId}
-        open={dialog === "debit"}
-        onOpenChange={(open) => setDialog(open ? "debit" : null)}
-      />
+      {walleted && (
+        <>
+          <TopUpDialog
+            customerId={customerId}
+            open={dialog === "top-up"}
+            onOpenChange={(open) => setDialog(open ? "top-up" : null)}
+          />
+          <WithdrawDialog
+            customerId={customerId}
+            balance={balance.data}
+            open={dialog === "withdraw"}
+            onOpenChange={(open) => setDialog(open ? "withdraw" : null)}
+          />
+          {/* F-13: the adjustment sends the platform UUID this page is
+              addressed by — the route takes nothing else. */}
+          <AdjustDialog
+            direction="credit"
+            customerId={customerId}
+            open={dialog === "credit"}
+            onOpenChange={(open) => setDialog(open ? "credit" : null)}
+          />
+          <AdjustDialog
+            direction="debit"
+            customerId={customerId}
+            open={dialog === "debit"}
+            onOpenChange={(open) => setDialog(open ? "debit" : null)}
+          />
+        </>
+      )}
       <AffordabilityDialog
         customerId={customerId}
         open={dialog === "affordability"}

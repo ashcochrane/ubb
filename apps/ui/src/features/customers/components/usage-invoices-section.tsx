@@ -1,10 +1,13 @@
 // Per-customer usage-invoice history — the Stripe-push record for each closed
-// billing period (GET /billing/customers/{id}/usage-invoices, read floor).
-// Rows carry their own currency; failed pushes get the red treatment and an
+// billing period (GET /billing/customers/{id}/usage-invoices, read floor), on
+// the one usage-invoice shape every route shares since R10 Stage C5 (F-15).
+// Rows carry their own currency, where the Stripe invoice stands as a
+// receivable (`payment_status`, null while not yet collectible) and the hosted
+// invoice where one exists; failed pushes get the red treatment and an
 // expandable last-attempt error.
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, ReceiptText } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink, ReceiptText } from "lucide-react";
 
 import { CopyButton } from "@/components/shared/copy-button";
 import { EmptyState } from "@/components/shared/empty-state";
@@ -22,8 +25,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatCalendarDate, formatMicros } from "@/lib/format";
-import { skipReasonLabel, usageInvoiceStatusLabel } from "@/lib/usage-invoice";
+import { formatCalendarDate, formatDate, formatMicros } from "@/lib/format";
+import {
+  paymentStatusWording,
+  skipReasonLabel,
+  usageInvoiceStatusLabel,
+} from "@/lib/usage-invoice";
 
 import { useCustomerUsageInvoices } from "../api/queries";
 import type { UsageInvoiceOut } from "../api/types";
@@ -61,13 +68,14 @@ export function UsageInvoicesSection({ customerId }: { customerId: string }) {
                   <TableHead>Period</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Payment</TableHead>
                   <TableHead>Stripe invoice</TableHead>
                   <TableHead className="text-right">Push attempts</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {list.rows.map((invoice) => (
-                  <UsageInvoiceRow key={invoice.period_start} invoice={invoice} />
+                  <UsageInvoiceRow key={invoice.id} invoice={invoice} />
                 ))}
               </TableBody>
             </Table>
@@ -108,6 +116,17 @@ function UsageInvoiceRow({ invoice }: { invoice: UsageInvoiceOut }) {
             {usageInvoiceStatusLabel(invoice.status)}
           </Badge>
         </TableCell>
+        <TableCell
+          className="whitespace-nowrap text-[12px]"
+          data-payment-status={invoice.payment_status ?? ""}
+        >
+          {paymentStatusWording(invoice.payment_status)}
+          {invoice.paid_at && (
+            <span className="ml-1.5 text-[11px] text-text-muted">
+              {formatDate(invoice.paid_at)}
+            </span>
+          )}
+        </TableCell>
         <TableCell>
           {invoice.stripe_invoice_id ? (
             <span className="flex items-center gap-1.5">
@@ -121,6 +140,18 @@ function UsageInvoiceRow({ invoice }: { invoice: UsageInvoiceOut }) {
                 value={invoice.stripe_invoice_id}
                 label="Copy Stripe invoice ID"
               />
+              {invoice.hosted_invoice_url && (
+                <a
+                  href={invoice.hosted_invoice_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-0.5 text-[12px] underline-offset-2 hover:underline"
+                  aria-label="Open the hosted Stripe invoice"
+                >
+                  View
+                  <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+                </a>
+              )}
             </span>
           ) : (
             <span className="text-text-muted">—</span>
@@ -128,7 +159,7 @@ function UsageInvoiceRow({ invoice }: { invoice: UsageInvoiceOut }) {
         </TableCell>
         <TableCell className="text-right">
           <span className="inline-flex items-center justify-end gap-1 tabular-nums">
-            {invoice.push_attempts ?? 0}
+            {invoice.push_attempts}
             {hasError && (
               <Button
                 variant="ghost"
@@ -149,7 +180,7 @@ function UsageInvoiceRow({ invoice }: { invoice: UsageInvoiceOut }) {
       </TableRow>
       {expanded && hasError && (
         <TableRow>
-          <TableCell colSpan={5} className="bg-bg-subtle/50">
+          <TableCell colSpan={6} className="bg-bg-subtle/50">
             <span className="block whitespace-normal font-mono text-[12px] text-danger-dark">
               {invoice.last_attempt_error}
             </span>

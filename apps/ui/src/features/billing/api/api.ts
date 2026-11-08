@@ -73,12 +73,12 @@ export async function putPostpaidConfig(body: PostpaidConfigIn): Promise<Postpai
   return unwrap(await billingApi.PUT("/postpaid-config", { body }));
 }
 
-/** Body customer_id is the customer's EXTERNAL id, not the UBB UUID. */
+/** Body customer_id is the UBB platform Customer UUID (R10 Stage C5, F-13). */
 export async function creditWallet(body: CreditRequest): Promise<DebitCreditResponse> {
   return unwrap(await billingApi.POST("/credit", { body }));
 }
 
-/** Body customer_id is the customer's EXTERNAL id, not the UBB UUID. */
+/** Body customer_id is the UBB platform Customer UUID (R10 Stage C5, F-13). */
 export async function debitWallet(body: DebitRequest): Promise<DebitCreditResponse> {
   return unwrap(await billingApi.POST("/debit", { body }));
 }

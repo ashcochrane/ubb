@@ -75,14 +75,14 @@ measurement_key:
     # THE EVIDENCE WAS TAKEN FOR THIS ENTRY, following the `pricing_status`
     # precedent, which records its method because #206's did not. Measured over
     # the sweep's OWN swept set (`sweep.partition` under
-    # `gates/forbidden-term-sweep.yaml`: 2,670 of 2,840 tracked files) with its
+    # `gates/forbidden-term-sweep.yaml`: 2,680 of 2,850 tracked files) with its
     # OWN token matcher (`sweep.pattern` — the token with a non-identifier
     # character required on each side). That is the measure which answers the
     # question actually being decided: what the gate would see if this word
     # were input. It also excludes this directory, so the file can record its
     # own number without changing it.
     #
-    #     units    46 files, 137 occurrences
+    #     units    46 files, 138 occurrences
     #
     # THE COUNT HAS NOW MOVED, AND DOWNWARD IS THE ONE DIRECTION THAT NEEDS NO
     # INVESTIGATION. Four consecutive re-takes (#267, #269, #270, #271) moved
@@ -3129,6 +3129,23 @@ measurement_key:
     # and the Tenant admin's shared form-post helper they and the payment
     # rail's admin tests use (`apps/platform/tenants/tests/_helpers.py`). None
     # names a quantity.
+    #
+    # 2026-11-07, R10 Stage C5 (the one breaking regeneration, SDK 5.0.0):
+    # 2,670 of 2,840 -> 2,680 of 2,850 tracked files, and `units` 46 files /
+    # 137 -> 138 occurrences. Ten files arrived, all swept: the referrals
+    # migration `0002_reward_units_in_micros_and_basis_points.py` (the sweep
+    # reads file contents, and its text keeps to the singular), seven generated SDK
+    # core models (`ubb-sdk/ubb/_core/models/…`: the typed top-up acceptance
+    # and the usage-invoice payment-status enums), the console's top-up guard
+    # (`apps/ui/src/features/customers/lib/top-up.ts`) and the money dialog's
+    # test. THE COUNT ROSE BY ONE, so the word was read before the number was
+    # rewritten: the console's referral programme form
+    # (`apps/ui/src/features/referrals/lib/program-form.ts` and its test),
+    # rewritten for A-3's basis points, spells "currency units" — the flat
+    # fee's money entry, the surviving MONEY sense this entry already records
+    # in those two files — once more than before. Not the posting's metered
+    # quantity, which no file names. The other C5 wordings were kept to the
+    # singular ("an explicit unit each"), so nothing else moved.
 
     - term: units
       retired_as: >-

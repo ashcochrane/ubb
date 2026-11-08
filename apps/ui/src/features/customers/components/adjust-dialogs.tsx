@@ -1,6 +1,7 @@
-// Manual credit / debit (which take the EXTERNAL id in the body — prefilled
-// and shown read-only here) and the affordability dialog (denials are HTTP
-// 200 with allowed:false — the UI branches on the body, never the status).
+// Manual credit / debit — which take the platform Customer UUID in the body
+// (R10 Stage C5, F-13; PLAN §7 item 44), the one this page already holds,
+// shown read-only here — and the affordability dialog (denials are HTTP 200
+// with allowed:false — the UI branches on the body, never the status).
 //
 // Money moves on these forms, so submit goes through a ConfirmDialog with
 // the same consequence copy as the /billing page's credit/debit forms. The
@@ -49,12 +50,13 @@ function useIdempotencyKey(open: boolean): string {
 
 export function AdjustDialog({
   direction,
-  externalId,
+  customerId,
   open,
   onOpenChange,
 }: {
   direction: "credit" | "debit";
-  externalId: string;
+  /** The platform Customer UUID — what the route takes, never the external id. */
+  customerId: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -87,7 +89,7 @@ export function AdjustDialog({
     try {
       const result = isCredit
         ? await credit.mutateAsync({
-            customer_id: externalId,
+            customer_id: customerId,
             amount_micros: toMicros(values.amount),
             idempotency_key: idempotencyKey,
             reference: values.reference,
@@ -96,7 +98,7 @@ export function AdjustDialog({
             movement_reason: movementReasonToSend(values.movement_reason),
           })
         : await debit.mutateAsync({
-            customer_id: externalId,
+            customer_id: customerId,
             amount_micros: toMicros(values.amount),
             idempotency_key: idempotencyKey,
             reference: values.reference,
@@ -126,13 +128,15 @@ export function AdjustDialog({
           <DialogDescription>
             {isCredit
               ? "Adds non-expiring base credit (no grant lot). Use a credit grant instead for promo or expiring credit."
-              : "Removes money from the wallet, recorded as a debit on the wallet ledger."}{" "}
-            This endpoint identifies the customer by external ID.
+              : "Removes money from the wallet, recorded as a debit on the wallet ledger."}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={(event) => void submit(event)} className="space-y-3">
-          <FormField label="Customer (external ID)">
-            {(id) => <Input id={id} value={externalId} readOnly className="font-mono" />}
+          <FormField
+            label="Platform Customer UUID"
+            hint="The id UBB assigned this customer — the one this page is addressed by."
+          >
+            {(id) => <Input id={id} value={customerId} readOnly className="font-mono" />}
           </FormField>
           <FormField
             label={`Amount (${currency.toUpperCase()})`}
@@ -215,8 +219,8 @@ export function AdjustDialog({
       destructive={!isCredit}
       description={
         isCredit
-          ? `Credit ${externalId} with ${formatMicros(toMicros(amount || "0"), currency)}. This immediately increases their spendable balance — real money moves when you confirm.`
-          : `Take ${formatMicros(toMicros(amount || "0"), currency)} from ${externalId}${allowNegative ? " — their balance is allowed to go negative" : ""}. Real money moves when you confirm.`
+          ? `Credit this customer's wallet with ${formatMicros(toMicros(amount || "0"), currency)}. This immediately increases their spendable balance — real money moves when you confirm.`
+          : `Take ${formatMicros(toMicros(amount || "0"), currency)} from this customer's wallet${allowNegative ? " — their balance is allowed to go negative" : ""}. Real money moves when you confirm.`
       }
       confirmLabel={isCredit ? "Credit wallet" : "Debit wallet"}
       onConfirm={() => void submitConfirmed()}

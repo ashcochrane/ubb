@@ -163,6 +163,31 @@ export function useIsPostpaid(): boolean {
 }
 
 /**
+ * Whether the workspace's billing mode keeps a WALLET — and `prepaid` is the
+ * only mode that does (R10 Stage C5, F-12).
+ *
+ * A tenant under `external` or `postpaid` has no wallet at all: the wallet
+ * reads (balance, transactions, grants) answer 403 `feature_not_enabled`
+ * there, and an absent wallet is not a zero-balance wallet. So every
+ * wallet-only surface — the balance card, transactions, grants, top-up,
+ * withdraw, manual credit and debit, the wallet-policy floors, auto top-up —
+ * gates on THIS, never on "not postpaid": the console neither renders those
+ * panels nor probes for the 403 where the mode keeps no wallet.
+ *
+ * `isPostpaid` above stays for what still means postpaid specifically (the
+ * postpaid invoicing configuration); this is the gate for the wallet.
+ */
+export function holdsAWallet(config: TenantConfig | undefined): boolean {
+  return config?.billing_mode === ("prepaid" satisfies CustomerBillingMode);
+}
+
+/** Wallet gate as a hook; false while config is loading. */
+export function useHoldsAWallet(): boolean {
+  const { data } = useTenantConfig();
+  return holdsAWallet(data);
+}
+
+/**
  * Whether the workspace meters without billing.
  *
  * The posture decides what a declaration DOES rather than what it says: a

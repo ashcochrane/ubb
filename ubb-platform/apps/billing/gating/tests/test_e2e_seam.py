@@ -110,7 +110,7 @@ class TestEnforcementSeam:
         with _patch("apps.platform.events.tasks.process_single_event"):
             with django_capture_on_commit_callbacks(execute=True):
                 cr = client.post("/api/v1/billing/credit", data=json.dumps({
-                    "customer_id": "jim", "amount_micros": 20_000_000,
+                    "customer_id": str(c.id), "amount_micros": 20_000_000,
                     "source": "topup", "reference": "tp1",
                     "idempotency_key": "idem_tp1"}), **hdr)
         assert cr.status_code == 200
@@ -169,7 +169,7 @@ class TestEnforcementSeam:
         with patch("apps.platform.events.tasks.process_single_event"):
             with django_capture_on_commit_callbacks(execute=True):
                 cr = client.post("/api/v1/billing/credit", data=json.dumps({
-                    "customer_id": "jim", "amount_micros": 45_000_000,
+                    "customer_id": str(c.id), "amount_micros": 45_000_000,
                     "source": "topup", "reference": "tp1",
                     "idempotency_key": "idem_tp1"}), **hdr)
         assert cr.status_code == 200, cr.content

@@ -9,6 +9,7 @@ from ...types import Response, UNSET
 from ... import errors
 
 from ...models.problem_out import ProblemOut
+from ...models.top_up_accepted_response import TopUpAcceptedResponse
 from ...models.top_up_request import TopUpRequest
 from ...models.top_up_response import TopUpResponse
 from typing import cast
@@ -41,13 +42,20 @@ def _get_kwargs(
 
 
 
-def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | TopUpResponse | None:
+def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> ProblemOut | TopUpAcceptedResponse | TopUpResponse | None:
     if response.status_code == 200:
         response_200 = TopUpResponse.from_dict(response.json())
 
 
 
         return response_200
+
+    if response.status_code == 202:
+        response_202 = TopUpAcceptedResponse.from_dict(response.json())
+
+
+
+        return response_202
 
     if response.status_code == 409:
         response_409 = ProblemOut.from_dict(response.json())
@@ -62,7 +70,7 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
         return None
 
 
-def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | TopUpResponse]:
+def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Response) -> Response[ProblemOut | TopUpAcceptedResponse | TopUpResponse]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -76,12 +84,15 @@ def sync_detailed(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> Response[ProblemOut | TopUpResponse]:
+) -> Response[ProblemOut | TopUpAcceptedResponse | TopUpResponse]:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
     required and unique per customer — a retried call re-uses the original
-    attempt and never starts a second charge.
+    attempt and never starts a second charge. Answers 200 with a checkout URL
+    where the tenant has a Stripe connector, and 202 (`status:
+    topup_requested`) where it has none and the request was handed to the
+    tenant.
 
     Args:
         body (TopUpRequest):
@@ -91,7 +102,7 @@ def sync_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ProblemOut | TopUpResponse]
+        Response[ProblemOut | TopUpAcceptedResponse | TopUpResponse]
      """
 
 
@@ -111,12 +122,15 @@ def sync(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> ProblemOut | TopUpResponse | None:
+) -> ProblemOut | TopUpAcceptedResponse | TopUpResponse | None:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
     required and unique per customer — a retried call re-uses the original
-    attempt and never starts a second charge.
+    attempt and never starts a second charge. Answers 200 with a checkout URL
+    where the tenant has a Stripe connector, and 202 (`status:
+    topup_requested`) where it has none and the request was handed to the
+    tenant.
 
     Args:
         body (TopUpRequest):
@@ -126,7 +140,7 @@ def sync(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ProblemOut | TopUpResponse
+        ProblemOut | TopUpAcceptedResponse | TopUpResponse
      """
 
 
@@ -141,12 +155,15 @@ async def asyncio_detailed(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> Response[ProblemOut | TopUpResponse]:
+) -> Response[ProblemOut | TopUpAcceptedResponse | TopUpResponse]:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
     required and unique per customer — a retried call re-uses the original
-    attempt and never starts a second charge.
+    attempt and never starts a second charge. Answers 200 with a checkout URL
+    where the tenant has a Stripe connector, and 202 (`status:
+    topup_requested`) where it has none and the request was handed to the
+    tenant.
 
     Args:
         body (TopUpRequest):
@@ -156,7 +173,7 @@ async def asyncio_detailed(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[ProblemOut | TopUpResponse]
+        Response[ProblemOut | TopUpAcceptedResponse | TopUpResponse]
      """
 
 
@@ -176,12 +193,15 @@ async def asyncio(
     client: AuthenticatedClient,
     body: TopUpRequest,
 
-) -> ProblemOut | TopUpResponse | None:
+) -> ProblemOut | TopUpAcceptedResponse | TopUpResponse | None:
     """ Create Top Up
 
      Widget twin of the tenant top-up. Replay-safe: idempotency_key is
     required and unique per customer — a retried call re-uses the original
-    attempt and never starts a second charge.
+    attempt and never starts a second charge. Answers 200 with a checkout URL
+    where the tenant has a Stripe connector, and 202 (`status:
+    topup_requested`) where it has none and the request was handed to the
+    tenant.
 
     Args:
         body (TopUpRequest):
@@ -191,7 +211,7 @@ async def asyncio(
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        ProblemOut | TopUpResponse
+        ProblemOut | TopUpAcceptedResponse | TopUpResponse
      """
 
 

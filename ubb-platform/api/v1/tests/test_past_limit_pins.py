@@ -113,7 +113,7 @@ class PastLimitPinTestBase(TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             resp = self.http_client.post(
                 "/api/v1/billing/credit", data=json.dumps({
-                    "customer_id": self.customer.external_id,
+                    "customer_id": str(self.customer.id),
                     "amount_micros": amount, "source": "test",
                     "reference": "r1", "idempotency_key": f"c-{uuid.uuid4()}",
                 }), content_type="application/json", **self._auth())

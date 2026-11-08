@@ -82,8 +82,11 @@ Stripe). Lives inside the ubb monorepo; the backend contract is the committed Op
 - **Verdict bodies**: HTTP 200 ≠ success for the affordability question (`allowed:false` on
   `GET /billing/customers/{id}/affordability`) or usage recording (`stop` on `POST /metering/usage`,
   per-item `accepted` on its batch sibling) — branch on the body.
-- **Identity**: path `customer_id` = UBB UUID; `credit`/`debit` bodies + platform routes use
-  `external_id`.
+- **Identity**: path `customer_id` = UBB UUID, and so is the `customer_id` in the `credit`/`debit`
+  bodies (R10 Stage C5, F-13 — the billing-page forms take a "Platform Customer UUID", validated
+  as one; the customer-detail adjustment sends the UUID the page holds). `external_id` is the
+  tenant's own handle, carried on platform customer routes and shown beside a customer, never
+  sent to a money route.
 - Regen after backend changes: `pnpm api:sync` (copies `../../openapi/v1.json` + regenerates types).
 
 ## Feature modules (src/features/*)

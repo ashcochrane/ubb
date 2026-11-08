@@ -13,7 +13,11 @@ import {
 import { formatCount, formatMicros } from "@/lib/format";
 import { marginOver, supplierCostTotal } from "@/lib/supplier-cost";
 import { revenueBasisNote } from "@/lib/supplied-revenue";
-import { REVENUE_BASIS_VALUES, type RevenueBasis } from "@/lib/vocabulary";
+import {
+  REVENUE_BASIS_VALUES,
+  type CustomerBillingMode,
+  type RevenueBasis,
+} from "@/lib/vocabulary";
 
 import { CUS_ACME, CUS_SEAT_ENG, MOCK_BUSINESS_MARGIN } from "../api/mock-data";
 import { customersApi } from "../api/provider";
@@ -428,7 +432,7 @@ describe("BusinessRollup", () => {
 
 describe("BillingTab", () => {
   it("shows the balance card with promo and expiring credit", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     // Wait for the balance card itself (the amount also appears in the
     // transactions table, so anchor on the card's own labels).
     expect(
@@ -446,7 +450,7 @@ describe("BillingTab", () => {
   // never read as the balance and a large balance is never read as the
   // amount a start is judged on. The fixture: $258.40 with $8.00 reserved.
   it("renders the balance, the open reservations and the available amount as three figures", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     await screen.findByText("Open reservations", undefined, SLOW);
     expect(document.querySelector('[data-balance="balance"]')).toHaveTextContent("$258.40");
     expect(document.querySelector('[data-balance="reserved"]')).toHaveTextContent("$8.00");
@@ -462,7 +466,7 @@ describe("BillingTab", () => {
   // (`alert`/`status` roles are not asserted here: the tab's own notices are
   // Base UI Alerts and say nothing about the pool.)
   it("draws no meter, progress bar or warning on the whole Billing tab for a crossed pool", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     expect(
       await screen.findByText(/new starts for this customer are being refused/, undefined, SLOW),
     ).toBeInTheDocument();
@@ -521,7 +525,7 @@ describe("BillingTab", () => {
   });
 
   it("asks the affordability question and branches on the verdict body (HTTP 200)", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Check affordability" }, SLOW),
     );
@@ -534,7 +538,7 @@ describe("BillingTab", () => {
   });
 
   it("shows the per-customer usage-invoice push history", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     expect(
       await screen.findByText("Usage invoices", undefined, SLOW),
     ).toBeInTheDocument();
@@ -548,7 +552,7 @@ describe("BillingTab", () => {
 
   it("discloses the billing owner for a pooled seat's balance, with a link", async () => {
     renderWithProviders(
-      <BillingTab customerId={CUS_SEAT_ENG} externalId="acme-corp:eng" />,
+      <BillingTab customerId={CUS_SEAT_ENG} />,
     );
     // The seat's balance IS the owner's ($258.40 — acme's fixture balance).
     expect(
@@ -568,7 +572,7 @@ describe("BillingTab", () => {
   });
 
   it("does not show the billing-owner disclosure for an ordinary customer", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     await screen.findByText("Open reservations", undefined, SLOW);
     expect(
       screen.queryByText(/this seat has no wallet of its own/i),
@@ -577,7 +581,7 @@ describe("BillingTab", () => {
 
   it("makes the billing profile read-only for a pooled seat, explaining why", async () => {
     renderWithProviders(
-      <BillingTab customerId={CUS_SEAT_ENG} externalId="acme-corp:eng" />,
+      <BillingTab customerId={CUS_SEAT_ENG} />,
     );
     expect(
       await screen.findByText("Wallet policy", undefined, SLOW),
@@ -600,14 +604,23 @@ describe("BillingTab", () => {
   });
 
   it("keeps the billing profile editable for an ordinary customer", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     expect(
       await screen.findByRole("button", { name: "Save profile" }, SLOW),
     ).toBeInTheDocument();
   });
 
+  // ⚠ **NO WALLET IS NOT A ZERO WALLET (R10 Stage C5, F-12).** Only `prepaid`
+  // keeps one; under `external` or `postpaid` the wallet reads answer 403, so
+  // the tab must neither draw a wallet panel nor ask for one — gated on the
+  // mode keeping a wallet, never by probing for the refusal. The three wallet
+  // reads are spied (call-through) so "no wallet request" is asserted as a
+  // fact about the provider, not inferred from what rendered.
   describe("mode-aware wallet surfaces", () => {
-    const withBillingMode = async (mode: "prepaid" | "postpaid", run: () => Promise<void>) => {
+    const withBillingMode = async (
+      mode: CustomerBillingMode,
+      run: () => Promise<void>,
+    ) => {
       const original = readMockTenantConfig();
       writeMockTenantConfig({ ...original, billing_mode: mode });
       try {
@@ -617,78 +630,115 @@ describe("BillingTab", () => {
       }
     };
 
-    it("hides top-up, withdraw, auto-top-up, and credit grants under postpaid — with an explanation", async () => {
-      await withBillingMode("postpaid", async () => {
-        renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
-        await screen.findByText("Open reservations", undefined, SLOW);
+    const walletReads = () => [
+      vi.spyOn(customersApi, "getBalance"),
+      vi.spyOn(customersApi, "listTransactions"),
+      vi.spyOn(customersApi, "listGrants"),
+    ];
 
-        expect(screen.queryByRole("button", { name: "Top up" })).not.toBeInTheDocument();
-        expect(screen.queryByRole("button", { name: "Withdraw" })).not.toBeInTheDocument();
-        // Kept under postpaid: manual credit/debit and the access check.
-        expect(screen.getByRole("button", { name: "Manual credit" })).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Manual debit" })).toBeInTheDocument();
-        expect(
-          screen.getByText(/top-up and withdraw are hidden under postpaid/i),
-        ).toBeInTheDocument();
+    it.each(["external", "postpaid"] satisfies CustomerBillingMode[])(
+      "renders no wallet panel and makes no wallet request under %s",
+      async (mode) => {
+        const spies = walletReads();
+        try {
+          await withBillingMode(mode, async () => {
+            renderWithProviders(<BillingTab customerId={CUS_ACME} />);
+            expect(
+              await screen.findByTestId("no-wallet-notice", undefined, SLOW),
+            ).toBeInTheDocument();
+            // The non-wallet surface is still there, loaded from its own reads.
+            expect(
+              await screen.findByRole("button", { name: "Save pool" }, SLOW),
+            ).toBeInTheDocument();
+            expect(await screen.findByText("Usage invoices", undefined, SLOW)).toBeInTheDocument();
+            expect(screen.getByRole("button", { name: "Check affordability" })).toBeInTheDocument();
 
-        expect(
-          await screen.findByText(/credit grants aren't used under postpaid/i, undefined, SLOW),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole("button", { name: "Create grant" }),
-        ).not.toBeInTheDocument();
+            // No balance figures — an absent wallet is not $0.00.
+            expect(screen.queryByText("Open reservations")).not.toBeInTheDocument();
+            expect(document.querySelector("[data-balance]")).toBeNull();
+            expect(screen.queryByText("$0.00")).not.toBeInTheDocument();
+            // No money controls of any kind.
+            for (const name of [
+              "Top up",
+              "Withdraw",
+              "Manual credit",
+              "Manual debit",
+              "Create grant",
+              "Save auto top-up",
+              "Save profile",
+            ]) {
+              expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+            }
+            expect(screen.queryByText("Transactions")).not.toBeInTheDocument();
+            // The sections that stay explain their absence.
+            expect(
+              screen.getByText(/credit grants aren't used under this workspace's billing mode/i),
+            ).toBeInTheDocument();
+            expect(
+              screen.getByText(/auto top-up isn't used under this workspace's billing mode/i),
+            ).toBeInTheDocument();
+            expect(
+              screen.getByText(/overdraft and wind-down floors aren't used/i),
+            ).toBeInTheDocument();
+            expect(
+              screen.getByText(/the customer spend pool above is the control that applies/i),
+            ).toBeInTheDocument();
 
-        expect(
-          screen.getByText(/auto top-up isn't used under postpaid/i),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole("button", { name: "Save auto top-up" }),
-        ).not.toBeInTheDocument();
+            for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+          });
+        } finally {
+          for (const spy of spies) spy.mockRestore();
+        }
+      },
+    );
 
-        expect(
-          screen.getByText(/overdraft and wind-down floors aren't used under postpaid/i),
-        ).toBeInTheDocument();
-        expect(
-          screen.queryByRole("button", { name: "Save profile" }),
-        ).not.toBeInTheDocument();
-
-        // Kept under postpaid: the pool enforces in every billing mode (#459),
-        // so its declaration stays a live control and the floors' notice
-        // points at it.
-        expect(screen.getByText("Customer spend pool")).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Save pool" })).toBeInTheDocument();
-        expect(
-          screen.getByText(/the customer spend pool above is the control that applies/i),
-        ).toBeInTheDocument();
-      });
-    });
-
-    it("shows top-up, withdraw, auto-top-up, and credit grants under prepaid", async () => {
-      await withBillingMode("prepaid", async () => {
-        renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
-        expect(
-          await screen.findByRole("button", { name: "Top up" }, SLOW),
-        ).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
-        expect(
-          await screen.findByRole("button", { name: "Create grant" }, SLOW),
-        ).toBeInTheDocument();
-        expect(
-          screen.getByRole("button", { name: "Save auto top-up" }),
-        ).toBeInTheDocument();
-        expect(
-          await screen.findByRole("button", { name: "Save profile" }, SLOW),
-        ).toBeInTheDocument();
-      });
+    it("renders the wallet panels, with their reads, under prepaid", async () => {
+      const spies = walletReads();
+      try {
+        await withBillingMode("prepaid", async () => {
+          renderWithProviders(<BillingTab customerId={CUS_ACME} />);
+          expect(
+            await screen.findByRole("button", { name: "Top up" }, SLOW),
+          ).toBeInTheDocument();
+          expect(screen.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+          expect(screen.getByRole("button", { name: "Manual credit" })).toBeInTheDocument();
+          expect(screen.getByRole("button", { name: "Manual debit" })).toBeInTheDocument();
+          expect(screen.getByText("Open reservations")).toBeInTheDocument();
+          expect(await screen.findByText("Transactions", undefined, SLOW)).toBeInTheDocument();
+          expect(
+            await screen.findByRole("button", { name: "Create grant" }, SLOW),
+          ).toBeInTheDocument();
+          expect(
+            screen.getByRole("button", { name: "Save auto top-up" }),
+          ).toBeInTheDocument();
+          expect(
+            await screen.findByRole("button", { name: "Save profile" }, SLOW),
+          ).toBeInTheDocument();
+          expect(screen.queryByTestId("no-wallet-notice")).not.toBeInTheDocument();
+          for (const spy of spies) expect(spy).toHaveBeenCalled();
+        });
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+      }
     });
   });
 
   // Keep this LAST in the file — it moves acme's mock balance.
-  it("requires a confirm step before a manual credit moves money", async () => {
-    renderWithProviders(<BillingTab customerId={CUS_ACME} externalId="acme-corp" />);
+  //
+  // F-13 (PLAN §7 item 44): the adjustment sends the platform Customer UUID
+  // this page is addressed by — the route takes nothing else — and the
+  // dialog names the field as that, never as a Customer external ID.
+  it("requires a confirm step before a manual credit moves money, and sends the platform UUID", async () => {
+    const credit = vi.spyOn(customersApi, "creditWallet");
+    renderWithProviders(<BillingTab customerId={CUS_ACME} />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Manual credit" }, SLOW),
     );
+    expect(await screen.findByLabelText("Platform Customer UUID", undefined, SLOW)).toHaveValue(
+      CUS_ACME,
+    );
+    expect(screen.queryByLabelText(/external/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog").textContent).not.toMatch(/external[ _]id/i);
     fireEvent.change(await screen.findByLabelText(/Amount/, undefined, SLOW), {
       target: { value: "10" },
     });
@@ -709,5 +759,7 @@ describe("BillingTab", () => {
     expect(
       (await screen.findAllByText("$268.40", undefined, SLOW)).length,
     ).toBeGreaterThanOrEqual(1);
+    expect(credit).toHaveBeenCalledWith(expect.objectContaining({ customer_id: CUS_ACME }));
+    credit.mockRestore();
   });
 });

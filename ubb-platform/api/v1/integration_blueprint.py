@@ -230,10 +230,11 @@ RENDERER_CONTRACT_VERSION = 3
 #: 2026-09-25). Stated only for that target: a shell file uses no SDK, and a
 #: number there would be a version of nothing.
 #: `tests/contracts/test_the_blueprint_targets_the_sdk_that_ships.py` holds the
-#: number to the SDK's own version. 4 since the cutover cut SDK v4.0.0 (#190):
-#: the number moved with the SDK, and so did every Python Blueprint's
-#: fingerprint, which hashes it; no shell fingerprint moved.
-SDK_MAJOR_VERSION = {CODE_TARGET_PYTHON_SDK: 4, CODE_TARGET_SHELL_HTTP: None}
+#: number to the SDK's own version. 5 since R10 billing readiness Stage C5 cut
+#: SDK v5.0.0 (PLAN §5.5, RULED Q10; 4 from the cutover's v4.0.0, #190): the
+#: number moves with the SDK, and so does every Python Blueprint's
+#: fingerprint, which hashes it; no shell fingerprint moves.
+SDK_MAJOR_VERSION = {CODE_TARGET_PYTHON_SDK: 5, CODE_TARGET_SHELL_HTTP: None}
 
 #: Which response representations each target can read (owner item 6). A shell
 #: file holds text, so it reads the JSON a web API returns and nothing else;

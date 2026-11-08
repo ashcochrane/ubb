@@ -4,6 +4,7 @@
 
 import type { CursorPage } from "@/api/pagination";
 import { ApiProblem } from "@/api/problem";
+import { readMockTenantConfig } from "@/hooks/use-tenant-config";
 import { mockDelay } from "@/lib/api-provider";
 import type { DateRange } from "@/lib/date-range";
 import { resolveRange } from "@/lib/date-range";
@@ -19,8 +20,14 @@ import {
 import type {
   AffordabilityReasonKnown,
   RevenueBasis,
+  TopUpRequestStatus,
   WalletTransactionType,
 } from "@/lib/vocabulary";
+
+// The 202's one status word, typed against the generated vocabulary so a
+// registry rename fails `tsc` here rather than shipping a value the catalogue
+// has no words for (the `PAST_THE_FLOOR` pattern below).
+const TOP_UP_REQUESTED: TopUpRequestStatus = "topup_requested";
 
 import {
   MOCK_BALANCES,
@@ -72,7 +79,7 @@ import type {
   SuppliedRevenueIn,
   SuppliedRevenueRecord,
   SuppliedRevenueWindow,
-  TopUpCheckoutResponse,
+  TopUpResult,
   UsageInvoiceOut,
   WalletTransactionOut,
   WithdrawRequest,
@@ -453,9 +460,21 @@ export async function getBalance(customerId: string): Promise<BalanceResponse> {
 export async function createTopUp(
   customerId: string,
   body: CreateTopUpRequest,
-): Promise<TopUpCheckoutResponse> {
+): Promise<TopUpResult> {
   await mockDelay();
   requireCustomer(customerId);
+  // The server's rule (F-5): a tenant with no Stripe connector gets no
+  // checkout — the request is recorded and handed to the tenant to settle
+  // out of band, answered 202. The mock reads the same fact off the mock
+  // workspace config, so clearing `stripe_connected_account_id` there is how
+  // the accepted branch is exercised; nothing moves on the wallet.
+  if (!readMockTenantConfig().stripe_connected_account_id) {
+    return {
+      status: TOP_UP_REQUESTED,
+      message:
+        "Top-up request recorded and handed to the workspace to settle — no Stripe connector to open a checkout.",
+    };
+  }
   // The mock "completes" the checkout instantly so the balance moves.
   pushTransaction(
     customerId,
@@ -499,9 +518,11 @@ function findByExternalId(externalId: string): MockCustomer {
   return found;
 }
 
+// F-13: credit and debit take the platform Customer UUID — a customer is
+// looked up by `id`, never by external id, exactly as the route does.
 export async function creditWallet(body: CreditRequest): Promise<DebitCreditResponse> {
   await mockDelay();
-  const customer = findByExternalId(body.customer_id);
+  const customer = requireCustomer(body.customer_id);
   const row = pushTransaction(
     customer.id,
     "adjustment",
@@ -517,7 +538,7 @@ export async function creditWallet(body: CreditRequest): Promise<DebitCreditResp
 
 export async function debitWallet(body: DebitRequest): Promise<DebitCreditResponse> {
   await mockDelay();
-  const customer = findByExternalId(body.customer_id);
+  const customer = requireCustomer(body.customer_id);
   const balance = balanceOf(customer.id);
   if (!body.allow_negative && balance.balance_micros - body.amount_micros < 0) {
     throw new ApiProblem({

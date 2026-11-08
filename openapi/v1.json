@@ -2,7 +2,7 @@
   "components": {
     "schemas": {
       "AffordabilityResponse": {
-        "description": "Whether this customer's spending state would let new work proceed.\n\nADVISORY, NEVER AUTHORITATIVE. A start (`POST /api/v1/tasks`) re-runs\nevery check this answers, under its own locks, so `allowed: true` here\nreserves nothing and a start after it may still be refused. Asking\nregisters nothing and consumes none of the customer's admission\nallowance.\n\nA denial is `allowed: false` with a `reason` from the\n`affordability_reason` vocabulary \u2014 an open set, so render a value you\nhave not seen rather than fail on it. `balance_micros` is the billing\nowner's wallet balance and `available_micros` is that balance less the\nagreed prices reserved by work already started and not yet ended \u2014 the\nfigure every floor is tested against. `min_balance_micros` and\n`soft_min_balance_micros` are the hard and soft floors as resolved for\nthis customer, in the orientation the billing profile publishes them\n(the allowed overdraft: the line sits at minus the value); the soft\nfloor is null where no wind-down line applies to the work asked about \u2014\ncontained work under a running parent, a tenant not enforcing, or none\nconfigured. The two balance figures are null where the answer was made\nbefore a wallet was read (a standing refusal); the two floors are null\nthere too, and for a postpaid tenant, which has no wallet floors.",
+        "description": "Whether this customer's spending state would let new work proceed.\n\nADVISORY, NEVER AUTHORITATIVE. A start (`POST /api/v1/tasks`) re-runs\nevery check this answers, under its own locks, so `allowed: true` here\nreserves nothing and a start after it may still be refused. Asking\nregisters nothing and consumes none of the customer's admission\nallowance.\n\nA denial is `allowed: false` with a `reason` from the\n`affordability_reason` vocabulary \u2014 an open set, so render a value you\nhave not seen rather than fail on it. `balance_micros` is the billing\nowner's wallet balance and `available_micros` is that balance less the\nagreed prices reserved by work already started and not yet ended \u2014 the\nfigure every floor is tested against. `min_balance_micros` and\n`soft_min_balance_micros` are the hard and soft floors as resolved for\nthis customer, in the orientation the billing profile publishes them\n(the allowed overdraft: the line sits at minus the value); the soft\nfloor is null where no wind-down line applies to the work asked about \u2014\ncontained work under a running parent, a tenant not enforcing, or none\nconfigured. The two balance figures are null where the answer was made\nbefore a wallet was read (a standing refusal) AND off the wallet lane\naltogether \u2014 a tenant whose billing mode keeps no wallet (`external`,\n`postpaid`) has no balance to report, so null, never zero: an absent\nwallet is not a zero-balance wallet (R10 Stage C5, F-12, RULED Q12).\nThe two floors are null there too, and wherever no wallet floor applies.",
         "properties": {
           "allowed": {
             "title": "Allowed",
@@ -495,6 +495,8 @@
               "member.removed",
               "tenant.config_changed",
               "tenant.platform_billing_customer_set",
+              "customer.manual_hold_set",
+              "customer.manual_hold_released",
               "sandbox.created",
               "sandbox.reset",
               "connect.started",
@@ -1998,8 +2000,8 @@
             "type": "integer"
           },
           "customer_id": {
-            "maxLength": 255,
-            "minLength": 1,
+            "description": "The UBB platform Customer UUID (the `id` POST /customers answered), never the tenant's external id.",
+            "format": "uuid",
             "title": "Customer Id",
             "type": "string"
           },
@@ -2691,8 +2693,8 @@
             "type": "integer"
           },
           "customer_id": {
-            "maxLength": 255,
-            "minLength": 1,
+            "description": "The UBB platform Customer UUID (the `id` POST /customers answered), never the tenant's external id.",
+            "format": "uuid",
             "title": "Customer Id",
             "type": "string"
           },
@@ -5180,14 +5182,30 @@
         "type": "object"
       },
       "MeUsageInvoiceOut": {
+        "description": "The end customer's own usage invoice: exactly the one shared base\n(R10 Stage C5, F-15) \u2014 never the operator's push internals\n(`push_attempts`, `last_attempt_error`), which the tenant's two routes\nadd and this one does not.",
         "properties": {
           "created_at": {
             "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "customer_id": {
+            "description": "The platform UUID of the customer the invoice is for \u2014 the billing owner's own invoice.",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "external_id": {
+            "description": "That customer's tenant-side external id.",
+            "title": "External Id",
+            "type": "string"
+          },
           "hosted_invoice_url": {
             "default": "",
+            "description": "Stripe's hosted invoice page; empty until the invoice exists.",
             "title": "Hosted Invoice Url",
             "type": "string"
           },
@@ -5197,46 +5215,116 @@
           },
           "invoice_pdf": {
             "default": "",
+            "description": "Stripe's invoice PDF; empty until the invoice exists.",
             "title": "Invoice Pdf",
             "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When Stripe reported the invoice paid; null until then.",
+            "title": "Paid At"
+          },
+          "payment_failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the last payment attempt failed and the invoice began to stand as a payment failure against its billing owner; null while none stands (cleared once the invoice is paid or voided).",
+            "title": "Payment Failed At"
           },
           "payment_status": {
             "anyOf": [
               {
-                "type": "string"
+                "enum": [
+                  "open",
+                  "paid",
+                  "void",
+                  "uncollectible"
+                ],
+                "type": "string",
+                "x-ubb-concept": "usage_invoice_payment_status"
               },
               {
                 "type": "null"
               }
             ],
+            "description": "Where the Stripe invoice behind a pushed usage invoice stands as a receivable: open, paid, void or uncollectible. Null while the invoice is not yet collectible \u2014 no Stripe invoice has been issued for it, or none has reported a status yet; null is that meaning, not a fifth value.",
             "title": "Payment Status"
           },
           "period_end": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Period End"
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
           },
           "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "pushed_at": {
             "anyOf": [
               {
-                "format": "date",
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Period Start"
+            "description": "When the period was pushed to Stripe; null until it was.",
+            "title": "Pushed At"
+          },
+          "skip_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "no_usage",
+                  "nothing_to_bill",
+                  "below_minor_unit",
+                  "seat_superseded",
+                  "no_stripe_customer",
+                  "not_charge_ready",
+                  "payment_rail_closed"
+                ],
+                "type": "string",
+                "x-ubb-concept": "skip_reason"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why this invoice was skipped rather than pushed; null unless status is 'skipped'.",
+            "title": "Skip Reason"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "pushing",
+              "pushed",
+              "skipped",
+              "failed",
+              "failed_permanent"
+            ],
+            "title": "Status",
+            "type": "string",
+            "x-ubb-concept": "usage_invoice_status"
           },
           "stripe_invoice_id": {
             "default": "",
+            "description": "The Stripe invoice the period was pushed to; empty until it was.",
             "title": "Stripe Invoice Id",
             "type": "string"
           },
@@ -5247,7 +5335,14 @@
         },
         "required": [
           "id",
+          "customer_id",
+          "external_id",
+          "period_start",
+          "period_end",
+          "currency",
           "total_billed_micros",
+          "status",
+          "skip_reason",
           "created_at"
         ],
         "title": "MeUsageInvoiceOut",
@@ -7229,18 +7324,19 @@
             "title": "Attribution Window Days",
             "type": "integer"
           },
-          "estimated_cost_percentage": {
+          "estimated_cost_basis_points": {
             "anyOf": [
               {
-                "maximum": 100,
+                "maximum": 10000,
                 "minimum": 0,
-                "type": "number"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Estimated Cost Percentage"
+            "description": "A profit share's fallback where the actual supplier cost is not known: the tenant's cost as a share of revenue, in basis points, 0..10000.",
+            "title": "Estimated Cost Basis Points"
           },
           "max_referrals_per_day": {
             "anyOf": [
@@ -7281,6 +7377,34 @@
             ],
             "title": "Min Customer Age Hours"
           },
+          "reward_amount_micros": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 999999999999,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The flat fee, in micros, paid exactly once per referral. Required for reward_type flat_fee; must be absent for a share.",
+            "title": "Reward Amount Micros"
+          },
+          "reward_share_basis_points": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of the referred customer's revenue (revenue_share) or of the profit on it (profit_share), in basis points, 1..10000 (10000 = the whole), applied by dividing by 10,000 exactly. Required for a share; must be absent for flat_fee.",
+            "title": "Reward Share Basis Points"
+          },
           "reward_type": {
             "enum": [
               "flat_fee",
@@ -7290,12 +7414,6 @@
             "title": "Reward Type",
             "type": "string",
             "x-ubb-concept": "reward_type"
-          },
-          "reward_value": {
-            "exclusiveMinimum": 0,
-            "maximum": 100000000000,
-            "title": "Reward Value",
-            "type": "number"
           },
           "reward_window_days": {
             "anyOf": [
@@ -7312,8 +7430,7 @@
           }
         },
         "required": [
-          "reward_type",
-          "reward_value"
+          "reward_type"
         ],
         "title": "ProgramCreateRequest",
         "type": "object"
@@ -7328,16 +7445,17 @@
             "title": "Created At",
             "type": "string"
           },
-          "estimated_cost_percentage": {
+          "estimated_cost_basis_points": {
             "anyOf": [
               {
-                "type": "number"
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Estimated Cost Percentage"
+            "description": "A profit share's fallback where the actual supplier cost is not known: the tenant's cost as a share of revenue, in basis points, 0..10000.",
+            "title": "Estimated Cost Basis Points"
           },
           "id": {
             "title": "Id",
@@ -7376,6 +7494,30 @@
             ],
             "title": "Min Customer Age Hours"
           },
+          "reward_amount_micros": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The flat fee, in micros, paid exactly once per referral. Required for reward_type flat_fee; must be absent for a share.",
+            "title": "Reward Amount Micros"
+          },
+          "reward_share_basis_points": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of the referred customer's revenue (revenue_share) or of the profit on it (profit_share), in basis points, 1..10000 (10000 = the whole), applied by dividing by 10,000 exactly. Required for a share; must be absent for flat_fee.",
+            "title": "Reward Share Basis Points"
+          },
           "reward_type": {
             "enum": [
               "flat_fee",
@@ -7385,10 +7527,6 @@
             "title": "Reward Type",
             "type": "string",
             "x-ubb-concept": "reward_type"
-          },
-          "reward_value": {
-            "title": "Reward Value",
-            "type": "number"
           },
           "reward_window_days": {
             "anyOf": [
@@ -7418,11 +7556,12 @@
         "required": [
           "id",
           "reward_type",
-          "reward_value",
+          "reward_amount_micros",
+          "reward_share_basis_points",
           "attribution_window_days",
           "reward_window_days",
           "max_reward_micros",
-          "estimated_cost_percentage",
+          "estimated_cost_basis_points",
           "max_referrals_per_day",
           "min_customer_age_hours",
           "status",
@@ -7445,16 +7584,19 @@
             ],
             "title": "Attribution Window Days"
           },
-          "estimated_cost_percentage": {
+          "estimated_cost_basis_points": {
             "anyOf": [
               {
-                "type": "number"
+                "maximum": 10000,
+                "minimum": 0,
+                "type": "integer"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Estimated Cost Percentage"
+            "description": "A profit share's fallback where the actual supplier cost is not known: the tenant's cost as a share of revenue, in basis points, 0..10000.",
+            "title": "Estimated Cost Basis Points"
           },
           "max_referrals_per_day": {
             "anyOf": [
@@ -7489,6 +7631,34 @@
             ],
             "title": "Min Customer Age Hours"
           },
+          "reward_amount_micros": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0,
+                "maximum": 999999999999,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The flat fee, in micros, paid exactly once per referral. Required for reward_type flat_fee; must be absent for a share.",
+            "title": "Reward Amount Micros"
+          },
+          "reward_share_basis_points": {
+            "anyOf": [
+              {
+                "maximum": 10000,
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The share of the referred customer's revenue (revenue_share) or of the profit on it (profit_share), in basis points, 1..10000 (10000 = the whole), applied by dividing by 10,000 exactly. Required for a share; must be absent for flat_fee.",
+            "title": "Reward Share Basis Points"
+          },
           "reward_type": {
             "anyOf": [
               {
@@ -7505,17 +7675,6 @@
               }
             ],
             "title": "Reward Type"
-          },
-          "reward_value": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reward Value"
           },
           "reward_window_days": {
             "anyOf": [
@@ -8610,6 +8769,7 @@
             "type": "integer"
           },
           "refund_id": {
+            "description": "The id of the refund transaction on the billing owner's wallet ledger (a WalletTransaction of type refund). The same id is answered on the first call and on every replay of the same idempotency_key; it is never the usage event id.",
             "title": "Refund Id",
             "type": "string"
           }
@@ -11204,40 +11364,121 @@
         "type": "object"
       },
       "TenantUsageInvoiceOut": {
+        "description": "The tenant-wide invoice sweep row.",
         "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
           "customer_id": {
+            "description": "The platform UUID of the customer the invoice is for \u2014 the billing owner's own invoice.",
             "title": "Customer Id",
             "type": "string"
           },
           "external_id": {
+            "description": "That customer's tenant-side external id.",
             "title": "External Id",
             "type": "string"
           },
+          "hosted_invoice_url": {
+            "default": "",
+            "description": "Stripe's hosted invoice page; empty until the invoice exists.",
+            "title": "Hosted Invoice Url",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "invoice_pdf": {
+            "default": "",
+            "description": "Stripe's invoice PDF; empty until the invoice exists.",
+            "title": "Invoice Pdf",
+            "type": "string"
+          },
           "last_attempt_error": {
+            "default": "",
+            "description": "The last push attempt's error, empty where the last attempt succeeded or none has run.",
+            "title": "Last Attempt Error",
+            "type": "string"
+          },
+          "paid_at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Last Attempt Error"
+            "description": "When Stripe reported the invoice paid; null until then.",
+            "title": "Paid At"
           },
-          "period_start": {
-            "title": "Period Start",
-            "type": "string"
-          },
-          "push_attempts": {
+          "payment_failed_at": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "date-time",
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Push Attempts"
+            "description": "When the last payment attempt failed and the invoice began to stand as a payment failure against its billing owner; null while none stands (cleared once the invoice is paid or voided).",
+            "title": "Payment Failed At"
+          },
+          "payment_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "open",
+                  "paid",
+                  "void",
+                  "uncollectible"
+                ],
+                "type": "string",
+                "x-ubb-concept": "usage_invoice_payment_status"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the Stripe invoice behind a pushed usage invoice stands as a receivable: open, paid, void or uncollectible. Null while the invoice is not yet collectible \u2014 no Stripe invoice has been issued for it, or none has reported a status yet; null is that meaning, not a fifth value.",
+            "title": "Payment Status"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "push_attempts": {
+            "description": "How many times the push to Stripe has been attempted.",
+            "title": "Push Attempts",
+            "type": "integer"
+          },
+          "pushed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the period was pushed to Stripe; null until it was.",
+            "title": "Pushed At"
           },
           "skip_reason": {
             "anyOf": [
@@ -11276,6 +11517,7 @@
           },
           "stripe_invoice_id": {
             "default": "",
+            "description": "The Stripe invoice the period was pushed to; empty until it was.",
             "title": "Stripe Invoice Id",
             "type": "string"
           },
@@ -11285,14 +11527,43 @@
           }
         },
         "required": [
+          "id",
           "customer_id",
           "external_id",
           "period_start",
+          "period_end",
+          "currency",
           "total_billed_micros",
           "status",
-          "skip_reason"
+          "skip_reason",
+          "created_at",
+          "push_attempts"
         ],
         "title": "TenantUsageInvoiceOut",
+        "type": "object"
+      },
+      "TopUpAcceptedResponse": {
+        "description": "The 202 answer of both top-up routes (the tenant's and `/me`'s) when\nthe tenant has no Stripe connector to open a checkout for: the request\nwas recorded and handed to the tenant to settle out of band\n(`top_up.requested`). A replay of the same `idempotency_key` answers this\nagain without a second event. `status` is the registry's closed\n`top_up_request_status`; today it carries its one value.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "status": {
+            "description": "The one value a 202 carries: the top-up request was recorded and handed to the tenant; no checkout was opened.",
+            "enum": [
+              "topup_requested"
+            ],
+            "title": "Status",
+            "type": "string",
+            "x-ubb-concept": "top_up_request_status"
+          }
+        },
+        "required": [
+          "status",
+          "message"
+        ],
+        "title": "TopUpAcceptedResponse",
         "type": "object"
       },
       "TopUpCheckoutResponse": {
@@ -12632,40 +12903,121 @@
         "type": "object"
       },
       "UsageInvoiceOut": {
+        "description": "One customer's usage invoices, on the tenant's per-customer route.",
         "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
           },
+          "customer_id": {
+            "description": "The platform UUID of the customer the invoice is for \u2014 the billing owner's own invoice.",
+            "title": "Customer Id",
+            "type": "string"
+          },
+          "external_id": {
+            "description": "That customer's tenant-side external id.",
+            "title": "External Id",
+            "type": "string"
+          },
+          "hosted_invoice_url": {
+            "default": "",
+            "description": "Stripe's hosted invoice page; empty until the invoice exists.",
+            "title": "Hosted Invoice Url",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "invoice_pdf": {
+            "default": "",
+            "description": "Stripe's invoice PDF; empty until the invoice exists.",
+            "title": "Invoice Pdf",
+            "type": "string"
+          },
           "last_attempt_error": {
+            "default": "",
+            "description": "The last push attempt's error, empty where the last attempt succeeded or none has run.",
+            "title": "Last Attempt Error",
+            "type": "string"
+          },
+          "paid_at": {
             "anyOf": [
               {
+                "format": "date-time",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Last Attempt Error"
+            "description": "When Stripe reported the invoice paid; null until then.",
+            "title": "Paid At"
           },
-          "period_end": {
-            "title": "Period End",
-            "type": "string"
-          },
-          "period_start": {
-            "title": "Period Start",
-            "type": "string"
-          },
-          "push_attempts": {
+          "payment_failed_at": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "date-time",
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Push Attempts"
+            "description": "When the last payment attempt failed and the invoice began to stand as a payment failure against its billing owner; null while none stands (cleared once the invoice is paid or voided).",
+            "title": "Payment Failed At"
+          },
+          "payment_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "open",
+                  "paid",
+                  "void",
+                  "uncollectible"
+                ],
+                "type": "string",
+                "x-ubb-concept": "usage_invoice_payment_status"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the Stripe invoice behind a pushed usage invoice stands as a receivable: open, paid, void or uncollectible. Null while the invoice is not yet collectible \u2014 no Stripe invoice has been issued for it, or none has reported a status yet; null is that meaning, not a fifth value.",
+            "title": "Payment Status"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "format": "date",
+            "title": "Period Start",
+            "type": "string"
+          },
+          "push_attempts": {
+            "description": "How many times the push to Stripe has been attempted.",
+            "title": "Push Attempts",
+            "type": "integer"
+          },
+          "pushed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the period was pushed to Stripe; null until it was.",
+            "title": "Pushed At"
           },
           "skip_reason": {
             "anyOf": [
@@ -12704,6 +13056,7 @@
           },
           "stripe_invoice_id": {
             "default": "",
+            "description": "The Stripe invoice the period was pushed to; empty until it was.",
             "title": "Stripe Invoice Id",
             "type": "string"
           },
@@ -12713,12 +13066,17 @@
           }
         },
         "required": [
+          "id",
+          "customer_id",
+          "external_id",
           "period_start",
           "period_end",
-          "total_billed_micros",
           "currency",
+          "total_billed_micros",
           "status",
-          "skip_reason"
+          "skip_reason",
+          "created_at",
+          "push_attempts"
         ],
         "title": "UsageInvoiceOut",
         "type": "object"
@@ -14310,7 +14668,7 @@
     },
     "/api/v1/billing/customers/{customer_id}/top-up": {
       "post": {
-        "description": "Start a top-up. Replay-safe: idempotency_key is required and unique\nper customer \u2014 a retried call re-uses the original attempt and never\nstarts a second charge.",
+        "description": "Start a top-up. Replay-safe: idempotency_key is required and unique\nper customer \u2014 a retried call re-uses the original attempt and never\nstarts a second charge. Answers 200 with a checkout URL where the tenant\nhas a Stripe connector, and 202 (`status: topup_requested`) where it has\nnone and the request was handed to the tenant.",
         "operationId": "api_v1_billing_endpoints_create_top_up",
         "parameters": [
           {
@@ -14343,6 +14701,16 @@
               }
             },
             "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopUpAcceptedResponse"
+                }
+              }
+            },
+            "description": "Accepted"
           },
           "409": {
             "content": {
@@ -16206,7 +16574,7 @@
     },
     "/api/v1/me/balance": {
       "get": {
-        "description": "A pooled seat's balance IS the billing owner's (Task 9 finding B):\nTask 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on\na seat id at all, and ``start_top_up`` pins every top-up's credit to\n``customer.resolve_billing_owner()`` \u2014 so a seat's OWN wallet row can\nnever exist, even right after that seat pays. Reading ``customer``\ndirectly here used to 404 into a fabricated ``balance_micros: 0`` that\nnever changed no matter how much the seat topped up. Resolve to the\nowner instead, exactly like the tenant surface's GET\n/billing/customers/{id}/balance, and disclose ownership\n(``is_pooled_seat`` / ``billing_owner_external_id``, the same two\nfields that surface already returns) so the widget can label the number\n\"your business's balance\" rather than implying it is the seat's own.\n\nThis does NOT extend to /me/grants or /me/transactions below: those are\nITEMIZED lists (individual lots/lines with amounts and timing), and\nresolving them to the owner would show one seat every sibling seat's\nfinancial activity \u2014 the exact leak their docstrings are written to\navoid. A balance is one aggregate number, not sibling-attributed detail,\nso disclosing it does not cross the same privacy line.",
+        "description": "A pooled seat's balance IS the billing owner's (Task 9 finding B):\nTask 8c's ``lock_for_billing`` ratchet refuses to let a wallet exist on\na seat id at all, and ``start_top_up`` pins every top-up's credit to\n``customer.resolve_billing_owner()`` \u2014 so a seat's OWN wallet row can\nnever exist, even right after that seat pays. Reading ``customer``\ndirectly here used to 404 into a fabricated ``balance_micros: 0`` that\nnever changed no matter how much the seat topped up. Resolve to the\nowner instead, exactly like the tenant surface's GET\n/billing/customers/{id}/balance, and disclose ownership\n(``is_pooled_seat`` / ``billing_owner_external_id``, the same two\nfields that surface already returns) so the widget can label the number\n\"your business's balance\" rather than implying it is the seat's own.\n\nThis does NOT extend to /me/grants or /me/transactions below: those are\nITEMIZED lists (individual lots/lines with amounts and timing), and\nresolving them to the owner would show one seat every sibling seat's\nfinancial activity \u2014 the exact leak their docstrings are written to\navoid. A balance is one aggregate number, not sibling-attributed detail,\nso disclosing it does not cross the same privacy line.\n\nA WALLET-ONLY READ IS REFUSED WHERE NO WALLET IS (R10 Stage C5, F-12,\nRULED Q12): the Stage A door, asked of the widget's tenant, answers a\ntenant whose billing mode keeps no wallet with `feature_not_enabled`\nrather than a zero that invents a wallet. The widget hides the panel by\nthe tenant's mode; it never probes for this.",
         "operationId": "api_v1_me_endpoints_get_balance",
         "parameters": [],
         "responses": {
@@ -16459,7 +16827,7 @@
     },
     "/api/v1/me/top-up": {
       "post": {
-        "description": "Widget twin of the tenant top-up. Replay-safe: idempotency_key is\nrequired and unique per customer \u2014 a retried call re-uses the original\nattempt and never starts a second charge.",
+        "description": "Widget twin of the tenant top-up. Replay-safe: idempotency_key is\nrequired and unique per customer \u2014 a retried call re-uses the original\nattempt and never starts a second charge. Answers 200 with a checkout URL\nwhere the tenant has a Stripe connector, and 202 (`status:\ntopup_requested`) where it has none and the request was handed to the\ntenant.",
         "operationId": "api_v1_me_endpoints_create_top_up",
         "parameters": [],
         "requestBody": {
@@ -16482,6 +16850,16 @@
               }
             },
             "description": "OK"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TopUpAcceptedResponse"
+                }
+              }
+            },
+            "description": "Accepted"
           },
           "409": {
             "content": {

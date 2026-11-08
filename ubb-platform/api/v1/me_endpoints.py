@@ -7,7 +7,9 @@ from api.v1.pagination import Paginated, empty_page, page
 from api.v1.topups import start_top_up
 from apps.platform.audit.marker import records_audit
 from api.v1.schemas import (
-    GrantKind, WalletTransactionType, whole_minor_units)
+    GrantKind, TopUpAcceptedResponse, UsageInvoiceBase, WalletTransactionType,
+    usage_invoice_base_out, whole_minor_units)
+from apps.billing.locking import refuse_a_wallet_operation_without_a_wallet
 from apps.subscriptions.economics.revenue import DEFAULT_REVENUE_BASIS
 from core.auth import ProductAccess
 from core.currency_policy import (
@@ -158,30 +160,15 @@ class PaginatedInvoices(Paginated[InvoiceOut]):
     pass
 
 
-class MeUsageInvoiceOut(Schema):
-    id: str
-    total_billed_micros: int
-    payment_status: Optional[str] = None
-    hosted_invoice_url: str = ""
-    invoice_pdf: str = ""
-    period_start: Optional[date] = None
-    period_end: Optional[date] = None
-    stripe_invoice_id: str = ""
-    created_at: datetime
+class MeUsageInvoiceOut(UsageInvoiceBase):
+    """The end customer's own usage invoice: exactly the one shared base
+    (R10 Stage C5, F-15) — never the operator's push internals
+    (`push_attempts`, `last_attempt_error`), which the tenant's two routes
+    add and this one does not."""
 
 
 def _usage_invoice_out(inv):
-    return {
-        "id": str(inv.id),
-        "total_billed_micros": inv.total_billed_micros,
-        "payment_status": inv.payment_status,
-        "hosted_invoice_url": inv.hosted_invoice_url,
-        "invoice_pdf": inv.invoice_pdf,
-        "period_start": inv.period_start,
-        "period_end": inv.period_end,
-        "stripe_invoice_id": inv.stripe_invoice_id,
-        "created_at": inv.created_at,
-    }
+    return usage_invoice_base_out(inv)
 
 
 class PaginatedUsageInvoices(Paginated[MeUsageInvoiceOut]):
@@ -240,8 +227,15 @@ def get_balance(request):
     financial activity — the exact leak their docstrings are written to
     avoid. A balance is one aggregate number, not sibling-attributed detail,
     so disclosing it does not cross the same privacy line.
+
+    A WALLET-ONLY READ IS REFUSED WHERE NO WALLET IS (R10 Stage C5, F-12,
+    RULED Q12): the Stage A door, asked of the widget's tenant, answers a
+    tenant whose billing mode keeps no wallet with `feature_not_enabled`
+    rather than a zero that invents a wallet. The widget hides the panel by
+    the tenant's mode; it never probes for this.
     """
     _check_billing_product(request)
+    refuse_a_wallet_operation_without_a_wallet(request.widget_tenant)
     customer = request.widget_customer
     owner = customer.resolve_billing_owner()
     owner_disclosure = {"is_pooled_seat": owner.id != customer.id,
@@ -280,6 +274,7 @@ def list_grants(request, cursor: str = None, limit: int = 50):
     seat — never the shared business lots.
     """
     _check_billing_product(request)
+    refuse_a_wallet_operation_without_a_wallet(request.widget_tenant)  # F-12
     customer = request.widget_customer
     from apps.billing.wallets.models import CreditGrant, Wallet
     wallet = Wallet.objects.filter(customer=customer).first()
@@ -300,6 +295,7 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     for a seat rather than the shared business ledger.
     """
     _check_billing_product(request)
+    refuse_a_wallet_operation_without_a_wallet(request.widget_tenant)  # F-12
     customer = request.widget_customer
 
     from apps.billing.wallets.models import Wallet
@@ -311,12 +307,16 @@ def get_transactions(request, cursor: str = None, limit: int = 50):
     return page(wallet.transactions.all(), cursor, limit, serialize=_transaction_out)
 
 
-@me_router.post("/top-up", response={200: TopUpResponse, 409: ProblemOut})
+@me_router.post("/top-up", response={200: TopUpResponse,
+                                     202: TopUpAcceptedResponse, 409: ProblemOut})
 @records_audit(AUDIT_ACTION_TOP_UP_REQUESTED)
 def create_top_up(request, payload: TopUpRequest):
     """Widget twin of the tenant top-up. Replay-safe: idempotency_key is
     required and unique per customer — a retried call re-uses the original
-    attempt and never starts a second charge."""
+    attempt and never starts a second charge. Answers 200 with a checkout URL
+    where the tenant has a Stripe connector, and 202 (`status:
+    topup_requested`) where it has none and the request was handed to the
+    tenant."""
     _check_billing_product(request)
     customer = request.widget_customer
     return start_top_up(request, customer, customer.tenant, payload,
@@ -344,7 +344,8 @@ def list_usage_invoices(request, cursor: str = None, limit: int = 50):
         return empty_page()
 
     from apps.billing.invoicing.models import CustomerUsageInvoice
-    return page(CustomerUsageInvoice.objects.filter(customer=customer),
+    return page(CustomerUsageInvoice.objects.filter(customer=customer)
+                .select_related("customer"),
                 cursor, limit, serialize=_usage_invoice_out)
 
 

@@ -17,6 +17,7 @@ from core.report_windows import (
 from core.problems import Problem
 from apps.platform.customers.models import Customer
 from apps.referrals.api.schemas import (
+    one_reward_figure_by_type,
     ProgramCreateRequest,
     ProgramUpdateRequest,
     ProgramOut,
@@ -50,6 +51,7 @@ from core.vocabulary import (
     AUDIT_RESOURCE_TYPE_REFERRER,
     REFERRAL_PROGRAM_STATUS_ACTIVE,
     REFERRAL_PROGRAM_STATUS_DEACTIVATED,
+    REWARD_TYPE_FLAT_FEE,
     REFERRAL_STATUS_ACTIVE,
     REFERRAL_STATUS_REVOKED,
 )
@@ -65,15 +67,12 @@ def _program_to_dict(program):
     return {
         "id": str(program.id),
         "reward_type": program.reward_type,
-        "reward_value": float(program.reward_value),
+        "reward_amount_micros": program.reward_amount_micros,
+        "reward_share_basis_points": program.reward_share_basis_points,
         "attribution_window_days": program.attribution_window_days,
         "reward_window_days": program.reward_window_days,
         "max_reward_micros": program.max_reward_micros,
-        "estimated_cost_percentage": (
-            float(program.estimated_cost_percentage)
-            if program.estimated_cost_percentage is not None
-            else None
-        ),
+        "estimated_cost_basis_points": program.estimated_cost_basis_points,
         "max_referrals_per_day": program.max_referrals_per_day,
         "min_customer_age_hours": program.min_customer_age_hours,
         "status": program.status,
@@ -99,11 +98,12 @@ def create_program(request, payload: ProgramCreateRequest):
         program = ReferralProgram.objects.create(
             tenant=tenant,
             reward_type=payload.reward_type,
-            reward_value=payload.reward_value,
+            reward_amount_micros=payload.reward_amount_micros,
+            reward_share_basis_points=payload.reward_share_basis_points,
             attribution_window_days=payload.attribution_window_days,
             reward_window_days=payload.reward_window_days,
             max_reward_micros=payload.max_reward_micros,
-            estimated_cost_percentage=payload.estimated_cost_percentage,
+            estimated_cost_basis_points=payload.estimated_cost_basis_points,
             max_referrals_per_day=payload.max_referrals_per_day,
             min_customer_age_hours=payload.min_customer_age_hours,
         )
@@ -111,7 +111,8 @@ def create_program(request, payload: ProgramCreateRequest):
             action=AUDIT_ACTION_REFERRAL_PROGRAM_CREATED, tenant_id=tenant.id,
             resource_type=AUDIT_RESOURCE_TYPE_REFERRAL_PROGRAM, resource_id=program.id,
             metadata={"reward_type": program.reward_type,
-                      "reward_value": float(program.reward_value),
+                      "reward_amount_micros": program.reward_amount_micros,
+                      "reward_share_basis_points": program.reward_share_basis_points,
                       "attribution_window_days": program.attribution_window_days,
                       "reward_window_days": program.reward_window_days,
                       "max_reward_micros": program.max_reward_micros})
@@ -148,16 +149,39 @@ def update_program(request, payload: ProgramUpdateRequest):
     if not program:
         raise Problem("not_found", "No active referral program found")
 
+    # EXACTLY ONE REWARD FIGURE, BY THE RESULTING TYPE (A-3, RULED Q9; the
+    # final handwritten review of C5), two cases never conflated. B: a figure
+    # STORED for the OLD type is cleared FIRST, before the body is applied,
+    # so a legitimate type change sheds the old unit by itself. A: a figure
+    # the CALLER supplied (non-null; a null keeps the route's "omitted"
+    # meaning) is applied as any field is, so one that does not belong to the
+    # resulting type sits on the row and the one canonical rule — the create
+    # body's — refuses it by name, before anything is written. Nothing a
+    # caller sends is silently dropped.
+    old_type = program.reward_type
+    resulting_type = payload.reward_type if payload.reward_type is not None else old_type
     update_fields = ["updated_at"]
+    if resulting_type != old_type:
+        old_figure = ("reward_amount_micros" if old_type == REWARD_TYPE_FLAT_FEE
+                      else "reward_share_basis_points")
+        if getattr(program, old_figure) is not None:
+            setattr(program, old_figure, None)
+            update_fields.append(old_figure)
     for field_name in [
-        "reward_type", "reward_value", "attribution_window_days",
-        "reward_window_days", "max_reward_micros", "estimated_cost_percentage",
-        "max_referrals_per_day", "min_customer_age_hours",
+        "reward_type", "reward_amount_micros", "reward_share_basis_points",
+        "attribution_window_days", "reward_window_days", "max_reward_micros",
+        "estimated_cost_basis_points", "max_referrals_per_day",
+        "min_customer_age_hours",
     ]:
         value = getattr(payload, field_name, None)
         if value is not None:
             setattr(program, field_name, value)
             update_fields.append(field_name)
+    try:
+        one_reward_figure_by_type(program.reward_type, program.reward_amount_micros,
+                                  program.reward_share_basis_points)
+    except ValueError as exc:
+        raise Problem("validation_error", str(exc))
 
     with transaction.atomic():
         program.save(update_fields=update_fields)
@@ -390,9 +414,10 @@ def attribute_referral(request, payload: AttributeRequest):
             reward_window_ends_at=reward_window_ends_at,
             # Snapshot program config
             snapshot_reward_type=program.reward_type,
-            snapshot_reward_value=program.reward_value,
+            snapshot_reward_amount_micros=program.reward_amount_micros,
+            snapshot_reward_share_basis_points=program.reward_share_basis_points,
             snapshot_max_reward_micros=program.max_reward_micros,
-            snapshot_estimated_cost_percentage=program.estimated_cost_percentage,
+            snapshot_estimated_cost_basis_points=program.estimated_cost_basis_points,
         )
 
         # Create accumulator
