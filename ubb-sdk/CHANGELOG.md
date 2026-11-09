@@ -11,12 +11,20 @@ generated against (`ubb.__spec_revision__`).
 regeneration of the pre-live lane.** The SDK's own surface broke, which is the
 only ground ADR-0003 §6 allows a major on; every edge is listed, and the
 migration guide is **[MIGRATION.md §27](./MIGRATION.md)**. The tag
-`sdk-v5.0.0` is cut by the owner on the merge commit carrying this version,
-and the wheel built from it by `release/build_wheel.py`, exactly as 4.0.0 was.
+`sdk-v5.0.0` was cut by the owner on `b41b395f59d798cec83289d83d5ec71f83201c7f`,
+the merge commit carrying this version, and the wheel built from it by the
+tag's own `release/build_wheel.py`, exactly as 4.0.0 was.
 
-**Release stamp** (filled by the owner at the cut, as 4.0.0's was): `ubb.__version__`
-`5.0.0`; `ubb.__spec_revision__` is the committed spec's SHA-256 at the merge
-commit (`ubb/_spec_revision.py`); generator `openapi-python-client==0.29.0`.
+**Release stamp** (verifiable on the release):
+
+| Stamp | Value |
+|---|---|
+| `ubb.__version__` | `5.0.0` |
+| `ubb.__spec_revision__` | `1bf1af2350f22f0ad0c2652fd82e8b9cc028f41e879c29e833329740547e9a40` |
+| `ubb.__spec_version__` | `v1` |
+| Generator | `openapi-python-client==0.29.0` |
+| Tag | `sdk-v5.0.0` (annotated) |
+| Wheel and its SHA-256 | `ubb_sdk-5.0.0-py3-none-any.whl`, `56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948` — built from `sdk-v5.0.0` at `b41b395f59d798cec83289d83d5ec71f83201c7f`, twice, one SHA-256, on Python 3.13.14 with the lock at SHA-256 `7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0`, by the tag's recipe at SHA-256 `f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7` with `SOURCE_DATE_EPOCH` 1794191690; delivered as a wheel with its release manifest (`sdk-v5.0.0.release.json`) and not published to PyPI; recorded by the post-release documentation pull request that followed the release |
 
 ### Changed (breaking)
 
