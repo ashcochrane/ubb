@@ -154,7 +154,9 @@ removes the manual cause and lets the system decide what holds now — it never 
 active: a system condition still standing (a payment failure, a stop line still open under
 `enforcing`, a wallet past its floor) becomes the cause and the customer stays suspended, and
 `customer.reactivated` records only a real transition to `active` (R10 Stage C4). The operator's id
-is logged on every outcome; a durable audit record of a hold and its release is owed by C5.
+is logged on every outcome, and an established hold and every release of one are durable governance
+audit records (`customer.manual_hold_set`, `customer.manual_hold_released`, R10 Stage C5 — see the
+billing glossary's *Manual-hold audit actions*).
 (`apps/billing/gating/services/manual_hold.py`)
 _Avoid_: "admin suspension", "fraud suspension" as distinct states; editing `status` to hold a customer;
 "release" meaning "make active".

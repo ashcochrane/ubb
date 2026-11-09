@@ -18,8 +18,17 @@ Get per-customer COGS in under 20 lines.
 
 ## Install
 
+The SDK is not published to PyPI. It is released as a tag (`sdk-vX.Y.Z`) and a reproducibly built wheel
+whose SHA-256 is recorded in `CHANGELOG.md` and handed over with it; a release's wheel installs with:
+
 ```bash
-pip install ubb-sdk
+pip install ./ubb_sdk-<version>-py3-none-any.whl
+```
+
+From a checkout of the repository (development, or before a release is cut), install it in place:
+
+```bash
+pip install -e ./ubb-sdk
 ```
 
 ## Quickstart
@@ -561,8 +570,9 @@ for row in answer.rows:
 ## Journey 2 — Multi-axis billing (subscriptions + seats + usage)
 
 Journey 2 layers Stripe-backed subscription billing on top of J1 metering.  It requires
-`billing_mode="postpaid"` (or `"prepaid"`) and `products=["metering","billing","subscriptions"]`
-on the tenant, plus a connected Stripe account.
+`billing_mode="postpaid"` (or `"prepaid"`) and `products=["metering","billing"]` on the tenant
+(plans and the subscription lifecycle gate on the `billing` product; there is no separate
+`subscriptions` product flag), plus a connected Stripe account.
 
 ```python
 from ubb.client import UBBClient

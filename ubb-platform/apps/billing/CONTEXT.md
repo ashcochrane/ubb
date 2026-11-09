@@ -425,6 +425,31 @@ _Avoid_: a second enable flag — this is the single switch (it IS the tenant's 
 a middle "compute but never act" mode — the one honest question is whether the signal suite is on;
 reading `off` as "no spend control" — a declared ceiling still stops work.
 
+**Manual hold**:
+An accountable operator's suspension of one active customer — `suspended` with an empty
+`suspension_reason` — which no automatic recovery lifts; the one suspension cause that is not a
+money cause or a payment failure. It is placed and released only through the operator workflow
+(`manage.py set_customer_manual_hold --customer <uuid> --state held|released --operator <id>`),
+which never overwrites a system cause and never clears one. Releasing a hold removes the manual
+cause and lets the one reactivation site decide what holds now (R10 Stage C4): nothing standing →
+`active` and one `customer.reactivated`; a standing payment failure, an open stop line under
+`enforcing` or a wallet past its floor → the hold is **handed over** to that cause and the customer
+stays `suspended` with nothing announced. (`apps/billing/gating/services/manual_hold.py`)
+_Avoid_: "admin suspension", "fraud suspension" as distinct states; a new reason word for the hold;
+editing `status` to hold a customer; "release" meaning "make active".
+
+**Manual-hold audit actions**:
+The two closed governance `audit_action` values the hold workflow writes under the operator actor
+(R10 Stage C5): `customer.manual_hold_set`, written only when a hold is actually established, and
+`customer.manual_hold_released`, written whenever this call actually removed a hold — in both outcomes,
+the customer `active` (released) or still `suspended` under the cause that took over (handed over) — each
+recording the resulting status and suspension reason. No record for a no-op, a refusal or a failed
+operation (those stay in the operational log); each record commits with the state change it describes.
+They are governance records, not lifecycle events — `customer.suspended` and `customer.reactivated`
+are unchanged. (`domain-vocabulary/concepts/governance.yaml`)
+_Avoid_: an "attempt"/"refusal"/"failure" audit action; reading `manual_hold_released` as "the customer
+became active".
+
 **Customer spend pool**:
 A bound on one customer's charges over a period — the family's name on every surface since #456
 (`control_family: customer_spend_pool`; `apps/billing/gating/models.py:CustomerSpendPool`,

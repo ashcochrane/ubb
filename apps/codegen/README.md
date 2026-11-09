@@ -33,7 +33,7 @@ resolves contract 3 alone, so an older document is refused like any version outs
 
 A Blueprint is resolved for one target, and `render` writes that target's files.
 
-For the `python_sdk` target (SDK v3):
+For the `python_sdk` target (SDK v5, the major `src/catalogue.ts` names as `sdkMajorVersion`):
 
 | `kind` | `path` | What it is |
 |---|---|---|
@@ -151,7 +151,7 @@ Two classes and no third. **Provenance** is generated from the Blueprint in one 
 `<name> = <json>[ · <qualifier> <json>]...` (`src/comments.ts`). **Contract** is a line of the
 renderer catalogue (`src/catalogue.ts`), written exactly as it stands there. The catalogue is
 closed and versioned: `CATALOGUE_VERSION`, with the whole of it pinned in
-`tests/__snapshots__/catalogue.v9.json` — a file named for the version, so a change under an
+`tests/__snapshots__/catalogue.v11.json` — a file named for the version, so a change under an
 unchanged number is a diff a reviewer reads. It is one catalogue for both targets, so both state
 its version: adding the shell target's members made it version 2 for Python's files too,
 rewording the shell file's refusal of an old jq made it version 3 (#582), replacing one
