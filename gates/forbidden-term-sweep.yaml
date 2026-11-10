@@ -92,12 +92,18 @@ exclusions:
 
   - id: frozen-dated-documents
     permanence: permanent
-    files: 135
+    files: 165
     paths:
       - docs/plans/**
       - docs/prototypes/**
       - docs/research/**
       - docs/reviews/**
+      # The November 2026 billing-readiness handover package: the engineering
+      # handoff, the SDK release record, the launch plan and the product brief,
+      # all written against named commits and frozen as the record of that
+      # handover (docs/handoff/README.md). The retired words inside them are
+      # the record being accurate about what was retired and when.
+      - docs/handoff/**
       - ubb-platform/docs/plans/**
       - apps/ui/docs/superpowers/plans/**
       - apps/ui/docs/superpowers/specs/**
