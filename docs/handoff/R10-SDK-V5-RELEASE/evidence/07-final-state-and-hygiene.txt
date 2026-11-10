@@ -1,0 +1,106 @@
+SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# Final state and hygiene — 2026-11-09T03:21:07Z
+## git fetch origin main --tags
+ * branch              main       -> FETCH_HEAD
+## origin/main (must be b41b395f59d798cec83289d83d5ec71f83201c7f)
+b41b395f59d798cec83289d83d5ec71f83201c7f
+## remote tags
+97e3aab31b30b91bc68b8741e63f5b0a11f7aa64	refs/tags/api-v1-cutover
+c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/api-v1-cutover^{}
+edac9af3dd58a0fd5702b04b09add874f3b2bb1e	refs/tags/api-v1-launch
+ac6ca81662fc731ab9db79ef493fac2d881b42a0	refs/tags/api-v1-launch^{}
+7263e785dd745ed6211123e4c1260acbba171f60	refs/tags/sdk-v4.0.0
+c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/sdk-v4.0.0^{}
+fbf765b7efc19c2f3b08f2313ae6e72923e4b340	refs/tags/sdk-v5.0.0
+b41b395f59d798cec83289d83d5ec71f83201c7f	refs/tags/sdk-v5.0.0^{}
+## open PRs against main
+[]
+## release worktree: HEAD / status
+b41b395f59d798cec83289d83d5ec71f83201c7f
+(status above must be empty)
+## main checkout (the user's): HEAD, branch, modified tracked files
+cf3232c0ab561c4bcb43a2de912bb5cbe8527328
+research/code-builder-prior-art
+modified/staged tracked files (must be 0): 0
+untracked entries (pre-existing, untouched): 53
+## W7 brief untouched (must be 4f737176dc6cd517c3746f59242822bd7393293b13aba0f3c967512c8877f147)
+4f737176dc6cd517c3746f59242822bd7393293b13aba0f3c967512c8877f147 */c/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/R10-W7-DELIVERY-PROMPT.md
+W7 STATUS line: > **STATUS: PRE-LAUNCH — NOT FINAL.** Refreshed at `main` 
+## no publication: no twine/upload/gh release command was run in this window; remote writes = one git push of refs/tags/sdk-v5.0.0; pip performed downloads only
+gh releases on the repository (expect none): 
+## release package listing
+/c/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/R10-SDK-V5-RELEASE:
+total 880
+drwxr-xr-x 1 tom_l 197609      0 Nov  9 16:19 .
+drwxr-xr-x 1 tom_l 197609      0 Nov  9 16:02 ..
+-rw-r--r-- 1 tom_l 197609   7764 Nov  9 16:19 00-README.md
+drwxr-xr-x 1 tom_l 197609      0 Nov  9 16:21 evidence
+-rw-r--r-- 1 tom_l 197609    896 Nov  9 16:04 sdk-v5.0.0.release.json
+-rw-r--r-- 1 tom_l 197609 795683 Nov  9 16:04 ubb_sdk-5.0.0-py3-none-any.whl
+
+/c/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/R10-SDK-V5-RELEASE/evidence:
+total 44
+drwxr-xr-x 1 tom_l 197609    0 Nov  9 16:21 .
+drwxr-xr-x 1 tom_l 197609    0 Nov  9 16:19 ..
+-rw-r--r-- 1 tom_l 197609 2318 Nov  9 16:19 00-p0-identity.txt
+-rw-r--r-- 1 tom_l 197609 2128 Nov  9 16:19 01-tag-create-and-push.txt
+-rw-r--r-- 1 tom_l 197609 2409 Nov  9 16:19 02-canonical-build.txt
+-rw-r--r-- 1 tom_l 197609 1350 Nov  9 16:19 03-wheel-vs-tag-tree.txt
+-rw-r--r-- 1 tom_l 197609 4611 Nov  9 16:19 04-clean-wheel-verification.txt
+-rw-r--r-- 1 tom_l 197609 3086 Nov  9 16:19 05-release-tests-against-wheel.txt
+-rw-r--r-- 1 tom_l 197609 2647 Nov  9 16:19 06-release-evidence-verifier.txt
+-rw-r--r-- 1 tom_l 197609 1821 Nov  9 16:21 07-final-state-and-hygiene.txt
+## sha256 of the package
+56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948 *ubb_sdk-5.0.0-py3-none-any.whl
+bbf69c7a8b63c13e10a4ccd96e62c05f60d6ea05ee8a910b0206590f0945da8d *sdk-v5.0.0.release.json
+a38b03fd588e45680c4797ee3e8f923e1c59163c062f6d89784ee58f1bdf4ec2 *00-README.md
+f22acf3425e4d3d90c37e256493ee27780a008443f8b8990a45349e8f32f62b4 *evidence/00-p0-identity.txt
+d8a97499eeda6f3033bd6fd60cb7ae7075f1222328082b605123dc39cd1c4a66 *evidence/01-tag-create-and-push.txt
+021823379978ea4a852d273b0e7b06065af78f38d2c33381c72abd38e8e80a79 *evidence/02-canonical-build.txt
+d1004d110d9af1e60f6dbe65da047b9a089d318df5f0cfe8e8a512ee72bb15a8 *evidence/03-wheel-vs-tag-tree.txt
+e901c06307967938bb765c892510eeb48f3580c37cb02d893a887c7ccf9ccf53 *evidence/04-clean-wheel-verification.txt
+2e0eef8323edf05549d7b9544c683d8fed0f6baade89500780694da4a1672164 *evidence/05-release-tests-against-wheel.txt
+f12ae273d91181d3c3775e88efa8ec31546b3a54cb78764a3c959b9487cb50c4 *evidence/06-release-evidence-verifier.txt
+4122da14ee5188d66c311a1596c686e5c4c5efb253f7d745ba16418c0ee26a29 *evidence/07-final-state-and-hygiene.txt
+## HANDOFF-2 listing + sha256 after the edits
+2f0e171c88faf4b8a1865b824b3e26a40e165f7f184cda0a5e77ea27329c710f *00-README.md
+f130ca84367a8b1f163a08b16b228a5204933b006ee486a944c402419234c90e *01-WHAT-UBB-IS-NOW.md
+5dfdcdbb7a8878479985f9fcc7fa8e39f7aae4fc34c9f6a671e0d8e7db59f0a5 *02-TECHNICAL-SYSTEM-MAP.md
+45e7747198d3cc813ca70f4e242014226c5c1c3b4c11f86a2f8987d99a93f9b4 *03-ASH-VALIDATION-AND-NEXT-STEPS.md
+a25868d24a17da6ddd72aaf9ad33ba1536f089c3a391704959c05a7ba5e7e6b1 *04-BILLING-READINESS-MATRIX.md
+663e1ad838ad03d978659a1e4197c384297b09a3702f8bdd0db064442657a9b0 *05-WHAT-ASH-INHERITS.md
+## hygiene: python3.13 -I hygiene_scan.py R10-SDK-V5-RELEASE R10-ASH-HANDOFF-2
+SECRET-SHAPED VALUE: stripe webhook signing secret value in C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-ASH-HANDOFF-2\03-ASH-VALIDATION-AND-NEXT-STEPS.md : whsec_localp...
+SECRET-SHAPED VALUE: stripe webhook signing secret value in C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-ASH-HANDOFF-2\03-ASH-VALIDATION-AND-NEXT-STEPS.md : whsec_localp...
+SECRET-SHAPED VALUE: stripe webhook signing secret value in C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-ASH-HANDOFF-2\03-ASH-VALIDATION-AND-NEXT-STEPS.md : whsec_localp...
+files scanned: 15
+files without the required header: 0
+secret-shaped values: 3
+HYGIENE: NOT CLEAN
+hygiene exit: 1
+
+## hygiene re-run with the documented-placeholder class stated — 2026-11-09T03:21:57Z
+The three matches above are the throwaway values the Ash local recipe instructs the reader to export
+(03-ASH-VALIDATION-AND-NEXT-STEPS.md line 42: whsec_localpass_a / _b / _c); Stage D's 14-hygiene.txt lists this
+'whsec_ placeholders/names' class as documented non-secret; the line predates this window and none of the 11
+release-window edits touched it (the edit script contains no 'whsec'). Exempted by exact value, nothing else.
+SECRET-SHAPED VALUE: stripe webhook signing secret value in C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-SDK-V5-RELEASE\evidence\07-final-state-and-hygiene.txt : whsec_localp...
+SECRET-SHAPED VALUE: stripe webhook signing secret value in C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-ASH-HANDOFF-2\03-ASH-VALIDATION-AND-NEXT-STEPS.md : whsec_localp...
+SECRET-SHAPED VALUE: stripe webhook signing secret value in C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-ASH-HANDOFF-2\03-ASH-VALIDATION-AND-NEXT-STEPS.md : whsec_localp...
+SECRET-SHAPED VALUE: stripe webhook signing secret value in C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-ASH-HANDOFF-2\03-ASH-VALIDATION-AND-NEXT-STEPS.md : whsec_localp...
+files scanned: 15
+files without the required header: 0
+secret-shaped values: 4 (documented placeholders exempted: 0)
+HYGIENE: NOT CLEAN
+hygiene exit: 1
+
+## hygiene re-run (exemption compares the whole token; the previous run's exemption matched only the regex prefix) — 2026-11-09T03:22:16Z
+documented placeholder (not a secret): whsec_localpass_a in 07-final-state-and-hygiene.txt
+documented placeholder (not a secret): whsec_localpass_a in 03-ASH-VALIDATION-AND-NEXT-STEPS.md
+documented placeholder (not a secret): whsec_localpass_b in 03-ASH-VALIDATION-AND-NEXT-STEPS.md
+documented placeholder (not a secret): whsec_localpass_c in 03-ASH-VALIDATION-AND-NEXT-STEPS.md
+files scanned: 15
+files without the required header: 0
+secret-shaped values: 0 (documented placeholders exempted: 4)
+HYGIENE: CLEAN
+hygiene exit: 0

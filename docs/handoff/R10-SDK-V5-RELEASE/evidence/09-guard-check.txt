@@ -1,0 +1,28 @@
+﻿SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# PR #633 - Ready + merge guard --check (CHECK MODE ONLY; two runs, recorded truthfully) - 2026-11-09T16:46:31.9724507+13:00
+
+## run 1 (2026-11-09 16:45 +1300): gh pr ready 633 -> marked as ready for review; head unchanged 1c347bd6efd147870fa340bc9c44377d09bbce7e; MERGEABLE/CLEAN; files=ubb-sdk/CHANGELOG.md
+## run 1: python3.13 R10-merge-guard.py 633 --check -> all five families 'success, success (2 suite(s))'; REFUSED on ONE precondition:
+##   PR body does not state it is 'merged through the temporary R10 merge guard' (the body said 'must merge only through'); exit 1; nothing merged.
+## body correction (wording only; the head is NOT changed): gh pr edit 633 --body-file <the saved PR-BODY-changelog-record.md minus its evidence header>
+https://github.com/ashcochrane/ubb/pull/633
+## after the edit: state=OPEN draft=False mergeable=MERGEABLE mergeState=CLEAN head=1c347bd6efd147870fa340bc9c44377d09bbce7e files=ubb-sdk/CHANGELOG.md
+## body contains the marker: True
+## guard script SHA-256: BE2BEFADCFB3A3B876BFB0CACD0BF3FF66F3821CF4741AF155D9A9DFFAC5F80B
+## run 2: python3.13 R10-merge-guard.py 633 --check   (from the project folder; raw output follows)
+PR #633: SDK v5 release record: pin the released wheel SHA-256
+head SHA 1c347bd6efd147870fa340bc9c44377d09bbce7e (branch worktree-r10-sdk-v5-changelog -> main)
+  test                     success, success  (2 suite(s))
+  contracts                success, success  (2 suite(s))
+  contract                 success, success  (2 suite(s))
+  codegen                  success, success  (2 suite(s))
+  code-builder-execution   success, success  (2 suite(s))
+
+All 5 required checks succeeded for 1c347bd6efd147870fa340bc9c44377d09bbce7e.
+--check: not merging.
+## run 2 guard exit code: 0
+## after the guard: origin/main b41b395f59d798cec83289d83d5ec71f83201c7f
+## PR state= mergedAt= head=  (mergedAt empty = NOT merged)
+## remote tag: fbf765b7efc19c2f3b08f2313ae6e72923e4b340	refs/tags/sdk-v5.0.0 | b41b395f59d798cec83289d83d5ec71f83201c7f	refs/tags/sdk-v5.0.0^{}
+## post-guard PR state (gh pr view -R ashcochrane/ubb 633; re-read because the line above ran without a repo context): number=633 state=OPEN draft=False mergedAt=[] mergeable=MERGEABLE mergeState=CLEAN head=1c347bd6efd147870fa340bc9c44377d09bbce7e files=ubb-sdk/CHANGELOG.md
+## NOT MERGED (mergedAt empty). Guard run in --check mode only, twice (run 1 refused on body wording, run 2 exit 0). Merge mode NOT run. STOP for the explicit merge ruling.

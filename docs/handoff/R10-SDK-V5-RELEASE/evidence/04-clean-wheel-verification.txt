@@ -1,0 +1,77 @@
+SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# Clean-wheel verification — 2026-11-09T03:06:24Z
+## wheel
+56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948 */c/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/R10-SDK-V5-RELEASE/ubb_sdk-5.0.0-py3-none-any.whl
+## fresh venv: python3.13 -I -s -m venv /c/Users/tom_l/.claude/jobs/2895592e/tmp/clean-venv
+3.13.14 (tags/v3.13.14:fd17997, Jun 10 2026, 13:03:48) [MSC v.1944 64 bit (AMD64)]
+C:\Users\tom_l\.claude\jobs\2895592e\tmp\clean-venv
+## packages before install
+pip==26.1.2
+## pip install the wheel file (dependencies resolved from PyPI by download only; nothing uploaded)
+Processing C:\Users\tom_l\.claude\projects\C--Users-tom-l-git-ubb\R10-SDK-V5-RELEASE\ubb_sdk-5.0.0-py3-none-any.whl
+Collecting httpx>=0.28 (from ubb-sdk==5.0.0)
+  Downloading httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting PyJWT>=2.8 (from ubb-sdk==5.0.0)
+  Downloading pyjwt-2.15.1-py3-none-any.whl.metadata (3.5 kB)
+Collecting attrs>=23.2.0 (from ubb-sdk==5.0.0)
+  Downloading attrs-26.1.0-py3-none-any.whl.metadata (8.8 kB)
+Collecting anyio (from httpx>=0.28->ubb-sdk==5.0.0)
+  Downloading anyio-4.16.0-py3-none-any.whl.metadata (4.7 kB)
+Collecting certifi (from httpx>=0.28->ubb-sdk==5.0.0)
+  Downloading certifi-2026.10.23-py3-none-any.whl.metadata (2.5 kB)
+Collecting httpcore==1.* (from httpx>=0.28->ubb-sdk==5.0.0)
+  Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+Collecting idna (from httpx>=0.28->ubb-sdk==5.0.0)
+  Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+Collecting h11>=0.16 (from httpcore==1.*->httpx>=0.28->ubb-sdk==5.0.0)
+  Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Collecting typing_extensions>=4.16.0 (from anyio->httpx>=0.28->ubb-sdk==5.0.0)
+  Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+Downloading attrs-26.1.0-py3-none-any.whl (67 kB)
+Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+Downloading pyjwt-2.15.1-py3-none-any.whl (33 kB)
+Downloading anyio-4.16.0-py3-none-any.whl (134 kB)
+Downloading idna-3.20-py3-none-any.whl (69 kB)
+Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Downloading certifi-2026.10.23-py3-none-any.whl (135 kB)
+Installing collected packages: typing_extensions, PyJWT, idna, h11, certifi, attrs, httpcore, anyio, httpx, ubb-sdk
+
+Successfully installed PyJWT-2.15.1 anyio-4.16.0 attrs-26.1.0 certifi-2026.10.23 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.20 typing_extensions-4.16.0 ubb-sdk-5.0.0
+## packages after install
+anyio==4.16.0
+attrs==26.1.0
+certifi==2026.10.23
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.20
+pip==26.1.2
+PyJWT==2.15.1
+typing_extensions==4.16.0
+ubb-sdk==5.0.0
+## pip show ubb-sdk
+Name: ubb-sdk
+Version: 5.0.0
+Summary: Python SDK for the Usage-Based Billing platform
+Home-page: 
+Author: 
+Author-email: 
+License: 
+Location: C:\Users\tom_l\.claude\jobs\2895592e\tmp\clean-venv\Lib\site-packages
+Requires: attrs, httpx, PyJWT
+Required-by: 
+## probe from a neutral cwd (/c/Users/tom_l/.claude/jobs/2895592e/tmp/neutral), interpreter in isolated mode (-I)
+sys.executable: C:\Users\tom_l\.claude\jobs\2895592e\tmp\clean-venv\Scripts\python.exe
+sys.path[0:3]: ['C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\python313.zip', 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\DLLs', 'C:\\Program Files\\WindowsApps\\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\\Lib']
+ubb.__file__: C:\Users\tom_l\.claude\jobs\2895592e\tmp\clean-venv\Lib\site-packages\ubb\__init__.py
+ubb.__version__: 5.0.0
+importlib.metadata.version('ubb-sdk'): 5.0.0
+Metadata Name/Version: ubb-sdk 5.0.0
+ubb.__spec_revision__: 1bf1af2350f22f0ad0c2652fd82e8b9cc028f41e879c29e833329740547e9a40 ubb.__spec_version__: v1
+direct_url.json: {"archive_info": {"hash": "sha256=56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948", "hashes": {"sha256": "56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948"}}, "url": "file:///C:/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/R10-SDK-V5-RELEASE/ubb_sdk-5.0.0-py3-none-any.whl"}
+RECORD entries re-hashed on disk: 656, mismatches: 0
+UBBClient constructed: UBBClient
+wheel sha256 (argument): 56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948
+CLEAN-WHEEL-VERIFICATION: PASS

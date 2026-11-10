@@ -1,0 +1,42 @@
+SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# Tag creation and push — 2026-11-09T03:03:07Z
+## git tag -a sdk-v5.0.0 b41b395f59d798cec83289d83d5ec71f83201c7f -m 'ubb-sdk 5.0.0, the one deliberate major after the cutover (R10 billing readiness Stage C5, #631; ADR-0026)'
+## git cat-file -t sdk-v5.0.0
+tag
+## tag object SHA (git rev-parse sdk-v5.0.0)
+fbf765b7efc19c2f3b08f2313ae6e72923e4b340
+## dereferenced commit (git rev-parse sdk-v5.0.0^{commit})
+b41b395f59d798cec83289d83d5ec71f83201c7f
+## git cat-file -p sdk-v5.0.0
+object b41b395f59d798cec83289d83d5ec71f83201c7f
+type commit
+tag sdk-v5.0.0
+tagger ThePig96 <tom_livingston789@hotmail.com> 1794193387 +1300
+
+ubb-sdk 5.0.0, the one deliberate major after the cutover (R10 billing readiness Stage C5, #631; ADR-0026)
+## git tag -v (signature check; unsigned expected)
+object b41b395f59d798cec83289d83d5ec71f83201c7f
+type commit
+tag sdk-v5.0.0
+tagger ThePig96 <tom_livingston789@hotmail.com> 1794193387 +1300
+
+ubb-sdk 5.0.0, the one deliberate major after the cutover (R10 billing readiness Stage C5, #631; ADR-0026)
+error: no signature found
+## git push origin refs/tags/sdk-v5.0.0:refs/tags/sdk-v5.0.0 (tag only)
+To https://github.com/ashcochrane/ubb.git
+ * [new tag]           sdk-v5.0.0 -> sdk-v5.0.0
+## git ls-remote --tags origin (after push)
+97e3aab31b30b91bc68b8741e63f5b0a11f7aa64	refs/tags/api-v1-cutover
+c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/api-v1-cutover^{}
+edac9af3dd58a0fd5702b04b09add874f3b2bb1e	refs/tags/api-v1-launch
+ac6ca81662fc731ab9db79ef493fac2d881b42a0	refs/tags/api-v1-launch^{}
+7263e785dd745ed6211123e4c1260acbba171f60	refs/tags/sdk-v4.0.0
+c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/sdk-v4.0.0^{}
+fbf765b7efc19c2f3b08f2313ae6e72923e4b340	refs/tags/sdk-v5.0.0
+b41b395f59d798cec83289d83d5ec71f83201c7f	refs/tags/sdk-v5.0.0^{}
+## origin/main after push (must be unchanged)
+ * branch              main       -> FETCH_HEAD
+b41b395f59d798cec83289d83d5ec71f83201c7f
+## remote branches containing the tagged commit
+  origin/HEAD -> origin/main
+  origin/main

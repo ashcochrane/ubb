@@ -218,7 +218,11 @@ def test_the_declared_exclusion_set_is_exactly_what_the_file_says(plan):
         # extent, because it had never reached `main` to be counted.
         # 134 -> 135 in the cutover (#190): the dated record of its test
         # disposition, `docs/reviews/2026-10-29-the-cutovers-test-disposition.md`.
-        "frozen-dated-documents": ("permanent", 135, 7),
+        # 135 -> 165 files and 7 -> 8 paths with the November 2026 handover
+        # package (`docs/handoff/**`, 30 files): the engineering handoff, the
+        # SDK release record, the launch plan and the product brief, frozen as
+        # the record of that handover.
+        "frozen-dated-documents": ("permanent", 165, 8),
         # 214 → 218 in #351: four migrations for the nullable customer price
         # and the three accumulators that count what they could not price.
         # 218 → 219 in #352: the trigger holding the price pair's transitions.

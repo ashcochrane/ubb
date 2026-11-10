@@ -1,0 +1,55 @@
+SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# Canonical build — 2026-11-09T03:03:28Z
+## cwd: /c/Users/tom_l/.claude/jobs/2895592e/tmp/release-wt (detached at b41b395f59d798cec83289d83d5ec71f83201c7f; status: '')
+## interpreter
+C:\Users\tom_l\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe 3.13.14
+## command
+python3.13 ubb-sdk/release/build_wheel.py --tag sdk-v5.0.0 --commit b41b395f59d798cec83289d83d5ec71f83201c7f --out <project>/R10-SDK-V5-RELEASE
+## recipe sha256 (running copy)
+f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7 *ubb-sdk/release/build_wheel.py
+## output
+{
+  "tag": "sdk-v5.0.0",
+  "commit": "b41b395f59d798cec83289d83d5ec71f83201c7f",
+  "source_date_epoch": 1794191690,
+  "python": {
+    "release": "3.13",
+    "exact": "3.13.14"
+  },
+  "platform": "Windows-11-10.0.26200-SP0",
+  "lock": {
+    "path": "ubb-sdk/release/build-requirements.txt",
+    "sha256": "7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0",
+    "installed": {
+      "build": "1.2.2.post1",
+      "colorama": "0.4.6",
+      "packaging": "25.0",
+      "pyproject-hooks": "1.2.0",
+      "setuptools": "80.9.0"
+    }
+  },
+  "installer": {
+    "pip": "26.1.2",
+    "in_the_build_environment": false
+  },
+  "recipe_sha256": "f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7",
+  "wheel": "ubb_sdk-5.0.0-py3-none-any.whl",
+  "sha256": "56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948",
+  "builds_compared": 2
+}
+
+real	1m17.717s
+user	0m0.015s
+sys	0m0.061s
+## exit: 0
+## --out listing
+total 872
+drwxr-xr-x 1 tom_l 197609      0 Nov  9 16:04 .
+drwxr-xr-x 1 tom_l 197609      0 Nov  9 16:02 ..
+drwxr-xr-x 1 tom_l 197609      0 Nov  9 16:03 evidence
+-rw-r--r-- 1 tom_l 197609    896 Nov  9 16:04 sdk-v5.0.0.release.json
+-rw-r--r-- 1 tom_l 197609 795683 Nov  9 16:04 ubb_sdk-5.0.0-py3-none-any.whl
+## independent sha256 of the written wheel
+56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948 */c/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/R10-SDK-V5-RELEASE/ubb_sdk-5.0.0-py3-none-any.whl
+## sha256 of the release json
+bbf69c7a8b63c13e10a4ccd96e62c05f60d6ea05ee8a910b0206590f0945da8d */c/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/R10-SDK-V5-RELEASE/sdk-v5.0.0.release.json
