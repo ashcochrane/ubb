@@ -1,0 +1,29 @@
+{
+  "tag": "sdk-v5.0.0",
+  "commit": "b41b395f59d798cec83289d83d5ec71f83201c7f",
+  "source_date_epoch": 1794191690,
+  "python": {
+    "release": "3.13",
+    "exact": "3.13.14"
+  },
+  "platform": "Windows-11-10.0.26200-SP0",
+  "lock": {
+    "path": "ubb-sdk/release/build-requirements.txt",
+    "sha256": "7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0",
+    "installed": {
+      "build": "1.2.2.post1",
+      "colorama": "0.4.6",
+      "packaging": "25.0",
+      "pyproject-hooks": "1.2.0",
+      "setuptools": "80.9.0"
+    }
+  },
+  "installer": {
+    "pip": "26.1.2",
+    "in_the_build_environment": false
+  },
+  "recipe_sha256": "f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7",
+  "wheel": "ubb_sdk-5.0.0-py3-none-any.whl",
+  "sha256": "56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948",
+  "builds_compared": 2
+}

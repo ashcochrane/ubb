@@ -1,0 +1,72 @@
+SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# Post-release recording step - the CHANGELOG record PR (2026-11-09, job 2895592e)
+
+The owner/consultant ACCEPTED the sdk-v5.0.0 release act and ruled ONE documentation-truth item before W7 and the
+Ash transfer: record the released wheel's immutable identity in ubb-sdk/CHANGELOG.md in the v4 convention.
+POST-RELEASE RECORDING ONLY. No new release. Tag untouched. Wheel not rebuilt. Nothing published.
+
+== baseline (re-established fresh at the start of this step)
+origin/main                      b41b395f59d798cec83289d83d5ec71f83201c7f
+remote refs/tags/sdk-v5.0.0      fbf765b7efc19c2f3b08f2313ae6e72923e4b340   (object type: tag)
+remote refs/tags/sdk-v5.0.0^{}   b41b395f59d798cec83289d83d5ec71f83201c7f
+open PRs against main            none
+main checkout                    0 modified tracked files
+manifest sha256                  56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948  (64 chars, read from sdk-v5.0.0.release.json)
+fresh sha256 of retained wheel   56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948  (64 chars) -> AGREE
+manifest tag/commit/wheel        sdk-v5.0.0 / b41b395f59d798cec83289d83d5ec71f83201c7f / ubb_sdk-5.0.0-py3-none-any.whl, builds_compared 2
+no test reads CHANGELOG.md       (git grep -i CHANGELOG -- '*.py' at main: two comments only)
+
+== the worktree
+.claude/worktrees/r10-sdk-v5-changelog, branch worktree-r10-sdk-v5-changelog, created from origin/main
+HEAD before the edit             b41b395f59d798cec83289d83d5ec71f83201c7f, status empty
+
+== the one edit (ubb-sdk/CHANGELOG.md, 5.0.0 entry)
+- "The tag sdk-v5.0.0 is cut by the owner on the merge commit carrying this version ..." -> past tense, naming
+  b41b395f59d798cec83289d83d5ec71f83201c7f and "the tag's own release/build_wheel.py";
+- the prose "Release stamp (filled by the owner at the cut ...)" -> the 4.0.0 "Release stamp (verifiable on the
+  release)" table: __version__ 5.0.0; __spec_revision__ 1bf1af2350f22f0ad0c2652fd82e8b9cc028f41e879c29e833329740547e9a40;
+  __spec_version__ v1; Generator openapi-python-client==0.29.0; Tag sdk-v5.0.0 (annotated); Wheel and its SHA-256:
+  ubb_sdk-5.0.0-py3-none-any.whl, 56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948 - built from
+  sdk-v5.0.0 at b41b395f..., twice, one SHA-256, Python 3.13.14, lock 7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0,
+  recipe f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7, SOURCE_DATE_EPOCH 1794191690; delivered as a
+  wheel with its release manifest and not published to PyPI; recorded by the post-release documentation PR.
+Nothing else in the repository changed (README, MIGRATION, versions, tooling, code: untouched).
+
+== mechanical record check (check_changelog_record.py; every value from the manifest / fresh wheel hash / the tag)
+ok  manifest sha256 == fresh wheel hash
+ok  manifest commit == tag dereference
+ok  manifest lock sha == lock at tag
+ok  manifest recipe sha == recipe at tag
+ok  manifest epoch == tagged commit time
+ok  manifest builds_compared == 2
+ok  5.0.0 entry carries: tag x3, tagged commit (full) x2, wheel filename x1, wheel SHA-256 (full 64) x1,
+    spec revision at the tag x1, lock SHA-256 (full) x1, recipe SHA-256 (full) x1, SOURCE_DATE_EPOCH x1,
+    python exact 3.13.14 x1, "twice, one SHA-256" x1, "not published to PyPI" x1
+ok  every long hex in the 5.0.0 entry is a canonical identity (stray: [])
+CHANGELOG-RECORD: VALID
+
+== verification before committing
+git diff --name-only              ubb-sdk/CHANGELOG.md            (exactly one file)
+git diff --check                  exit 0
+git diff --stat                   ubb-sdk/CHANGELOG.md | 18 +++++++++++++-----  (1 file, +13/-5)
+pytest ubb-sdk/tests/test_release.py (repository venv ubb-platform/.venv, PYTHONPATH = the worktree's ubb-sdk;
+  "ubb from <worktree>/ubb-sdk/ubb/__init__.py 5.0.0")   23 passed in 10.01s, exit 0
+python -m tools.forbidden_terms (the contracts gate's sweep)   swept 2680 files; retired terms on a living
+  surface: 0; "no retired word appears on any living surface unaccounted for."; exit 0
+
+== commit / push / PR
+first attempt: `git commit -F -` with a PowerShell here-string passed the message as a PATHSPEC (no commit was
+  made); the branch was pushed at b41b395f (= main) and `gh pr create` was refused ("No commits between main and
+  the branch"). No damage: main untouched. Redone with the message in a file.
+commit                           1c347bd6efd147870fa340bc9c44377d09bbce7e  (parent b41b395f59d798cec83289d83d5ec71f83201c7f)
+subject                          docs(sdk): record the released sdk-v5.0.0 wheel SHA-256 in the CHANGELOG
+files in the commit              ubb-sdk/CHANGELOG.md  (exactly one)
+push                             b41b395f..1c347bd6  worktree-r10-sdk-v5-changelog -> origin
+PR                               #633  "SDK v5 release record: pin the released wheel SHA-256"  DRAFT, OPEN, base main
+PR head                          1c347bd6efd147870fa340bc9c44377d09bbce7e
+PR body                          PR-BODY-changelog-record.md (this folder)
+
+== state at this point
+NOT merged. Guard not yet run. Tag sdk-v5.0.0 untouched (object fbf765b7..., ^{} b41b395f...). No wheel rebuilt or
+published. W7 untouched. Ash transfer unstarted. Next: exact-head CI -> one-file / CLEAN re-check -> Ready ->
+`python R10-merge-guard.py 633 --check` ONCE (check mode only) -> STOP for the explicit merge ruling.

@@ -1,0 +1,40 @@
+﻿SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# PR #633 - the FINAL merge ruling: guarded merge, run exactly once - 2026-11-09T16:55:48.5650371+13:00
+## immediately-before-merge identity re-check
+origin/main=b41b395f59d798cec83289d83d5ec71f83201c7f
+PR number=633 state=OPEN draft=False base=main head=1c347bd6efd147870fa340bc9c44377d09bbce7e mergeable=MERGEABLE mergeState=CLEAN files=ubb-sdk/CHANGELOG.md
+remote tag: fbf765b7efc19c2f3b08f2313ae6e72923e4b340	refs/tags/sdk-v5.0.0 | b41b395f59d798cec83289d83d5ec71f83201c7f	refs/tags/sdk-v5.0.0^{}
+identity check: all held
+## guard script SHA-256: BE2BEFADCFB3A3B876BFB0CACD0BF3FF66F3821CF4741AF155D9A9DFFAC5F80B
+## python3.13 R10-merge-guard.py 633   (MERGE MODE, run exactly once, from the project folder; raw output follows)
+PR #633: SDK v5 release record: pin the released wheel SHA-256
+head SHA 1c347bd6efd147870fa340bc9c44377d09bbce7e (branch worktree-r10-sdk-v5-changelog -> main)
+  test                     success, success  (2 suite(s))
+  contracts                success, success  (2 suite(s))
+  contract                 success, success  (2 suite(s))
+  codegen                  success, success  (2 suite(s))
+  code-builder-execution   success, success  (2 suite(s))
+
+All 5 required checks succeeded for 1c347bd6efd147870fa340bc9c44377d09bbce7e.
+MERGED #633 (squash) at head 1c347bd6efd147870fa340bc9c44377d09bbce7e.
+## guard exit code: 0
+## post-merge identity proof - 2026-11-09T16:56:21.0880942+13:00
+resulting origin/main: 90d008b709a86ff0d63588d8dd6b0a160978230b
+PR 633 state=MERGED mergedAt=2026-11-09T03:55:58Z mergeCommit=90d008b709a86ff0d63588d8dd6b0a160978230b head=1c347bd6efd147870fa340bc9c44377d09bbce7e
+resulting main parents: b41b395f59d798cec83289d83d5ec71f83201c7f
+resulting main subject: docs(sdk): record the released sdk-v5.0.0 wheel SHA-256 in the CHANGELOG (#633)
+rev-list --count b41b395f59d798cec83289d83d5ec71f83201c7f..origin/main: 1
+git log --oneline b41b395f59d798cec83289d83d5ec71f83201c7f..origin/main:
+90d008b7 docs(sdk): record the released sdk-v5.0.0 wheel SHA-256 in the CHANGELOG (#633)
+reviewed PR-head tree: e453d89ef755c803f005527eb2df0cc1585e6fb0
+resulting-main tree:   e453d89ef755c803f005527eb2df0cc1585e6fb0
+git diff --stat 1c347bd6efd147870fa340bc9c44377d09bbce7e origin/main: [] (empty required)
+git diff --name-only b41b395f59d798cec83289d83d5ec71f83201c7f..origin/main: ubb-sdk/CHANGELOG.md
+## release identity after the docs merge
+remote tags: 97e3aab31b30b91bc68b8741e63f5b0a11f7aa64	refs/tags/api-v1-cutover | c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/api-v1-cutover^{} | edac9af3dd58a0fd5702b04b09add874f3b2bb1e	refs/tags/api-v1-launch | ac6ca81662fc731ab9db79ef493fac2d881b42a0	refs/tags/api-v1-launch^{} | 7263e785dd745ed6211123e4c1260acbba171f60	refs/tags/sdk-v4.0.0 | c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/sdk-v4.0.0^{} | fbf765b7efc19c2f3b08f2313ae6e72923e4b340	refs/tags/sdk-v5.0.0 | b41b395f59d798cec83289d83d5ec71f83201c7f	refs/tags/sdk-v5.0.0^{}
+retained wheel sha256: 56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948
+release folder listing (no new wheel): 00-README.md 7764 2026-11-09T16:19:41.5847514+13:00 | PR-BODY-changelog-record.md 3200 2026-11-09T16:45:44.3564571+13:00 | sdk-v5.0.0.release.json 896 2026-11-09T16:04:43.9375800+13:00 | ubb_sdk-5.0.0-py3-none-any.whl 795683 2026-11-09T16:04:23.9748929+13:00
+nothing published to PyPI: no upload tool or GitHub Release used in this window; gh release list -> []
+W7 brief sha256: 4F737176DC6CD517C3746F59242822BD7393293B13ABA0F3C967512C8877F147
+CHANGELOG at the resulting main (90d008b709a86ff0d63588d8dd6b0a160978230b) carries the full wheel SHA-256 on 1 line(s); it also names ubb_sdk-5.0.0-py3-none-any.whl and sdk-v5.0.0 at b41b395f... (the durable repository release record)
+## verdict: PR #633 MERGED through the guard at reviewed head 1c347bd6...; main = 90d008b7...; the SDK release identity (tag object fbf765b7..., ^{} b41b395f..., wheel 56d28b90...) is unchanged; no wheel rebuilt; nothing published; W7 untouched; Ash transfer not begun.

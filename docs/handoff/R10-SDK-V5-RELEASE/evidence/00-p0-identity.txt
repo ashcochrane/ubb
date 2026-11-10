@@ -1,0 +1,40 @@
+SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# P0 release identity — captured 2026-11-09T03:02:50Z
+## git fetch origin main --tags
+From https://github.com/ashcochrane/ubb
+ * branch              main       -> FETCH_HEAD
+## origin/main
+b41b395f59d798cec83289d83d5ec71f83201c7f
+## HEAD of release worktree (/c/Users/tom_l/.claude/jobs/2895592e/tmp/release-wt)
+b41b395f59d798cec83289d83d5ec71f83201c7f
+## worktree status --porcelain (expect empty)
+## open PRs against main
+[]
+## local tags sdk-*
+sdk-v4.0.0
+## remote tags
+97e3aab31b30b91bc68b8741e63f5b0a11f7aa64	refs/tags/api-v1-cutover
+c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/api-v1-cutover^{}
+edac9af3dd58a0fd5702b04b09add874f3b2bb1e	refs/tags/api-v1-launch
+ac6ca81662fc731ab9db79ef493fac2d881b42a0	refs/tags/api-v1-launch^{}
+7263e785dd745ed6211123e4c1260acbba171f60	refs/tags/sdk-v4.0.0
+c2eb35ff3431faf2985379b05b50031a59aa639c	refs/tags/sdk-v4.0.0^{}
+## SDK version facts at b41b395f59d798cec83289d83d5ec71f83201c7f
+pyproject: version = "5.0.0"
+__version__: __version__ = "5.0.0"
+test_release pin:         assert ubb.__version__ == "5.0.0"
+CHANGELOG 5.0.0 heading line: 7:## 5.0.0
+MIGRATION §27: 1289:## 27. The public contract and the SDK tell the truth — SDK 5.0.0 (R10 billing readiness Stage C5 — pre-live)
+Code Builder: SDK_MAJOR_VERSION = {CODE_TARGET_PYTHON_SDK: 5, CODE_TARGET_SHELL_HTTP: None}
+codegen catalogue:   sdkMajorVersion: 5,
+spec stamp: SPEC_SHA256 = '1bf1af2350f22f0ad0c2652fd82e8b9cc028f41e879c29e833329740547e9a40'
+openapi/v1.json sha256: 1bf1af2350f22f0ad0c2652fd82e8b9cc028f41e879c29e833329740547e9a40 *openapi/v1.json
+## release tooling at b41b395f59d798cec83289d83d5ec71f83201c7f
+ubb-sdk/release/build-requirements.txt
+ubb-sdk/release/build_wheel.py
+f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7 *ubb-sdk/release/build_wheel.py
+7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0 *ubb-sdk/release/build-requirements.txt
+## release python
+C:\Users\tom_l\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe
+3.13.14
+pip 26.1.2 from C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.13_3.13.3824.0_x64__qbz5n2kfra8p0\Lib\site-packages\pip (python 3.13)

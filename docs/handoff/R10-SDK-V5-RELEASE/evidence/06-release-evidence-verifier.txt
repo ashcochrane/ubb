@@ -1,0 +1,41 @@
+SDK v5.0.0 RELEASE EVIDENCE - TAG + REPRODUCIBLE WHEEL - NOT PUBLISHED TO PYPI - NOT PRODUCTION OR RAIL-ACTIVATION EVIDENCE
+# Release evidence verifier — 2026-11-09T03:15:36Z
+## tools/verify_sdk_v5_release.py (project folder; adapted from tools/verify_w6_release.py)
+e40f12a6259dd4c9c34ef9ef7347e057d4eb9c6d61790ebe362488b3d64e26ef */c/Users/tom_l/.claude/projects/C--Users-tom-l-git-ubb/tools/verify_sdk_v5_release.py
+## python3.13 -I tools/verify_sdk_v5_release.py /c/Users/tom_l/.claude/jobs/2895592e/tmp/release-wt
+the evidence:
+  ok  tag: 'sdk-v5.0.0'
+  ok  commit: 'b41b395f59d798cec83289d83d5ec71f83201c7f'
+  ok  python.release: '3.13'
+  ok  python.exact: '3.13.14'
+  ok  lock.path: 'ubb-sdk/release/build-requirements.txt'
+  ok  lock.sha256: '7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0'
+  ok  lock.installed: {'build': '1.2.2.post1', 'colorama': '0.4.6', 'packaging': '25.0', 'pyproject-hooks': '1.2.0', 'setuptools': '80.9.0'}
+  ok  installer.in_the_build_environment: False
+  ok  recipe_sha256: 'f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7'
+  ok  wheel: 'ubb_sdk-5.0.0-py3-none-any.whl'
+  ok  sha256: '56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948'
+  ok  builds_compared: 2
+the saved wheel:
+  ok  file sha256: '56d28b90876beff35532e48df6a5fb8545f665f9c781b40d9febf0b418555948'
+  ok  package: 'ubb-sdk'
+  ok  version: '5.0.0'
+  ok  embedded __version__: ['5.0.0']
+  ok  embedded SPEC_SHA256: ['1bf1af2350f22f0ad0c2652fd82e8b9cc028f41e879c29e833329740547e9a40']
+the repository:
+  ok  remote sdk-v5.0.0 is an annotated tag object (not the commit): True
+  ok  remote sdk-v5.0.0^{}: 'b41b395f59d798cec83289d83d5ec71f83201c7f'
+  ok  remote sdk-v4.0.0^{} unmoved: 'c2eb35ff3431faf2985379b05b50031a59aa639c'
+  ok  remote api-v1-cutover^{} unmoved: 'c2eb35ff3431faf2985379b05b50031a59aa639c'
+  ok  remote api-v1-launch^{} unmoved: 'ac6ca81662fc731ab9db79ef493fac2d881b42a0'
+  ok  local sdk-v5.0.0 object type: 'tag'
+  ok  local sdk-v5.0.0^{commit}: 'b41b395f59d798cec83289d83d5ec71f83201c7f'
+  ok  local tag object == remote tag object: 'fbf765b7efc19c2f3b08f2313ae6e72923e4b340'
+  ok  origin/main: 'b41b395f59d798cec83289d83d5ec71f83201c7f'
+  ok  tagged commit reachable from origin/main: True
+  ok  lock at the tag: '7bd4b746aa72c0852ecb5be1a171695ced7188e12c291e1e3fdd0f4b00ae9da0'
+  ok  recipe at the tag: 'f6bbb0d39dd6aeeffb8f423727f7bfd45eabbb427e8c7bde8da5944cea4831c7'
+  ok  spec at the tag: '1bf1af2350f22f0ad0c2652fd82e8b9cc028f41e879c29e833329740547e9a40'
+  ok  pyproject version at the tag: ['5.0.0']
+RELEASE EVIDENCE VALID
+## exit: 0
